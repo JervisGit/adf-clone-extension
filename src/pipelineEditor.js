@@ -220,8 +220,158 @@ class PipelineEditorProvider {
         }
 
         #canvas {
-            display: block;
-            cursor: default;
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        /* Activity Box - DOM-based */
+        .activity-box {
+            position: absolute;
+            width: 180px;
+            min-height: 56px;
+            background: #f0f0f0;
+            border: 1px solid #c8c8c8;
+            border-radius: 3px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+            cursor: pointer;
+            z-index: 10;
+            user-select: none;
+            will-change: transform;
+        }
+
+        .activity-box.dragging {
+            cursor: move;
+            opacity: 0.8;
+            z-index: 100;
+        }
+
+        .activity-box:hover {
+            background: #e8e8e8;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12);
+        }
+
+        .activity-box.selected {
+            background: #ffffff;
+            border: 1px solid #0078d4;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12);
+        }
+
+        .activity-header {
+            padding: 4px 8px;
+            background: rgba(0, 0, 0, 0.05);
+            border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+            border-radius: 3px 3px 0 0;
+        }
+
+        .activity-box.selected .activity-header {
+            background: #0078d4;
+            border-bottom: none;
+        }
+
+        .activity-type-label {
+            font-size: 11px;
+            color: #605e5c;
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        .activity-box.selected .activity-type-label {
+            color: #ffffff;
+        }
+
+        .activity-body {
+            display: flex;
+            align-items: center;
+            padding: 8px;
+            gap: 8px;
+        }
+
+        .activity-icon-large {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            flex-shrink: 0;
+            font-size: 20px;
+            color: var(--activity-color, #0078d4);
+        }
+
+        .activity-label {
+            font-size: 13px;
+            font-weight: 400;
+            color: #323130;
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        /* Connection Points */
+        .connection-point {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background: #c8c8c8;
+            border: 2px solid #ffffff;
+            border-radius: 50%;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            z-index: 15;
+            cursor: crosshair;
+        }
+
+        .activity-box:hover .connection-point,
+        .activity-box.selected .connection-point {
+            opacity: 1;
+        }
+
+        .connection-point:hover {
+            background: var(--activity-color, #0078d4);
+            transform: scale(1.3);
+        }
+
+        .connection-point.top {
+            top: -5px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .connection-point.right {
+            right: -5px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+
+        .connection-point.bottom {
+            bottom: -5px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .connection-point.left {
+            left: -5px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+
+        .connection-point.top:hover {
+            transform: translateX(-50%) scale(1.3);
+        }
+
+        .connection-point.right:hover {
+            transform: translateY(-50%) scale(1.3);
+        }
+
+        .connection-point.bottom:hover {
+            transform: translateX(-50%) scale(1.3);
+        }
+
+        .connection-point.left:hover {
+            transform: translateY(-50%) scale(1.3);
         }
 
         /* Properties Panel (Right Sidebar) */
@@ -502,7 +652,6 @@ class PipelineEditorProvider {
         let activities = [];
         let connections = [];
         let selectedActivity = null;
-        let hoveredActivity = null;
         let draggedActivity = null;
         let connectionStart = null;
         let isDragging = false;
@@ -511,6 +660,8 @@ class PipelineEditorProvider {
         let panOffset = { x: 0, y: 0 };
         let isPanning = false;
         let panStart = { x: 0, y: 0 };
+        let animationFrameId = null;
+        let needsRedraw = false;
 
         // Check if elements exist
         console.log('Sidebar elements:', document.querySelectorAll('.activity-item').length);
@@ -531,7 +682,7 @@ class PipelineEditorProvider {
 
         // Activity class
         class Activity {
-            constructor(type, x, y) {
+            constructor(type, x, y, container) {
                 this.id = Date.now() + Math.random();
                 this.type = type;
                 this.x = x;
@@ -541,6 +692,9 @@ class PipelineEditorProvider {
                 this.name = type;
                 this.description = '';
                 this.color = this.getColorForType(type);
+                this.container = container;
+                this.element = null;
+                this.createDOMElement();
             }
 
             getColorForType(type) {
@@ -558,153 +712,161 @@ class PipelineEditorProvider {
                 return colors[type] || '#0078d4';
             }
 
+            createDOMElement() {
+                // Create the main activity box element
+                this.element = document.createElement('div');
+                this.element.className = 'activity-box';
+                this.element.style.left = this.x + 'px';
+                this.element.style.top = this.y + 'px';
+                this.element.style.setProperty('--activity-color', this.color);
+                this.element.dataset.activityId = this.id;
+                
+                // Create header
+                const header = document.createElement('div');
+                header.className = 'activity-header';
+                const typeLabel = document.createElement('span');
+                typeLabel.className = 'activity-type-label';
+                typeLabel.textContent = this.getTypeLabel();
+                header.appendChild(typeLabel);
+                
+                // Create body
+                const body = document.createElement('div');
+                body.className = 'activity-body';
+                
+                const icon = document.createElement('div');
+                icon.className = 'activity-icon-large';
+                icon.textContent = this.getIcon();
+                
+                const label = document.createElement('div');
+                label.className = 'activity-label';
+                label.textContent = this.name;
+                
+                body.appendChild(icon);
+                body.appendChild(label);
+                
+                // Add connection points
+                const positions = ['top', 'right', 'bottom', 'left'];
+                positions.forEach(pos => {
+                    const point = document.createElement('div');
+                    point.className = 'connection-point ' + pos;
+                    point.dataset.position = pos;
+                    point.dataset.activityId = this.id;
+                    this.element.appendChild(point);
+                });
+                
+                // Assemble element
+                this.element.appendChild(header);
+                this.element.appendChild(body);
+                
+                // Add to container
+                this.container.appendChild(this.element);
+                
+                // Set up event listeners
+                this.setupEventListeners();
+            }
+            
+            setupEventListeners() {
+                // Click to select
+                this.element.addEventListener('mousedown', (e) => {
+                    // Don't handle if clicking on connection point
+                    if (e.target.classList.contains('connection-point')) {
+                        return;
+                    }
+                    e.stopPropagation();
+                    this.handleMouseDown(e);
+                });
+                
+                // Right-click context menu
+                this.element.addEventListener('contextmenu', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    selectedActivity = this;
+                    showContextMenu(e.clientX, e.clientY);
+                });
+                
+                // Connection point handlers
+                this.element.querySelectorAll('.connection-point').forEach(point => {
+                    point.addEventListener('mousedown', (e) => {
+                        e.stopPropagation();
+                        this.handleConnectionStart(e, point);
+                    });
+                });
+            }
+            
+            handleMouseDown(e) {
+                selectedActivity = this;
+                draggedActivity = this;
+                isDragging = true;
+                const rect = this.element.getBoundingClientRect();
+                const wrapperRect = this.container.getBoundingClientRect();
+                dragOffset.x = e.clientX - rect.left;
+                dragOffset.y = e.clientY - rect.top;
+                this.element.classList.add('dragging');
+                this.element.style.cursor = 'move';
+                this.setSelected(true);
+                showProperties(selectedActivity);
+                
+                // Redraw connections
+                draw();
+            }
+            
+            handleConnectionStart(e, point) {
+                const position = point.dataset.position;
+                const connPoint = this.getConnectionPoint(position);
+                connectionStart = connPoint;
+                connectionStart.activity = this;
+                canvas.style.cursor = 'crosshair';
+                draw();
+            }
+
             contains(x, y) {
                 return x >= this.x && x <= this.x + this.width &&
                        y >= this.y && y <= this.y + this.height;
             }
-
-            draw(ctx, isSelected) {
-                const radius = 3;
-                const headerHeight = 18;
-                
-                // Shadow
-                ctx.shadowColor = 'rgba(0, 0, 0, 0.08)';
-                ctx.shadowBlur = 2;
-                ctx.shadowOffsetX = 0;
-                ctx.shadowOffsetY = isSelected ? 2 : 1;
-
-                if (isSelected) {
-                    // SELECTED STATE - SalesAnalytics design
-                    // Main box with white background
-                    this.roundRect(ctx, this.x, this.y, this.width, this.height, radius);
-                    ctx.fillStyle = '#ffffff';
-                    ctx.fill();
-                    
-                    // Blue border
-                    ctx.strokeStyle = this.color;
-                    ctx.lineWidth = 1;
-                    ctx.stroke();
-                    
-                    ctx.shadowColor = 'transparent';
-                    ctx.shadowBlur = 0;
-
-                    // Header bar with blue background
-                    ctx.save();
-                    ctx.beginPath();
-                    ctx.moveTo(this.x + radius, this.y);
-                    ctx.lineTo(this.x + this.width - radius, this.y);
-                    ctx.arcTo(this.x + this.width, this.y, this.x + this.width, this.y + radius, radius);
-                    ctx.lineTo(this.x + this.width, this.y + headerHeight);
-                    ctx.lineTo(this.x, this.y + headerHeight);
-                    ctx.lineTo(this.x, this.y + radius);
-                    ctx.arcTo(this.x, this.y, this.x + radius, this.y, radius);
-                    ctx.closePath();
-                    ctx.fillStyle = this.color;
-                    ctx.fill();
-                    ctx.restore();
-
-                    // Activity type label in header (white text)
-                    ctx.fillStyle = '#ffffff';
-                    ctx.font = '11px "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif';
-                    ctx.textAlign = 'left';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillText(this.getTypeLabel(), this.x + 8, this.y + headerHeight / 2);
-
-                    // Activity icon and name in body
-                    const iconX = this.x + 12;
-                    const iconY = this.y + headerHeight + (this.height - headerHeight) / 2;
-                    
-                    // Icon
-                    ctx.fillStyle = this.color;
-                    ctx.font = '20px sans-serif';
-                    ctx.textAlign = 'left';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillText(this.getIcon(), iconX, iconY);
-
-                    // Activity name
-                    ctx.fillStyle = '#323130';
-                    ctx.font = '13px "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif';
-                    ctx.textAlign = 'left';
-                    ctx.textBaseline = 'middle';
-                    let displayName = this.name || this.type || 'Activity';
-                    const maxWidth = this.width - 50;
-                    if (displayName && ctx.measureText(displayName).width > maxWidth) {
-                        displayName = displayName.substring(0, 15) + '...';
-                    }
-                    ctx.fillText(displayName, iconX + 28, iconY);
-
-                } else {
-                    // UNSELECTED STATE - Location_HTTP design
-                    // Main box with gray background
-                    this.roundRect(ctx, this.x, this.y, this.width, this.height, radius);
-                    ctx.fillStyle = '#f0f0f0';
-                    ctx.fill();
-                    
-                    // Gray border
-                    ctx.strokeStyle = '#c8c8c8';
-                    ctx.lineWidth = 1;
-                    ctx.stroke();
-                    
-                    ctx.shadowColor = 'transparent';
-                    ctx.shadowBlur = 0;
-
-                    // Header bar with semi-transparent background
-                    ctx.save();
-                    ctx.beginPath();
-                    ctx.moveTo(this.x + radius, this.y);
-                    ctx.lineTo(this.x + this.width - radius, this.y);
-                    ctx.arcTo(this.x + this.width, this.y, this.x + this.width, this.y + radius, radius);
-                    ctx.lineTo(this.x + this.width, this.y + headerHeight);
-                    ctx.lineTo(this.x, this.y + headerHeight);
-                    ctx.lineTo(this.x, this.y + radius);
-                    ctx.arcTo(this.x, this.y, this.x + radius, this.y, radius);
-                    ctx.closePath();
-                    ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
-                    ctx.fill();
-                    
-                    // Header border
-                    ctx.beginPath();
-                    ctx.moveTo(this.x, this.y + headerHeight);
-                    ctx.lineTo(this.x + this.width, this.y + headerHeight);
-                    ctx.strokeStyle = 'rgba(0, 0, 0, 0.08)';
-                    ctx.lineWidth = 1;
-                    ctx.stroke();
-                    ctx.restore();
-
-                    // Activity type label in header
-                    ctx.fillStyle = '#605e5c';
-                    ctx.font = '11px "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif';
-                    ctx.textAlign = 'left';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillText(this.getTypeLabel(), this.x + 8, this.y + headerHeight / 2);
-
-                    // Activity icon and name in body
-                    const iconX = this.x + 12;
-                    const iconY = this.y + headerHeight + (this.height - headerHeight) / 2;
-                    
-                    // Icon (colored)
-                    ctx.fillStyle = this.color;
-                    ctx.font = '20px sans-serif';
-                    ctx.textAlign = 'left';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillText(this.getIcon(), iconX, iconY);
-
-                    // Activity name
-                    ctx.fillStyle = '#323130';
-                    ctx.font = '13px "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif';
-                    ctx.textAlign = 'left';
-                    ctx.textBaseline = 'middle';
-                    let displayName = this.name || this.type || 'Activity';
-                    const maxWidth = this.width - 50;
-                    if (displayName && ctx.measureText(displayName).width > maxWidth) {
-                        displayName = displayName.substring(0, 15) + '...';
-                    }
-                    ctx.fillText(displayName, iconX + 28, iconY);
+            
+            updatePosition(x, y) {
+                this.x = x;
+                this.y = y;
+                if (this.element) {
+                    this.element.style.left = x + 'px';
+                    this.element.style.top = y + 'px';
                 }
-
-                // Connection points (will be drawn separately if needed)
-                // this.drawConnectionPoints(ctx, headerHeight, isSelected);
             }
+            
+            updateName(name) {
+                this.name = name;
+                if (this.element) {
+                    const label = this.element.querySelector('.activity-label');
+                    if (label) {
+                        label.textContent = name;
+                    }
+                }
+            }
+            
+            setSelected(selected) {
+                if (this.element) {
+                    if (selected) {
+                        this.element.classList.add('selected');
+                        // Deselect all other activities
+                        activities.forEach(a => {
+                            if (a !== this && a.element) {
+                                a.element.classList.remove('selected');
+                            }
+                        });
+                    } else {
+                        this.element.classList.remove('selected');
+                    }
+                }
+            }
+            
+            remove() {
+                if (this.element && this.element.parentNode) {
+                    this.element.parentNode.removeChild(this.element);
+                }
+                this.element = null;
+            }
+
+
 
             getTypeLabel() {
                 const labels = {
@@ -736,59 +898,7 @@ class PipelineEditorProvider {
                 return icons[this.type] || '📦';
             }
 
-            adjustColor(color, amount) {
-                // Simple color adjustment - ensure color has # prefix
-                if (!color || !color.startsWith('#')) {
-                    return '#666666';
-                }
-                const hex = color.replace('#', '');
-                if (hex.length !== 6) {
-                    return color; // Return original if invalid
-                }
-                const r = Math.max(0, Math.min(255, parseInt(hex.substring(0, 2), 16) + amount));
-                const g = Math.max(0, Math.min(255, parseInt(hex.substring(2, 4), 16) + amount));
-                const b = Math.max(0, Math.min(255, parseInt(hex.substring(4, 6), 16) + amount));
-                const rHex = r.toString(16).padStart(2, '0');
-                const gHex = g.toString(16).padStart(2, '0');
-                const bHex = b.toString(16).padStart(2, '0');
-                return \`#\${rHex}\${gHex}\${bHex}\`;
-            }
 
-            roundRect(ctx, x, y, width, height, radius) {
-                ctx.beginPath();
-                ctx.moveTo(x + radius, y);
-                ctx.lineTo(x + width - radius, y);
-                ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
-                ctx.lineTo(x + width, y + height - radius);
-                ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
-                ctx.lineTo(x + radius, y + height);
-                ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
-                ctx.lineTo(x, y + radius);
-                ctx.quadraticCurveTo(x, y, x + radius, y);
-                ctx.closePath();
-            }
-
-            drawConnectionPoints(ctx, headerHeight = 18, showPoints = false) {
-                if (!showPoints) return; // Hidden by default
-                
-                const points = [
-                    { x: this.x + this.width / 2, y: this.y }, // top
-                    { x: this.x + this.width, y: this.y + this.height / 2 }, // right
-                    { x: this.x + this.width / 2, y: this.y + this.height }, // bottom
-                    { x: this.x, y: this.y + this.height / 2 } // left
-                ];
-
-                points.forEach(point => {
-                    // ADF style connection points - small circles
-                    ctx.fillStyle = '#c8c8c8';
-                    ctx.strokeStyle = '#ffffff';
-                    ctx.lineWidth = 2;
-                    ctx.beginPath();
-                    ctx.arc(point.x, point.y, 4, 0, Math.PI * 2);
-                    ctx.fill();
-                    ctx.stroke();
-                });
-            }
 
             getConnectionPoint(position) {
                 const headerHeight = 18;
@@ -915,20 +1025,23 @@ class PipelineEditorProvider {
             // Draw grid
             drawGrid();
 
-            // Draw connections
+            // Draw connections only (activities are now DOM elements)
             connections.forEach(conn => conn.draw(ctx));
+        }
 
-            // Draw activities
-            activities.forEach(activity => {
-                activity.draw(ctx, activity === selectedActivity);
-                // Draw connection points if hovered or selected
-                if (activity === hoveredActivity || activity === selectedActivity) {
-                    activity.drawConnectionPoints(ctx, 18, true);
+        // Optimized draw with requestAnimationFrame
+        function requestDraw() {
+            if (!needsRedraw) {
+                needsRedraw = true;
+                if (animationFrameId) {
+                    cancelAnimationFrame(animationFrameId);
                 }
-            });
-
-            // Draw temporary connection line (removed buggy event reference)
-            // This will be drawn in mousemove instead
+                animationFrameId = requestAnimationFrame(() => {
+                    draw();
+                    needsRedraw = false;
+                    animationFrameId = null;
+                });
+            }
         }
 
         function drawGrid() {
@@ -962,103 +1075,62 @@ class PipelineEditorProvider {
             item.addEventListener('dblclick', (e) => {
                 const activityType = item.getAttribute('data-type');
                 console.log('Double-click add:', activityType);
+                const canvasWrapper = document.getElementById('canvasWrapper');
                 const centerX = canvas.width / 2;
                 const centerY = canvas.height / 2;
-                const activity = new Activity(activityType, centerX - 60, centerY - 40 + activities.length * 20);
+                const activity = new Activity(activityType, centerX - 60, centerY - 40 + activities.length * 20, canvasWrapper);
                 activities.push(activity);
                 console.log('Activities count:', activities.length);
                 draw();
             });
         });
 
-        canvas.addEventListener('dragover', (e) => {
+        document.getElementById('canvasWrapper').addEventListener('dragover', (e) => {
             e.preventDefault();
             console.log('Drag over canvas');
         });
 
-        canvas.addEventListener('drop', (e) => {
+        document.getElementById('canvasWrapper').addEventListener('drop', (e) => {
             e.preventDefault();
             const activityType = e.dataTransfer.getData('activityType');
-            const rect = canvas.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
+            const canvasWrapper = document.getElementById('canvasWrapper');
+            const wrapperRect = canvasWrapper.getBoundingClientRect();
+            const x = e.clientX - wrapperRect.left + canvasWrapper.scrollLeft;
+            const y = e.clientY - wrapperRect.top + canvasWrapper.scrollTop;
             
             console.log('Dropping activity:', activityType, 'at', x, y);
-            const activity = new Activity(activityType, x - 60, y - 40);
+            const activity = new Activity(activityType, x - 90, y - 28, canvasWrapper);
             activities.push(activity);
             console.log('Activities count:', activities.length);
             draw();
         });
 
-        canvas.addEventListener('mousedown', (e) => {
-            const mousePos = getMousePos(e);
-            
-            // Check if clicking on connection points
-            for (let activity of activities) {
-                const points = [
-                    { pos: activity.getConnectionPoint('top'), activity },
-                    { pos: activity.getConnectionPoint('right'), activity },
-                    { pos: activity.getConnectionPoint('bottom'), activity },
-                    { pos: activity.getConnectionPoint('left'), activity }
-                ];
-                
-                for (let point of points) {
-                    const dx = mousePos.x - point.pos.x;
-                    const dy = mousePos.y - point.pos.y;
-                    if (Math.sqrt(dx * dx + dy * dy) < 8) {
-                        // Start connection from this point
-                        connectionStart = point.pos;
-                        connectionStart.activity = activity;
-                        canvas.style.cursor = 'crosshair';
-                        draw();
-                        return;
-                    }
-                }
+        // Canvas mousedown - deselect when clicking empty space
+        document.getElementById('canvasWrapper').addEventListener('mousedown', (e) => {
+            // Only handle if clicking directly on the wrapper (not on an activity or canvas)
+            if (e.target.id === 'canvasWrapper') {
+                selectedActivity = null;
+                // Deselect all activities
+                activities.forEach(a => a.setSelected(false));
+                showProperties(null);
+                draw();
             }
-            
-            // Check if clicking on an activity
-            for (let i = activities.length - 1; i >= 0; i--) {
-                if (activities[i].contains(mousePos.x, mousePos.y)) {
-                    // Start dragging
-                    selectedActivity = activities[i];
-                    draggedActivity = activities[i];
-                    isDragging = true;
-                    dragOffset.x = mousePos.x - activities[i].x;
-                    dragOffset.y = mousePos.y - activities[i].y;
-                    canvas.style.cursor = 'move';
-                    showProperties(selectedActivity);
-                    draw();
-                    return;
-                }
-            }
-
-            // Deselect if clicking empty space
-            selectedActivity = null;
-            showProperties(null);
-            draw();
         });
 
-        canvas.addEventListener('mousemove', (e) => {
-            const mousePos = getMousePos(e);
-            
-            // Update hovered activity for showing connection points
-            let foundHover = false;
-            for (let activity of activities) {
-                if (activity.contains(mousePos.x, mousePos.y)) {
-                    hoveredActivity = activity;
-                    foundHover = true;
-                    break;
-                }
-            }
-            if (!foundHover) {
-                hoveredActivity = null;
-            }
-            
+        document.addEventListener('mousemove', (e) => {
             if (isDragging && draggedActivity) {
-                draggedActivity.x = mousePos.x - dragOffset.x;
-                draggedActivity.y = mousePos.y - dragOffset.y;
-                draw();
+                const canvasWrapper = document.getElementById('canvasWrapper');
+                const wrapperRect = canvasWrapper.getBoundingClientRect();
+                const x = e.clientX - wrapperRect.left + canvasWrapper.scrollLeft - dragOffset.x;
+                const y = e.clientY - wrapperRect.top + canvasWrapper.scrollTop - dragOffset.y;
+                draggedActivity.updatePosition(x, y);
+                requestDraw(); // Use optimized draw
             } else if (connectionStart) {
+                const canvasWrapper = document.getElementById('canvasWrapper');
+                const wrapperRect = canvasWrapper.getBoundingClientRect();
+                const mouseX = e.clientX - wrapperRect.left + canvasWrapper.scrollLeft;
+                const mouseY = e.clientY - wrapperRect.top + canvasWrapper.scrollTop;
+                
                 draw();
                 // Draw temporary connection line
                 ctx.strokeStyle = '#0078d4';
@@ -1066,26 +1138,25 @@ class PipelineEditorProvider {
                 ctx.setLineDash([5, 5]);
                 ctx.beginPath();
                 ctx.moveTo(connectionStart.x, connectionStart.y);
-                ctx.lineTo(mousePos.x, mousePos.y);
+                ctx.lineTo(mouseX, mouseY);
                 ctx.stroke();
                 ctx.setLineDash([]);
-            } else {
-                // Redraw to update connection points visibility
-                draw();
             }
         });
 
-        canvas.addEventListener('mouseup', (e) => {
+        document.addEventListener('mouseup', (e) => {
             if (connectionStart) {
-                const mousePos = getMousePos(e);
-                
-                // Check if ending on another activity
-                for (let activity of activities) {
-                    if (activity !== connectionStart.activity && 
-                        activity.contains(mousePos.x, mousePos.y)) {
-                        // Show condition selector
-                        showConnectionConditionDialog(connectionStart.activity, activity, e.clientX, e.clientY);
-                        break;
+                // Check if mouse is over an activity element
+                const targetElement = document.elementFromPoint(e.clientX, e.clientY);
+                if (targetElement) {
+                    const activityBox = targetElement.closest('.activity-box');
+                    if (activityBox && activityBox.dataset.activityId) {
+                        const targetId = parseFloat(activityBox.dataset.activityId);
+                        const targetActivity = activities.find(a => a.id === targetId);
+                        if (targetActivity && targetActivity !== connectionStart.activity) {
+                            // Show condition selector
+                            showConnectionConditionDialog(connectionStart.activity, targetActivity, e.clientX, e.clientY);
+                        }
                     }
                 }
                 
@@ -1094,7 +1165,10 @@ class PipelineEditorProvider {
             }
             
             if (isDragging) {
-                canvas.style.cursor = 'default';
+                if (draggedActivity && draggedActivity.element) {
+                    draggedActivity.element.classList.remove('dragging');
+                    draggedActivity.element.style.cursor = 'pointer';
+                }
             }
             
             isDragging = false;
@@ -1102,18 +1176,7 @@ class PipelineEditorProvider {
             draw();
         });
 
-        canvas.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            const mousePos = getMousePos(e);
-            
-            for (let activity of activities) {
-                if (activity.contains(mousePos.x, mousePos.y)) {
-                    selectedActivity = activity;
-                    showContextMenu(e.clientX, e.clientY);
-                    return;
-                }
-            }
-        });
+
 
         function getMousePos(e) {
             const rect = canvas.getBoundingClientRect();
@@ -1140,6 +1203,9 @@ class PipelineEditorProvider {
                 const action = item.getAttribute('data-action');
                 
                 if (action === 'delete' && selectedActivity) {
+                    // Remove from DOM
+                    selectedActivity.remove();
+                    // Remove from arrays
                     activities = activities.filter(a => a !== selectedActivity);
                     connections = connections.filter(c => 
                         c.from !== selectedActivity && c.to !== selectedActivity
@@ -1263,7 +1329,7 @@ class PipelineEditorProvider {
             \`;
 
             document.getElementById('propName').addEventListener('input', (e) => {
-                activity.name = e.target.value;
+                activity.updateName(e.target.value);
                 draw();
             });
 
@@ -1272,12 +1338,14 @@ class PipelineEditorProvider {
             });
             
             document.getElementById('propX').addEventListener('input', (e) => {
-                activity.x = parseInt(e.target.value) || 0;
+                const x = parseInt(e.target.value) || 0;
+                activity.updatePosition(x, activity.y);
                 draw();
             });
             
             document.getElementById('propY').addEventListener('input', (e) => {
-                activity.y = parseInt(e.target.value) || 0;
+                const y = parseInt(e.target.value) || 0;
+                activity.updatePosition(activity.x, y);
                 draw();
             });
         }
@@ -1322,6 +1390,8 @@ class PipelineEditorProvider {
 
         document.getElementById('clearBtn').addEventListener('click', () => {
             if (confirm('Clear all activities?')) {
+                // Remove all activity DOM elements
+                activities.forEach(a => a.remove());
                 activities = [];
                 connections = [];
                 selectedActivity = null;
@@ -1353,7 +1423,8 @@ class PipelineEditorProvider {
             const message = event.data;
             
             if (message.type === 'addActivity') {
-                const activity = new Activity(message.activityType, 100, 100);
+                const canvasWrapper = document.getElementById('canvasWrapper');
+                const activity = new Activity(message.activityType, 100, 100, canvasWrapper);
                 activities.push(activity);
                 draw();
             }

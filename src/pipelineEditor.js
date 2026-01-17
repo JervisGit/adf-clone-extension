@@ -256,7 +256,8 @@ class PipelineEditorProvider {
         .activity-box.selected {
             background: #ffffff;
             border: 1px solid #0078d4;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12);
+            box-shadow: 0 4px 12px rgba(0, 120, 212, 0.2);
+            min-height: 88px;
         }
 
         .activity-header {
@@ -372,6 +373,44 @@ class PipelineEditorProvider {
 
         .connection-point.left:hover {
             transform: translateY(-50%) scale(1.3);
+        }
+
+        /* Activity Actions */
+        .activity-actions {
+            display: none;
+            align-items: center;
+            padding: 4px 8px;
+            gap: 4px;
+            border-top: 1px solid #edebe9;
+        }
+
+        .activity-box.selected .activity-actions {
+            display: flex;
+        }
+
+        .action-icon-btn {
+            width: 24px;
+            height: 24px;
+            border: none;
+            background: transparent;
+            border-radius: 2px;
+            cursor: pointer;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.1s ease;
+            color: #605e5c;
+        }
+
+        .action-icon-btn:hover {
+            background: rgba(0, 0, 0, 0.05);
+        }
+
+        .action-icon-btn.info {
+            margin-left: auto;
+            color: #0078d4;
+            font-weight: bold;
         }
 
         /* Properties Panel (Right Sidebar) */
@@ -744,6 +783,42 @@ class PipelineEditorProvider {
                 body.appendChild(icon);
                 body.appendChild(label);
                 
+                // Create action buttons section (hidden by default, shown when selected)
+                const actions = document.createElement('div');
+                actions.className = 'activity-actions';
+                
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'action-icon-btn';
+                deleteBtn.innerHTML = '🗑️';
+                deleteBtn.title = 'Delete';
+                deleteBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    this.handleDelete();
+                };
+                
+                const editBtn = document.createElement('button');
+                editBtn.className = 'action-icon-btn';
+                editBtn.innerHTML = '{}';
+                editBtn.title = 'Edit JSON';
+                editBtn.onclick = (e) => e.stopPropagation();
+                
+                const copyBtn = document.createElement('button');
+                copyBtn.className = 'action-icon-btn';
+                copyBtn.innerHTML = '📋';
+                copyBtn.title = 'Copy';
+                copyBtn.onclick = (e) => e.stopPropagation();
+                
+                const infoBtn = document.createElement('button');
+                infoBtn.className = 'action-icon-btn info';
+                infoBtn.innerHTML = 'ℹ';
+                infoBtn.title = 'Info';
+                infoBtn.onclick = (e) => e.stopPropagation();
+                
+                actions.appendChild(deleteBtn);
+                actions.appendChild(editBtn);
+                actions.appendChild(copyBtn);
+                actions.appendChild(infoBtn);
+                
                 // Add connection points
                 const positions = ['top', 'right', 'bottom', 'left'];
                 positions.forEach(pos => {
@@ -757,12 +832,24 @@ class PipelineEditorProvider {
                 // Assemble element
                 this.element.appendChild(header);
                 this.element.appendChild(body);
+                this.element.appendChild(actions);
                 
                 // Add to container
                 this.container.appendChild(this.element);
                 
                 // Set up event listeners
                 this.setupEventListeners();
+            }
+            
+            handleDelete() {
+                if (confirm(\`Delete activity "\${this.name}"?\`)) {
+                    activities = activities.filter(a => a !== this);
+                    connections = connections.filter(c => c.from !== this && c.to !== this);
+                    this.remove();
+                    selectedActivity = null;
+                    showProperties(null);
+                    draw();
+                }
             }
             
             setupEventListeners() {

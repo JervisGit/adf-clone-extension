@@ -951,70 +951,75 @@ class PipelineEditorProvider {
                     }
                 }
 
-                // Color based on condition
+                // Color based on condition - ADF style
                 const colors = {
-                    'Succeeded': '#00a86b',
+                    'Succeeded': '#107c10',
                     'Failed': '#d13438',
                     'Skipped': '#ffa500',
                     'Completed': '#0078d4'
                 };
                 
-                const color = colors[this.condition] || '#0078d4';
+                const color = colors[this.condition] || '#107c10';
+                
+                // Snap to pixel grid for crisp lines
+                const snapToPixel = (val) => Math.floor(val) + 0.5;
+                const startX = snapToPixel(start.x);
+                const startY = snapToPixel(start.y);
+                const endX = snapToPixel(end.x);
+                const endY = snapToPixel(end.y);
+                
+                // Draw orthogonal (elbowed) connection line - ADF style
                 ctx.strokeStyle = color;
-                ctx.lineWidth = 3;
+                ctx.lineWidth = 1.5;
+                ctx.lineCap = 'butt';
+                ctx.lineJoin = 'miter';
                 ctx.beginPath();
-                ctx.moveTo(start.x, start.y);
-
-                // Smart bezier curve
+                
+                // Calculate midpoint for elbow
                 if (Math.abs(dx) > Math.abs(dy)) {
-                    // Horizontal - use horizontal control points
-                    const cp1x = start.x + Math.abs(dx) / 3 * (dx > 0 ? 1 : -1);
-                    const cp2x = end.x - Math.abs(dx) / 3 * (dx > 0 ? 1 : -1);
-                    ctx.bezierCurveTo(cp1x, start.y, cp2x, end.y, end.x, end.y);
+                    // Horizontal connection with elbow
+                    const midX = startX + (endX - startX) / 2;
+                    ctx.moveTo(startX, startY);
+                    ctx.lineTo(midX, startY);
+                    ctx.lineTo(midX, endY);
+                    ctx.lineTo(endX, endY);
                 } else {
-                    // Vertical - use vertical control points
-                    const cp1y = start.y + Math.abs(dy) / 3 * (dy > 0 ? 1 : -1);
-                    const cp2y = end.y - Math.abs(dy) / 3 * (dy > 0 ? 1 : -1);
-                    ctx.bezierCurveTo(start.x, cp1y, end.x, cp2y, end.x, end.y);
+                    // Vertical connection with elbow
+                    const midY = startY + (endY - startY) / 2;
+                    ctx.moveTo(startX, startY);
+                    ctx.lineTo(startX, midY);
+                    ctx.lineTo(endX, midY);
+                    ctx.lineTo(endX, endY);
                 }
                 
                 ctx.stroke();
 
-                // Arrow head
-                const angle = Math.atan2(end.y - start.y, end.x - start.x);
-                const arrowLength = 12;
+                // Draw clean arrow head pointing in the direction of the line
+                const arrowSize = 7;
+                
+                // Determine arrow direction based on the last segment
+                let arrowAngle;
+                if (Math.abs(dx) > Math.abs(dy)) {
+                    // Horizontal approach
+                    arrowAngle = dx > 0 ? 0 : Math.PI;
+                } else {
+                    // Vertical approach
+                    arrowAngle = dy > 0 ? Math.PI / 2 : -Math.PI / 2;
+                }
+                
                 ctx.fillStyle = color;
                 ctx.beginPath();
-                ctx.moveTo(end.x, end.y);
+                ctx.moveTo(endX, endY);
                 ctx.lineTo(
-                    end.x - arrowLength * Math.cos(angle - Math.PI / 6),
-                    end.y - arrowLength * Math.sin(angle - Math.PI / 6)
+                    endX - arrowSize * Math.cos(arrowAngle - Math.PI / 6),
+                    endY - arrowSize * Math.sin(arrowAngle - Math.PI / 6)
                 );
                 ctx.lineTo(
-                    end.x - arrowLength * Math.cos(angle + Math.PI / 6),
-                    end.y - arrowLength * Math.sin(angle + Math.PI / 6)
+                    endX - arrowSize * Math.cos(arrowAngle + Math.PI / 6),
+                    endY - arrowSize * Math.sin(arrowAngle + Math.PI / 6)
                 );
                 ctx.closePath();
                 ctx.fill();
-
-                // Draw condition label with background
-                const midX = (start.x + end.x) / 2;
-                const midY = (start.y + end.y) / 2;
-                
-                ctx.font = 'bold 11px sans-serif';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                
-                const text = this.condition;
-                const textWidth = ctx.measureText(text).width;
-                
-                // Background for label
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-                ctx.fillRect(midX - textWidth / 2 - 4, midY - 8, textWidth + 8, 16);
-                
-                // Label text
-                ctx.fillStyle = '#ffffff';
-                ctx.fillText(text, midX, midY);
             }
         }
 

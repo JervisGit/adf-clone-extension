@@ -502,6 +502,7 @@ class PipelineEditorProvider {
         let activities = [];
         let connections = [];
         let selectedActivity = null;
+        let hoveredActivity = null;
         let draggedActivity = null;
         let connectionStart = null;
         let isDragging = false;
@@ -535,8 +536,8 @@ class PipelineEditorProvider {
                 this.type = type;
                 this.x = x;
                 this.y = y;
-                this.width = 120;
-                this.height = 80;
+                this.width = 180;
+                this.height = 56;
                 this.name = type;
                 this.description = '';
                 this.color = this.getColorForType(type);
@@ -554,7 +555,7 @@ class PipelineEditorProvider {
                     'WebActivity': '#8661c5',
                     'StoredProcedure': '#847545'
                 };
-                return colors[type] || '#666';
+                return colors[type] || '#0078d4';
             }
 
             contains(x, y) {
@@ -563,77 +564,161 @@ class PipelineEditorProvider {
             }
 
             draw(ctx, isSelected) {
-                const radius = 8;
-                const headerHeight = 32;
+                const radius = 3;
+                const headerHeight = 18;
                 
                 // Shadow
+                ctx.shadowColor = 'rgba(0, 0, 0, 0.08)';
+                ctx.shadowBlur = 2;
+                ctx.shadowOffsetX = 0;
+                ctx.shadowOffsetY = isSelected ? 2 : 1;
+
                 if (isSelected) {
-                    ctx.shadowColor = 'rgba(66, 184, 131, 0.4)';
-                    ctx.shadowBlur = 12;
-                    ctx.shadowOffsetX = 0;
-                    ctx.shadowOffsetY = 4;
+                    // SELECTED STATE - SalesAnalytics design
+                    // Main box with white background
+                    this.roundRect(ctx, this.x, this.y, this.width, this.height, radius);
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fill();
+                    
+                    // Blue border
+                    ctx.strokeStyle = this.color;
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                    
+                    ctx.shadowColor = 'transparent';
+                    ctx.shadowBlur = 0;
+
+                    // Header bar with blue background
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.moveTo(this.x + radius, this.y);
+                    ctx.lineTo(this.x + this.width - radius, this.y);
+                    ctx.arcTo(this.x + this.width, this.y, this.x + this.width, this.y + radius, radius);
+                    ctx.lineTo(this.x + this.width, this.y + headerHeight);
+                    ctx.lineTo(this.x, this.y + headerHeight);
+                    ctx.lineTo(this.x, this.y + radius);
+                    ctx.arcTo(this.x, this.y, this.x + radius, this.y, radius);
+                    ctx.closePath();
+                    ctx.fillStyle = this.color;
+                    ctx.fill();
+                    ctx.restore();
+
+                    // Activity type label in header (white text)
+                    ctx.fillStyle = '#ffffff';
+                    ctx.font = '11px "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif';
+                    ctx.textAlign = 'left';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(this.getTypeLabel(), this.x + 8, this.y + headerHeight / 2);
+
+                    // Activity icon and name in body
+                    const iconX = this.x + 12;
+                    const iconY = this.y + headerHeight + (this.height - headerHeight) / 2;
+                    
+                    // Icon
+                    ctx.fillStyle = this.color;
+                    ctx.font = '20px sans-serif';
+                    ctx.textAlign = 'left';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(this.getIcon(), iconX, iconY);
+
+                    // Activity name
+                    ctx.fillStyle = '#323130';
+                    ctx.font = '13px "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif';
+                    ctx.textAlign = 'left';
+                    ctx.textBaseline = 'middle';
+                    let displayName = this.name || this.type || 'Activity';
+                    const maxWidth = this.width - 50;
+                    if (displayName && ctx.measureText(displayName).width > maxWidth) {
+                        displayName = displayName.substring(0, 15) + '...';
+                    }
+                    ctx.fillText(displayName, iconX + 28, iconY);
+
                 } else {
-                    ctx.shadowColor = 'rgba(0, 0, 0, 0.15)';
-                    ctx.shadowBlur = 8;
-                    ctx.shadowOffsetX = 0;
-                    ctx.shadowOffsetY = 2;
+                    // UNSELECTED STATE - Location_HTTP design
+                    // Main box with gray background
+                    this.roundRect(ctx, this.x, this.y, this.width, this.height, radius);
+                    ctx.fillStyle = '#f0f0f0';
+                    ctx.fill();
+                    
+                    // Gray border
+                    ctx.strokeStyle = '#c8c8c8';
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                    
+                    ctx.shadowColor = 'transparent';
+                    ctx.shadowBlur = 0;
+
+                    // Header bar with semi-transparent background
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.moveTo(this.x + radius, this.y);
+                    ctx.lineTo(this.x + this.width - radius, this.y);
+                    ctx.arcTo(this.x + this.width, this.y, this.x + this.width, this.y + radius, radius);
+                    ctx.lineTo(this.x + this.width, this.y + headerHeight);
+                    ctx.lineTo(this.x, this.y + headerHeight);
+                    ctx.lineTo(this.x, this.y + radius);
+                    ctx.arcTo(this.x, this.y, this.x + radius, this.y, radius);
+                    ctx.closePath();
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+                    ctx.fill();
+                    
+                    // Header border
+                    ctx.beginPath();
+                    ctx.moveTo(this.x, this.y + headerHeight);
+                    ctx.lineTo(this.x + this.width, this.y + headerHeight);
+                    ctx.strokeStyle = 'rgba(0, 0, 0, 0.08)';
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                    ctx.restore();
+
+                    // Activity type label in header
+                    ctx.fillStyle = '#605e5c';
+                    ctx.font = '11px "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif';
+                    ctx.textAlign = 'left';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(this.getTypeLabel(), this.x + 8, this.y + headerHeight / 2);
+
+                    // Activity icon and name in body
+                    const iconX = this.x + 12;
+                    const iconY = this.y + headerHeight + (this.height - headerHeight) / 2;
+                    
+                    // Icon (colored)
+                    ctx.fillStyle = this.color;
+                    ctx.font = '20px sans-serif';
+                    ctx.textAlign = 'left';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(this.getIcon(), iconX, iconY);
+
+                    // Activity name
+                    ctx.fillStyle = '#323130';
+                    ctx.font = '13px "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif';
+                    ctx.textAlign = 'left';
+                    ctx.textBaseline = 'middle';
+                    let displayName = this.name || this.type || 'Activity';
+                    const maxWidth = this.width - 50;
+                    if (displayName && ctx.measureText(displayName).width > maxWidth) {
+                        displayName = displayName.substring(0, 15) + '...';
+                    }
+                    ctx.fillText(displayName, iconX + 28, iconY);
                 }
 
-                // Main box background
-                this.roundRect(ctx, this.x, this.y, this.width, this.height, radius);
-                ctx.fillStyle = '#ffffff';
-                ctx.fill();
+                // Connection points (will be drawn separately if needed)
+                // this.drawConnectionPoints(ctx, headerHeight, isSelected);
+            }
 
-                // Border
-                ctx.strokeStyle = isSelected ? '#42b883' : '#2c3e50';
-                ctx.lineWidth = isSelected ? 3 : 2;
-                ctx.stroke();
-                
-                ctx.shadowColor = 'transparent';
-                ctx.shadowBlur = 0;
-
-                // Header bar (colored)
-                ctx.save();
-                ctx.beginPath();
-                ctx.moveTo(this.x + radius, this.y);
-                ctx.lineTo(this.x + this.width - radius, this.y);
-                ctx.arcTo(this.x + this.width, this.y, this.x + this.width, this.y + radius, radius);
-                ctx.lineTo(this.x + this.width, this.y + headerHeight);
-                ctx.lineTo(this.x, this.y + headerHeight);
-                ctx.lineTo(this.x, this.y + radius);
-                ctx.arcTo(this.x, this.y, this.x + radius, this.y, radius);
-                ctx.closePath();
-                ctx.fillStyle = this.color;
-                ctx.fill();
-                ctx.restore();
-
-                // Activity name in header (white text)
-                ctx.fillStyle = '#ffffff';
-                ctx.font = 'bold 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-                ctx.textAlign = 'left';
-                ctx.textBaseline = 'middle';
-                
-                let displayName = this.name || this.type || 'Activity';
-                const maxWidth = this.width - 50;
-                if (displayName && ctx.measureText(displayName).width > maxWidth) {
-                    displayName = displayName.substring(0, 12) + '...';
-                }
-                ctx.fillText(displayName, this.x + 12, this.y + headerHeight / 2);
-
-                // Icon in header
-                ctx.font = '16px sans-serif';
-                ctx.textAlign = 'right';
-                ctx.fillText(this.getIcon(), this.x + this.width - 12, this.y + headerHeight / 2);
-
-                // Type label in body
-                ctx.fillStyle = '#666666';
-                ctx.font = '11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'top';
-                ctx.fillText(this.type, this.x + this.width / 2, this.y + headerHeight + 10);
-
-                // Connection points
-                this.drawConnectionPoints(ctx, headerHeight);
+            getTypeLabel() {
+                const labels = {
+                    'Copy': 'Copy data',
+                    'Delete': 'Delete',
+                    'Dataflow': 'Data flow',
+                    'Notebook': 'Notebook',
+                    'ForEach': 'ForEach',
+                    'IfCondition': 'If Condition',
+                    'Wait': 'Wait',
+                    'WebActivity': 'Web Activity',
+                    'StoredProcedure': 'Stored Procedure'
+                };
+                return labels[this.type] || this.type;
             }
 
             getIcon() {
@@ -683,30 +768,32 @@ class PipelineEditorProvider {
                 ctx.closePath();
             }
 
-            drawConnectionPoints(ctx, headerHeight = 32) {
+            drawConnectionPoints(ctx, headerHeight = 18, showPoints = false) {
+                if (!showPoints) return; // Hidden by default
+                
                 const points = [
-                    { x: this.x + this.width / 2, y: this.y + headerHeight }, // top (below header)
+                    { x: this.x + this.width / 2, y: this.y }, // top
                     { x: this.x + this.width, y: this.y + this.height / 2 }, // right
                     { x: this.x + this.width / 2, y: this.y + this.height }, // bottom
                     { x: this.x, y: this.y + this.height / 2 } // left
                 ];
 
                 points.forEach(point => {
-                    // Baklava.js style ports - clean circles
-                    ctx.fillStyle = '#ffffff';
-                    ctx.strokeStyle = '#2c3e50';
+                    // ADF style connection points - small circles
+                    ctx.fillStyle = '#c8c8c8';
+                    ctx.strokeStyle = '#ffffff';
                     ctx.lineWidth = 2;
                     ctx.beginPath();
-                    ctx.arc(point.x, point.y, 6, 0, Math.PI * 2);
+                    ctx.arc(point.x, point.y, 4, 0, Math.PI * 2);
                     ctx.fill();
                     ctx.stroke();
                 });
             }
 
             getConnectionPoint(position) {
-                const headerHeight = 32;
+                const headerHeight = 18;
                 switch (position) {
-                    case 'top': return { x: this.x + this.width / 2, y: this.y + headerHeight };
+                    case 'top': return { x: this.x + this.width / 2, y: this.y };
                     case 'right': return { x: this.x + this.width, y: this.y + this.height / 2 };
                     case 'bottom': return { x: this.x + this.width / 2, y: this.y + this.height };
                     case 'left': return { x: this.x, y: this.y + this.height / 2 };
@@ -834,6 +921,10 @@ class PipelineEditorProvider {
             // Draw activities
             activities.forEach(activity => {
                 activity.draw(ctx, activity === selectedActivity);
+                // Draw connection points if hovered or selected
+                if (activity === hoveredActivity || activity === selectedActivity) {
+                    activity.drawConnectionPoints(ctx, 18, true);
+                }
             });
 
             // Draw temporary connection line (removed buggy event reference)
@@ -950,6 +1041,19 @@ class PipelineEditorProvider {
         canvas.addEventListener('mousemove', (e) => {
             const mousePos = getMousePos(e);
             
+            // Update hovered activity for showing connection points
+            let foundHover = false;
+            for (let activity of activities) {
+                if (activity.contains(mousePos.x, mousePos.y)) {
+                    hoveredActivity = activity;
+                    foundHover = true;
+                    break;
+                }
+            }
+            if (!foundHover) {
+                hoveredActivity = null;
+            }
+            
             if (isDragging && draggedActivity) {
                 draggedActivity.x = mousePos.x - dragOffset.x;
                 draggedActivity.y = mousePos.y - dragOffset.y;
@@ -965,6 +1069,9 @@ class PipelineEditorProvider {
                 ctx.lineTo(mousePos.x, mousePos.y);
                 ctx.stroke();
                 ctx.setLineDash([]);
+            } else {
+                // Redraw to update connection points visibility
+                draw();
             }
         });
 

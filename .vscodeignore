@@ -7,8 +7,6 @@ src/**
 .yarnrc
 esbuild.js
 vsc-extension-quickstart.md
-**/tsconfig.json
-**/eslint.config.mjs
+**/eslint.config.js
 **/*.map
-**/*.ts
 **/.vscode-test.*

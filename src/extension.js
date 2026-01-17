@@ -1,7 +1,7 @@
-import * as vscode from 'vscode';
-import { PipelineEditorProvider } from './pipelineEditor';
+const vscode = require('vscode');
+const { PipelineEditorProvider } = require('./pipelineEditor');
 
-export function activate(context: vscode.ExtensionContext) {
+function activate(context) {
 	console.log('ADF Pipeline Clone extension is now active!');
 
 	// Register the pipeline editor provider
@@ -14,10 +14,15 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// Register command to add activities
 	context.subscriptions.push(
-		vscode.commands.registerCommand('adf-pipeline-clone.addActivity', (activityType: string) => {
+		vscode.commands.registerCommand('adf-pipeline-clone.addActivity', (activityType) => {
 			editorProvider.addActivity(activityType);
 		})
 	);
 }
 
-export function deactivate() {}
+function deactivate() {}
+
+module.exports = {
+	activate,
+	deactivate
+};

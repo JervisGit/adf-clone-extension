@@ -1507,7 +1507,7 @@ class PipelineEditorProvider {
         }
 
         // Configuration panel
-        function showProperties(activity) {
+        function showProperties(activity, activeTabId = null) {
             const rightPanel = document.getElementById('propertiesContent');
             const bottomPanel = document.getElementById('generalContent');
             
@@ -1674,7 +1674,7 @@ class PipelineEditorProvider {
             
             tabs.forEach((tabName, idx) => {
                 const tabId = tabName.toLowerCase().split(' ').join('-');
-                const isActive = idx === 0;
+                const isActive = activeTabId ? (tabId === activeTabId) : (idx === 0);
                 const activeClass = isActive ? ' active' : '';
                 const activeStyle = isActive ? 'color: var(--vscode-tab-activeForeground); border-bottom: 2px solid var(--vscode-focusBorder);' : 'color: var(--vscode-tab-inactiveForeground);';
                 
@@ -1723,7 +1723,8 @@ class PipelineEditorProvider {
             if (addUserPropBtn) {
                 addUserPropBtn.addEventListener('click', () => {
                     activity.userProperties.push({ name: '', value: '' });
-                    showProperties(activity);
+                    const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                    showProperties(activity, activeTab);
                 });
             }
             
@@ -1731,7 +1732,8 @@ class PipelineEditorProvider {
                 btn.addEventListener('click', (e) => {
                     const idx = parseInt(e.target.getAttribute('data-idx'));
                     activity.userProperties.splice(idx, 1);
-                    showProperties(activity);
+                    const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                    showProperties(activity, activeTab);
                 });
             });
             
@@ -1740,6 +1742,30 @@ class PipelineEditorProvider {
                     const idx = parseInt(e.target.getAttribute('data-idx'));
                     const field = e.target.getAttribute('data-field');
                     activity.userProperties[idx][field] = e.target.value;
+                });
+            });
+            
+            // Add event listeners for keyvalue add buttons
+            document.querySelectorAll('.add-kv-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const key = e.target.getAttribute('data-key');
+                    const kvList = document.querySelector(\`.kv-list[data-key="\${key}"]\`);
+                    if (kvList) {
+                        const kvPair = document.createElement('div');
+                        kvPair.className = 'property-group';
+                        kvPair.style.marginBottom = '8px';
+                        kvPair.innerHTML = \`
+                            <input type="text" class="property-input" placeholder="Key" style="flex: 1; margin-right: 8px;">
+                            <input type="text" class="property-input" placeholder="Value" style="flex: 1; margin-right: 8px;">
+                            <button class="remove-kv-btn" style="padding: 6px 12px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px;">Remove</button>
+                        \`;
+                        kvList.appendChild(kvPair);
+                        
+                        // Add remove listener
+                        kvPair.querySelector('.remove-kv-btn').addEventListener('click', () => {
+                            kvPair.remove();
+                        });
+                    }
                 });
             });
             

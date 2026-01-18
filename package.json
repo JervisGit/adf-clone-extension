@@ -17,18 +17,63 @@
   "activationEvents": [],
   "main": "./dist/extension.js",
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "adf-pipeline-explorer",
+          "title": "ADF Pipeline",
+          "icon": "$(azure)"
+        }
+      ]
+    },
+    "views": {
+      "adf-pipeline-explorer": [
+        {
+          "id": "adf-activities",
+          "name": "Activities",
+          "contextualTitle": "ADF Activities"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "adf-pipeline-clone.openPipeline",
         "title": "ADF: Open Pipeline Editor",
-        "category": "Pipeline"
+        "category": "Pipeline",
+        "icon": "$(edit)"
       },
       {
         "command": "adf-pipeline-clone.addActivity",
         "title": "ADF: Add Activity",
         "category": "Pipeline"
+      },
+      {
+        "command": "adf-pipeline-clone.addActivityFromTree",
+        "title": "Add to Pipeline",
+        "icon": "$(add)"
+      },
+      {
+        "command": "adf-pipeline-clone.refreshActivities",
+        "title": "Refresh Activities",
+        "icon": "$(refresh)"
       }
-    ]
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "adf-pipeline-clone.refreshActivities",
+          "when": "view == adf-activities",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "adf-pipeline-clone.addActivityFromTree",
+          "when": "view == adf-activities && viewItem == activity",
+          "group": "inline"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run package",

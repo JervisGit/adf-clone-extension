@@ -138,34 +138,63 @@ class PipelineEditorProvider {
         }
 
         .activity-group {
-            padding: 12px;
+            border-bottom: 1px solid var(--vscode-panel-border);
         }
 
         .activity-group-title {
-            font-size: 12px;
-            font-weight: 600;
-            margin-bottom: 8px;
-            color: var(--vscode-descriptionForeground);
-            text-transform: uppercase;
+            display: flex;
+            align-items: center;
+            padding: 10px 12px;
+            cursor: pointer;
+            font-size: 13px;
+            color: var(--vscode-foreground);
+            user-select: none;
+            font-weight: 400;
+        }
+
+        .activity-group-title:hover {
+            background: var(--vscode-list-hoverBackground);
+        }
+
+        .category-arrow {
+            margin-right: 8px;
+            font-size: 10px;
+            transition: transform 0.2s ease;
+            display: inline-block;
+        }
+
+        .activity-group.collapsed .category-arrow {
+            transform: rotate(-90deg);
+        }
+
+        .activity-group-content {
+            background: var(--vscode-sideBar-background);
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-in-out;
+            display: block;
+        }
+
+        .activity-group:not(.collapsed) .activity-group-content {
+            max-height: 200px;
+            overflow-y: auto;
+            overflow-x: hidden;
+            display: block;
         }
 
         .activity-item {
-            padding: 10px 12px;
-            margin: 4px 0;
-            border-radius: 4px;
-            cursor: pointer;
+            padding: 8px 12px 8px 36px;
+            cursor: move;
             font-size: 13px;
-            background: var(--vscode-button-secondaryBackground);
-            border: 1px solid var(--vscode-button-border);
-            transition: all 0.2s;
+            color: var(--vscode-foreground);
+            transition: background 0.15s;
             display: flex;
             align-items: center;
             gap: 8px;
         }
 
         .activity-item:hover {
-            background: var(--vscode-button-secondaryHoverBackground);
-            transform: translateX(2px);
+            background: var(--vscode-list-hoverBackground);
         }
 
         .activity-icon {
@@ -568,55 +597,115 @@ class PipelineEditorProvider {
         <div class="sidebar">
             <div class="sidebar-header">Activities</div>
             
-            <div class="activity-group">
-                <div class="activity-group-title">Data Movement</div>
-                <div class="activity-item" draggable="true" data-type="Copy">
-                    <div class="activity-icon">📋</div>
-                    <span>Copy Data</span>
+            <div class="activity-group collapsed">
+                <div class="activity-group-title" onclick="toggleCategory(this)">
+                    <span class="category-arrow">▼</span> Move & transform
                 </div>
-                <div class="activity-item" draggable="true" data-type="Delete">
-                    <div class="activity-icon">ðŸ—‘ï¸</div>
-                    <span>Delete</span>
-                </div>
-            </div>
-
-            <div class="activity-group">
-                <div class="activity-group-title">Data Transformation</div>
-                <div class="activity-item" draggable="true" data-type="Dataflow">
-                    <div class="activity-icon">🔄</div>
-                    <span>Data Flow</span>
-                </div>
-                <div class="activity-item" draggable="true" data-type="Notebook">
-                    <div class="activity-icon">ðŸ““</div>
-                    <span>Notebook</span>
+                <div class="activity-group-content">
+                    <div class="activity-item" draggable="true" data-type="Copy">
+                        <div class="activity-icon">📋</div>
+                        <span>Copy</span>
+                    </div>
+                    <div class="activity-item" draggable="true" data-type="ExecuteDataFlow">
+                        <div class="activity-icon">🌊</div>
+                        <span>Data Flow</span>
+                    </div>
+                    <div class="activity-item" draggable="true" data-type="AzureFunctionActivity">
+                        <div class="activity-icon">⚡</div>
+                        <span>Azure Function</span>
+                    </div>
                 </div>
             </div>
 
-            <div class="activity-group">
-                <div class="activity-group-title">Control Flow</div>
-                <div class="activity-item" draggable="true" data-type="ForEach">
-                    <div class="activity-icon">ðŸ”</div>
-                    <span>For Each</span>
+            <div class="activity-group collapsed">
+                <div class="activity-group-title" onclick="toggleCategory(this)">
+                    <span class="category-arrow">▼</span> Synapse
                 </div>
-                <div class="activity-item" draggable="true" data-type="IfCondition">
-                    <div class="activity-icon">â“</div>
-                    <span>If Condition</span>
-                </div>
-                <div class="activity-item" draggable="true" data-type="Wait">
-                    <div class="activity-icon">⏱️</div>
-                    <span>Wait</span>
+                <div class="activity-group-content">
+                    <div class="activity-item" draggable="true" data-type="SynapseNotebook">
+                        <div class="activity-icon">📓</div>
+                        <span>Notebook</span>
+                    </div>
+                    <div class="activity-item" draggable="true" data-type="SparkJob">
+                        <div class="activity-icon">✨</div>
+                        <span>Spark job definition</span>
+                    </div>
+                    <div class="activity-item" draggable="true" data-type="SqlServerStoredProcedure">
+                        <div class="activity-icon">🔷</div>
+                        <span>SQL script</span>
+                    </div>
                 </div>
             </div>
 
-            <div class="activity-group">
-                <div class="activity-group-title">External</div>
-                <div class="activity-item" draggable="true" data-type="WebActivity">
-                    <div class="activity-icon">🌐</div>
-                    <span>Web Activity</span>
+            <div class="activity-group collapsed">
+                <div class="activity-group-title" onclick="toggleCategory(this)">
+                    <span class="category-arrow">▼</span> General
                 </div>
-                <div class="activity-item" draggable="true" data-type="StoredProcedure">
-                    <div class="activity-icon">ðŸ’¾</div>
-                    <span>Stored Procedure</span>
+                <div class="activity-group-content">
+                    <div class="activity-item" draggable="true" data-type="WebActivity">
+                        <div class="activity-icon">🌐</div>
+                        <span>Web</span>
+                    </div>
+                    <div class="activity-item" draggable="true" data-type="GetMetadata">
+                        <div class="activity-icon">📄</div>
+                        <span>Get Metadata</span>
+                    </div>
+                    <div class="activity-item" draggable="true" data-type="Lookup">
+                        <div class="activity-icon">🔍</div>
+                        <span>Lookup</span>
+                    </div>
+                    <div class="activity-item" draggable="true" data-type="Delete">
+                        <div class="activity-icon">🗑️</div>
+                        <span>Delete</span>
+                    </div>
+                    <div class="activity-item" draggable="true" data-type="Wait">
+                        <div class="activity-icon">⏱️</div>
+                        <span>Wait</span>
+                    </div>
+                    <div class="activity-item" draggable="true" data-type="Validation">
+                        <div class="activity-icon">✅</div>
+                        <span>Validation</span>
+                    </div>
+                    <div class="activity-item" draggable="true" data-type="Script">
+                        <div class="activity-icon">📜</div>
+                        <span>Script</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="activity-group collapsed">
+                <div class="activity-group-title" onclick="toggleCategory(this)">
+                    <span class="category-arrow">▼</span> Iteration & conditionals
+                </div>
+                <div class="activity-group-content">
+                    <div class="activity-item" draggable="true" data-type="ForEach">
+                        <div class="activity-icon">🔁</div>
+                        <span>ForEach</span>
+                    </div>
+                    <div class="activity-item" draggable="true" data-type="IfCondition">
+                        <div class="activity-icon">❓</div>
+                        <span>If Condition</span>
+                    </div>
+                    <div class="activity-item" draggable="true" data-type="Switch">
+                        <div class="activity-icon">🔀</div>
+                        <span>Switch</span>
+                    </div>
+                    <div class="activity-item" draggable="true" data-type="Until">
+                        <div class="activity-icon">🔄</div>
+                        <span>Until</span>
+                    </div>
+                    <div class="activity-item" draggable="true" data-type="SetVariable">
+                        <div class="activity-icon">📌</div>
+                        <span>Set Variable</span>
+                    </div>
+                    <div class="activity-item" draggable="true" data-type="AppendVariable">
+                        <div class="activity-icon">➕</div>
+                        <span>Append Variable</span>
+                    </div>
+                    <div class="activity-item" draggable="true" data-type="Filter">
+                        <div class="activity-icon">🔎</div>
+                        <span>Filter</span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -679,6 +768,12 @@ class PipelineEditorProvider {
     </div>
 
     <script>
+        // Toggle category function for collapsible categories
+        function toggleCategory(element) {
+            const activityGroup = element.closest('.activity-group');
+            activityGroup.classList.toggle('collapsed');
+        }
+
         console.log('=== Pipeline Editor Script Starting ===');
         const vscode = acquireVsCodeApi();
         console.log('vscode API acquired');

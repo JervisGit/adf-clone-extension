@@ -5,11 +5,13 @@ A beautiful Visual Studio Code extension that provides a visual pipeline editor 
 ## ✨ Features
 
 - **Visual Pipeline Designer**: Drag-and-drop canvas interface for building data pipelines
-- **Activity Library**: Comprehensive set of pre-built activities including:
-  - Data Movement (Copy Data, Delete)
-  - Data Transformation (Data Flow, Notebook)
-  - Control Flow (For Each, If Condition, Wait)
-  - External (Web Activity, Stored Procedure)
+- **Dedicated Activity Bar Tab**: Extension now has its own tab in the VS Code left navigation bar for easy access
+- **Collapsible Activity Categories**: Organized activities in expandable/collapsible categories:
+  - **Move & transform**: Copy data, Data Flow, Azure Function
+  - **Synapse**: Notebook, Spark job definition, SQL script
+  - **General**: Web, Get Metadata, Lookup, Delete, Wait, Validation, Script
+  - **Iteration & conditionals**: ForEach, If Condition, Switch, Until, Set Variable, Append Variable, Filter
+- **Activity Library**: Activities stored in a configuration file for easy maintenance
 - **Connection Management**: Visual connections between activities with smooth bezier curves
 - **Properties Panel**: Edit activity properties in real-time
 - **Interactive Canvas**:

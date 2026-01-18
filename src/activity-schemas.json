@@ -19,7 +19,10 @@
       "sparkPool": { "type": "text", "label": "Spark pool", "default": "defaultSparkPool", "readonly": true },
       "executorSize": { "type": "select", "label": "Executor size", "options": ["Small", "Medium", "Large", "XLarge", "XXLarge"], "default": "Small" },
       "driverSize": { "type": "select", "label": "Driver size", "options": ["Small", "Medium", "Large", "XLarge", "XXLarge"], "default": "Small" },
-      "numExecutors": { "type": "number", "label": "Number of executors", "default": 1, "min": 1 }
+      "dynamicAllocation": { "type": "boolean", "label": "Dynamically allocate executors", "default": false },
+      "minExecutors": { "type": "number", "label": "Min executors", "default": 1, "min": 1, "conditional": { "field": "dynamicAllocation", "value": true } },
+      "maxExecutors": { "type": "number", "label": "Max executors", "default": 4, "min": 1, "conditional": { "field": "dynamicAllocation", "value": true } },
+      "numExecutors": { "type": "number", "label": "Number of executors", "default": 2, "min": 1, "conditional": { "field": "dynamicAllocation", "value": false } }
     }
   },
   "Copy": {

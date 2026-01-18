@@ -29,6 +29,11 @@
     "views": {
       "adf-pipeline-explorer": [
         {
+          "id": "adf-pipelines",
+          "name": "Pipelines",
+          "contextualTitle": "Synapse Pipelines"
+        },
+        {
           "id": "adf-activities",
           "name": "Activities",
           "contextualTitle": "Synapse Activities"
@@ -56,6 +61,15 @@
         "command": "adf-pipeline-clone.refreshActivities",
         "title": "Refresh Activities",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "adf-pipeline-clone.refreshPipelines",
+        "title": "Refresh Pipelines",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "adf-pipeline-clone.openPipelineFile",
+        "title": "Open Pipeline File"
       }
     ],
     "menus": {
@@ -63,6 +77,11 @@
         {
           "command": "adf-pipeline-clone.refreshActivities",
           "when": "view == adf-activities",
+          "group": "navigation"
+        },
+        {
+          "command": "adf-pipeline-clone.refreshPipelines",
+          "when": "view == adf-pipelines",
           "group": "navigation"
         }
       ],

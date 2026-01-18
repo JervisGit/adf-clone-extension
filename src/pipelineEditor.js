@@ -41,13 +41,13 @@ class PipelineEditorProvider {
 
 		// Handle messages from the webview
 		panel.webview.onDidReceiveMessage(
-			message => {
+			async message => {
 				switch (message.type) {
 					case 'alert':
 						vscode.window.showInformationMessage(message.text);
 						break;
 					case 'save':
-						this.savePipeline(message.data);
+						await this.savePipelineToWorkspace(message.data);
 						break;
 					case 'log':
 						console.log('Webview:', message.text);
@@ -62,10 +62,19 @@ class PipelineEditorProvider {
 		panel.onDidDispose(
 			() => {
 				PipelineEditorProvider.currentPanel = undefined;
+				this.currentPipelineFile = null;
+				this.pendingPipelineFile = null;
 			},
 			null,
 			this.context.subscriptions
 		);
+
+		// Load pending pipeline file if any
+		if (this.pendingPipelineFile) {
+			const fileToLoad = this.pendingPipelineFile;
+			this.pendingPipelineFile = null;
+			this.loadPipelineFile(fileToLoad);
+		}
 	}
 
 	addActivity(activityType) {
@@ -76,6 +85,92 @@ class PipelineEditorProvider {
 			});
 		} else {
 			vscode.window.showWarningMessage('Please open the pipeline editor first');
+		}
+	}
+
+	loadPipelineFile(filePath) {
+		if (PipelineEditorProvider.currentPanel) {
+			const fs = require('fs');
+			try {
+				const content = fs.readFileSync(filePath, 'utf8');
+				const pipelineJson = JSON.parse(content);
+				
+				// Store the current file path
+				this.currentPipelineFile = filePath;
+				
+				// Send to webview
+				PipelineEditorProvider.currentPanel.webview.postMessage({
+					type: 'loadPipeline',
+					data: pipelineJson
+				});
+				
+				vscode.window.showInformationMessage(`Loaded pipeline: ${require('path').basename(filePath)}`);
+			} catch (error) {
+				vscode.window.showErrorMessage(`Failed to load pipeline: ${error.message}`);
+			}
+		} else {
+			// Open editor first, then load
+			this.createOrShow();
+			// Store file path to load after panel is ready
+			this.pendingPipelineFile = filePath;
+		}
+	}
+
+	async savePipelineToWorkspace(pipelineData) {
+		const fs = require('fs');
+		const path = require('path');
+		
+		try {
+			// Get workspace folder
+			if (!vscode.workspace.workspaceFolders) {
+				vscode.window.showErrorMessage('No workspace folder open');
+				return;
+			}
+			
+			const workspaceRoot = vscode.workspace.workspaceFolders[0].uri.fsPath;
+			const pipelineDir = path.join(workspaceRoot, 'pipeline');
+			
+			// Create pipeline directory if it doesn't exist
+			if (!fs.existsSync(pipelineDir)) {
+				fs.mkdirSync(pipelineDir, { recursive: true });
+			}
+			
+			// Convert to Synapse format
+			const synapseJson = {
+				name: pipelineData.name || "pipeline1",
+				properties: {
+					activities: pipelineData.activities || [],
+					annotations: [],
+					lastPublishTime: new Date().toISOString()
+				}
+			};
+			
+			// Determine file path
+			let filePath;
+			if (this.currentPipelineFile) {
+				filePath = this.currentPipelineFile;
+			} else {
+				// Create new file with unique name
+				let fileName = `${synapseJson.name}.json`;
+				filePath = path.join(pipelineDir, fileName);
+				
+				// Check if file exists, add number if needed
+				let counter = 1;
+				while (fs.existsSync(filePath)) {
+					fileName = `${synapseJson.name}_${counter}.json`;
+					filePath = path.join(pipelineDir, fileName);
+					counter++;
+				}
+				
+				this.currentPipelineFile = filePath;
+			}
+			
+			// Write file
+			fs.writeFileSync(filePath, JSON.stringify(synapseJson, null, 2));
+			vscode.window.showInformationMessage(`Pipeline saved: ${path.basename(filePath)}`);
+			
+		} catch (error) {
+			vscode.window.showErrorMessage(`Failed to save pipeline: ${error.message}`);
 		}
 	}
 
@@ -161,13 +256,18 @@ class PipelineEditorProvider {
 
         .category-arrow {
             margin-right: 8px;
-            font-size: 10px;
+            font-size: 12px;
+            font-weight: bold;
             transition: transform 0.2s ease;
             display: inline-block;
         }
 
         .activity-group.collapsed .category-arrow {
             transform: rotate(-90deg);
+        }
+
+        .activity-group:not(.collapsed) .category-arrow {
+            transform: rotate(0deg);
         }
 
         .activity-group-content {
@@ -710,13 +810,13 @@ class PipelineEditorProvider {
         <!-- Canvas Area -->
         <div class="canvas-container">
             <div class="toolbar">
-                <button class="toolbar-button" id="saveBtn">ðŸ’¾ Save</button>
-                <button class="toolbar-button" id="clearBtn">ðŸ—‘ï¸ Clear</button>
-                <button class="toolbar-button" id="zoomInBtn">ðŸ”+ Zoom In</button>
-                <button class="toolbar-button" id="zoomOutBtn">ðŸ”- Zoom Out</button>
-                <button class="toolbar-button" id="fitBtn">â¬œ Fit to Screen</button>
+                <button class="toolbar-button" id="saveBtn">Save</button>
+                <button class="toolbar-button" id="clearBtn">Clear</button>
+                <button class="toolbar-button" id="zoomInBtn">Zoom In</button>
+                <button class="toolbar-button" id="zoomOutBtn">Zoom Out</button>
+                <button class="toolbar-button" id="fitBtn">Fit to Screen</button>
                 <div class="toolbar-spacer"></div>
-                <button class="expand-properties-btn" id="expandPropertiesBtn" onclick="toggleProperties()">« Properties</button>
+                <button class="expand-properties-btn" id="expandPropertiesBtn" onclick="toggleProperties()">Properties</button>
             </div>
             <div class="canvas-wrapper" id="canvasWrapper">
                 <canvas id="canvas"></canvas>
@@ -748,7 +848,7 @@ class PipelineEditorProvider {
             <!-- Activity-level tabs (shown when activity selected, dynamically generated) -->
             <div id="activityTabsContainer"></div>
             
-            <button class="config-collapse-btn" id="configCollapseBtn" onclick="toggleConfig()" title="Collapse Configuration Panel">▼</button>
+            <button class="config-collapse-btn" id="configCollapseBtn" onclick="toggleConfig()" title="Collapse Configuration Panel">v</button>
         </div>
         <div class="config-content" id="configContent" style="flex: 1; overflow-y: auto; padding: 16px; background: var(--vscode-editor-background);">
             <!-- Pipeline-level tab panes -->
@@ -818,7 +918,7 @@ class PipelineEditorProvider {
             const btn = document.getElementById('configCollapseBtn');
             panel.classList.toggle('minimized');
             // Change button icon
-            btn.textContent = panel.classList.contains('minimized') ? '▲' : '▼';
+            btn.textContent = panel.classList.contains('minimized') ? '^' : 'v';
         }
         
         // Canvas state
@@ -927,7 +1027,7 @@ class PipelineEditorProvider {
                 
                 const deleteBtn = document.createElement('button');
                 deleteBtn.className = 'action-icon-btn';
-                deleteBtn.innerHTML = '🗑️';
+                deleteBtn.innerHTML = '×';
                 deleteBtn.title = 'Delete';
                 deleteBtn.onclick = (e) => {
                     e.stopPropagation();
@@ -942,13 +1042,13 @@ class PipelineEditorProvider {
                 
                 const copyBtn = document.createElement('button');
                 copyBtn.className = 'action-icon-btn';
-                copyBtn.innerHTML = '📋';
+                copyBtn.innerHTML = '⎘';
                 copyBtn.title = 'Copy';
                 copyBtn.onclick = (e) => e.stopPropagation();
                 
                 const infoBtn = document.createElement('button');
                 infoBtn.className = 'action-icon-btn info';
-                infoBtn.innerHTML = 'ℹ';
+                infoBtn.innerHTML = 'i';
                 infoBtn.title = 'Info';
                 infoBtn.onclick = (e) => e.stopPropagation();
                 
@@ -1111,14 +1211,14 @@ class PipelineEditorProvider {
             getIcon() {
                 const icons = {
                     'Copy': '📋',
-                    'Delete': 'ðŸ—‘ï¸',
-                    'Dataflow': '🔄',
-                    'Notebook': 'ðŸ““',
-                    'ForEach': 'ðŸ”',
-                    'IfCondition': 'â“',
-                    'Wait': '⏱️',
-                    'WebActivity': '🌐',
-                    'StoredProcedure': 'ðŸ’¾'
+                    'Delete': '🗑️',
+                    'Dataflow': '🌊',
+                    'Notebook': '📓',
+                    'ForEach': '🔁',
+                    'IfCondition': '❓',
+                    'Wait': '⏱️',
+                    'WebActivity': '🌐',
+                    'StoredProcedure': '💾'
                 };
                 return icons[this.type] || '📦';
             }
@@ -1465,10 +1565,10 @@ class PipelineEditorProvider {
             
             dialog.innerHTML = \`
                 <div style="font-size: 12px; font-weight: 600; margin-bottom: 8px; color: var(--vscode-foreground);">Dependency Condition</div>
-                <button class="toolbar-button" data-condition="Succeeded" style="width: 100%; margin: 2px 0; background: #00a86b; color: white;">âœ“ Succeeded</button>
-                <button class="toolbar-button" data-condition="Failed" style="width: 100%; margin: 2px 0; background: #d13438; color: white;">âœ— Failed</button>
-                <button class="toolbar-button" data-condition="Completed" style="width: 100%; margin: 2px 0; background: #0078d4; color: white;">âŠ™ Completed</button>
-                <button class="toolbar-button" data-condition="Skipped" style="width: 100%; margin: 2px 0; background: #ffa500; color: white;">âŠ˜ Skipped</button>
+                <button class="toolbar-button" data-condition="Succeeded" style="width: 100%; margin: 2px 0; background: #00a86b; color: white;">✓ Succeeded</button>
+                <button class="toolbar-button" data-condition="Failed" style="width: 100%; margin: 2px 0; background: #d13438; color: white;">✗ Failed</button>
+                <button class="toolbar-button" data-condition="Completed" style="width: 100%; margin: 2px 0; background: #0078d4; color: white;">⊙ Completed</button>
+                <button class="toolbar-button" data-condition="Skipped" style="width: 100%; margin: 2px 0; background: #ffa500; color: white;">⊘ Skipped</button>
             \`;
             
             document.body.appendChild(dialog);
@@ -1646,6 +1746,25 @@ class PipelineEditorProvider {
             }
             console.log('Settings content length:', settingsContent.length);
             
+            // Build Source tab content
+            let sourceContent = '';
+            if (schema && schema.sourceProperties) {
+                for (const [key, prop] of Object.entries(schema.sourceProperties)) {
+                    sourceContent += generateFormField(key, prop, activity);
+                }
+            }
+            
+            // Build Sink tab content
+            let sinkContent = '';
+            if (schema && schema.sinkProperties) {
+                for (const [key, prop] of Object.entries(schema.sinkProperties)) {
+                    sinkContent += generateFormField(key, prop, activity);
+                }
+            }
+            
+            // Build Mapping tab content
+            let mappingContent = '<div style="color: var(--vscode-descriptionForeground); padding: 20px; text-align: center;">Mapping configuration coming soon</div>';
+            
             activity.userProperties = activity.userProperties || [];
             let userPropsContent = '<div style="margin-bottom: 12px;">';
             userPropsContent += '<button id="addUserPropBtn" style="padding: 6px 12px; background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; cursor: pointer; border-radius: 2px; font-size: 12px;">+ Add User Property</button>';
@@ -1684,6 +1803,9 @@ class PipelineEditorProvider {
                 let tabContent = '';
                 if (tabId === 'general') tabContent = generalContent;
                 else if (tabId === 'settings') tabContent = settingsContent;
+                else if (tabId === 'source') tabContent = sourceContent;
+                else if (tabId === 'sink') tabContent = sinkContent;
+                else if (tabId === 'mapping') tabContent = mappingContent;
                 else if (tabId === 'user-properties') tabContent = userPropsContent;
                 
                 console.log(\`Tab \${tabName} (id: \${tabId}) content length: \${tabContent.length}\`);
@@ -1862,16 +1984,20 @@ class PipelineEditorProvider {
         // Toolbar buttons
         document.getElementById('saveBtn').addEventListener('click', () => {
             const data = {
+                name: "pipeline1", // TODO: Get from pipeline name input
                 activities: activities.map(a => ({
-                    id: a.id,
-                    type: a.type,
                     name: a.name,
-                    x: a.x,
-                    y: a.y
-                })),
-                connections: connections.map(c => ({
-                    from: c.from.id,
-                    to: c.to.id
+                    type: a.type,
+                    dependsOn: [], // TODO: Build from connections
+                    policy: {
+                        timeout: a.timeout || "0.12:00:00",
+                        retry: a.retry || 0,
+                        retryIntervalInSeconds: a.retryIntervalInSeconds || 30,
+                        secureOutput: a.secureOutput || false,
+                        secureInput: a.secureInput || false
+                    },
+                    userProperties: a.userProperties || [],
+                    typeProperties: a.typeProperties || {}
                 }))
             };
             vscode.postMessage({ type: 'save', data: data });
@@ -1916,8 +2042,55 @@ class PipelineEditorProvider {
                 const activity = new Activity(message.activityType, 100, 100, canvasWrapper);
                 activities.push(activity);
                 draw();
+            } else if (message.type === 'loadPipeline') {
+                loadPipelineFromJson(message.data);
             }
         });
+
+        function loadPipelineFromJson(pipelineJson) {
+            try {
+                // Clear existing
+                activities.forEach(a => a.remove());
+                activities = [];
+                connections = [];
+                
+                // Extract activities from Synapse format
+                const pipelineActivities = pipelineJson.properties?.activities || pipelineJson.activities || [];
+                
+                // Create activities
+                const canvasWrapper = document.getElementById('canvasWrapper');
+                pipelineActivities.forEach((activityData, index) => {
+                    const x = 100 + (index % 5) * 200;
+                    const y = 100 + Math.floor(index / 5) * 150;
+                    
+                    const activity = new Activity(activityData.type, x, y, canvasWrapper);
+                    activity.name = activityData.name;
+                    activity.description = activityData.description || '';
+                    
+                    // Load policy properties
+                    if (activityData.policy) {
+                        activity.timeout = activityData.policy.timeout;
+                        activity.retry = activityData.policy.retry;
+                        activity.retryIntervalInSeconds = activityData.policy.retryIntervalInSeconds;
+                        activity.secureOutput = activityData.policy.secureOutput;
+                        activity.secureInput = activityData.policy.secureInput;
+                    }
+                    
+                    activity.userProperties = activityData.userProperties || [];
+                    
+                    // Copy all typeProperties to activity object
+                    Object.assign(activity, activityData.typeProperties || {});
+                    
+                    activities.push(activity);
+                });
+                
+                draw();
+                showProperties(null);
+                console.log(\`Loaded \${activities.length} activities from pipeline JSON\`);
+            } catch (error) {
+                console.error('Error loading pipeline:', error);
+            }
+        }
 
         // Initial draw
         draw();
@@ -1930,3 +2103,4 @@ class PipelineEditorProvider {
 module.exports = {
 	PipelineEditorProvider
 };
+

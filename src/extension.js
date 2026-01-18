@@ -1,6 +1,7 @@
 const vscode = require('vscode');
 const { PipelineEditorProvider } = require('./pipelineEditor');
 const { ActivitiesTreeDataProvider } = require('./activitiesTreeProvider');
+const { PipelineTreeDataProvider } = require('./pipelineTreeProvider');
 
 function activate(context) {
 	console.log('ADF Pipeline Clone extension is now active!');
@@ -27,6 +28,30 @@ function activate(context) {
 		showCollapseAll: true
 	});
 	context.subscriptions.push(treeView);
+
+	// Register the pipeline files tree view
+	const pipelineTreeProvider = new PipelineTreeDataProvider(context);
+	const pipelineTreeView = vscode.window.createTreeView('adf-pipelines', {
+		treeDataProvider: pipelineTreeProvider,
+		showCollapseAll: true
+	});
+	context.subscriptions.push(pipelineTreeView);
+
+	// Register command to open pipeline file
+	context.subscriptions.push(
+		vscode.commands.registerCommand('adf-pipeline-clone.openPipelineFile', (item) => {
+			if (item && item.filePath) {
+				editorProvider.loadPipelineFile(item.filePath);
+			}
+		})
+	);
+
+	// Register refresh command for pipeline files
+	context.subscriptions.push(
+		vscode.commands.registerCommand('adf-pipeline-clone.refreshPipelines', () => {
+			pipelineTreeProvider.refresh();
+		})
+	);
 
 	// Open pipeline editor when the view becomes visible for the first time
 	let viewOpened = false;

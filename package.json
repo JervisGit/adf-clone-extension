@@ -1,6 +1,6 @@
 {
   "name": "adf-pipeline-clone",
-  "displayName": "ADF Pipeline Clone",
+  "displayName": "Synapse Pipeline Clone",
   "description": "A visual pipeline editor for Azure Data Factory and Synapse Analytics",
   "version": "0.0.1",
   "publisher": "local",
@@ -21,7 +21,7 @@
       "activitybar": [
         {
           "id": "adf-pipeline-explorer",
-          "title": "ADF Pipeline",
+          "title": "Synapse Pipeline",
           "icon": "$(azure)"
         }
       ]
@@ -31,20 +31,20 @@
         {
           "id": "adf-activities",
           "name": "Activities",
-          "contextualTitle": "ADF Activities"
+          "contextualTitle": "Synapse Activities"
         }
       ]
     },
     "commands": [
       {
         "command": "adf-pipeline-clone.openPipeline",
-        "title": "ADF: Open Pipeline Editor",
+        "title": "Synapse: Open Pipeline Editor",
         "category": "Pipeline",
         "icon": "$(edit)"
       },
       {
         "command": "adf-pipeline-clone.addActivity",
-        "title": "ADF: Add Activity",
+        "title": "Synapse: Add Activity",
         "category": "Pipeline"
       },
       {

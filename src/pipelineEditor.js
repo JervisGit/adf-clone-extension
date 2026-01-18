@@ -1,5 +1,6 @@
 ﻿const vscode = require('vscode');
 const activitiesConfig = require('./activities-config-verified.json');
+const activitySchemas = require('./activity-schemas.json');
 
 class PipelineEditorProvider {
 	static currentPanel;
@@ -532,8 +533,8 @@ class PipelineEditorProvider {
             height: 250px !important;
             min-height: 250px !important;
             max-height: 250px !important;
-            background: #f3f2f1 !important;
-            border-top: 2px solid #0078d4 !important;
+            background: var(--vscode-panel-background) !important;
+            border-top: 1px solid var(--vscode-panel-border) !important;
             display: flex !important;
             flex-direction: column !important;
             overflow: visible !important;
@@ -573,7 +574,7 @@ class PipelineEditorProvider {
 
         .config-tabs {
             display: flex !important;
-            background: #e1dfdd !important;
+            background: var(--vscode-sideBar-background) !important;
             border-bottom: 1px solid var(--vscode-panel-border);
             padding: 0 16px;
             gap: 4px;
@@ -619,17 +620,21 @@ class PipelineEditorProvider {
 
         .property-group {
             margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
         }
 
         .property-label {
             font-size: 12px;
             font-weight: 600;
-            margin-bottom: 6px;
             color: var(--vscode-descriptionForeground);
+            min-width: 150px;
+            flex-shrink: 0;
         }
 
         .property-input {
-            width: 100%;
+            flex: 1;
             padding: 6px 8px;
             background: var(--vscode-input-background);
             color: var(--vscode-input-foreground);
@@ -733,25 +738,55 @@ class PipelineEditorProvider {
 
     <!-- Configuration Panel (Bottom) -->
     <div class="config-panel" style="position: fixed; bottom: 0; left: 0; right: 0; height: 250px; background: var(--vscode-panel-background); border-top: 1px solid var(--vscode-panel-border); display: flex; flex-direction: column; z-index: 100;">
-        <div class="config-tabs" style="display: flex; background: var(--vscode-editorGroupHeader-tabsBackground); padding: 0 16px; height: 40px; align-items: center; gap: 4px; border-bottom: 1px solid var(--vscode-panel-border);">
-            <button class="config-tab active" data-tab="general" style="padding: 8px 16px; border: none; background: transparent; cursor: pointer; color: var(--vscode-tab-activeForeground); border-bottom: 2px solid var(--vscode-focusBorder);">General</button>
-            <button class="config-tab" data-tab="settings" style="padding: 8px 16px; border: none; background: transparent; cursor: pointer; color: var(--vscode-tab-inactiveForeground);">Settings</button>
-            <button class="config-tab" data-tab="user-properties" style="padding: 8px 16px; border: none; background: transparent; cursor: pointer; color: var(--vscode-tab-inactiveForeground);">User Properties</button>
-            <button class="config-tab" data-tab="variables" style="padding: 8px 16px; border: none; background: transparent; cursor: pointer; color: var(--vscode-tab-inactiveForeground);">Variables</button>
+        <div class="config-tabs" id="configTabs">
+            <!-- Pipeline-level tabs (shown when no activity selected) -->
+            <button class="config-tab pipeline-tab active" data-tab="parameters" style="padding: 8px 16px; border: none; background: transparent; cursor: pointer; color: var(--vscode-tab-activeForeground); border-bottom: 2px solid var(--vscode-focusBorder);">Parameters</button>
+            <button class="config-tab pipeline-tab" data-tab="pipeline-variables" style="padding: 8px 16px; border: none; background: transparent; cursor: pointer; color: var(--vscode-tab-inactiveForeground);">Variables</button>
+            <button class="config-tab pipeline-tab" data-tab="pipeline-settings" style="padding: 8px 16px; border: none; background: transparent; cursor: pointer; color: var(--vscode-tab-inactiveForeground);">Settings</button>
+            <button class="config-tab pipeline-tab" data-tab="output" style="padding: 8px 16px; border: none; background: transparent; cursor: pointer; color: var(--vscode-tab-inactiveForeground);">Output</button>
+            
+            <!-- Activity-level tabs (shown when activity selected) -->
+            <button class="config-tab activity-tab" data-tab="general" style="padding: 8px 16px; border: none; background: transparent; cursor: pointer; color: var(--vscode-tab-activeForeground); border-bottom: 2px solid var(--vscode-focusBorder); display: none;">General</button>
+            <button class="config-tab activity-tab" data-tab="settings" style="padding: 8px 16px; border: none; background: transparent; cursor: pointer; color: var(--vscode-tab-inactiveForeground); display: none;">Settings</button>
+            <button class="config-tab activity-tab" data-tab="user-properties" style="padding: 8px 16px; border: none; background: transparent; cursor: pointer; color: var(--vscode-tab-inactiveForeground); display: none;">User Properties</button>
+            <button class="config-tab activity-tab" data-tab="variables" style="padding: 8px 16px; border: none; background: transparent; cursor: pointer; color: var(--vscode-tab-inactiveForeground); display: none;">Variables</button>
+            
             <button class="config-collapse-btn" id="configCollapseBtn" onclick="toggleConfig()" title="Collapse Configuration Panel">▼</button>
         </div>
         <div class="config-content" id="configContent" style="flex: 1; overflow-y: auto; padding: 16px; background: var(--vscode-editor-background);">
-            <div class="config-tab-pane active" id="tab-general">
-                <div id="generalContent" class="empty-state">Select an activity to configure</div>
+            <!-- Pipeline-level tab panes -->
+            <div class="config-tab-pane pipeline-pane active" id="tab-parameters">
+                <div style="margin-bottom: 12px; font-weight: 600; color: var(--vscode-foreground);">Pipeline Parameters</div>
+                <div class="empty-state">No parameters defined. Click + to add a parameter.</div>
             </div>
-            <div class="config-tab-pane" id="tab-settings">
-                <div class="empty-state">Activity-specific settings will appear here</div>
+            <div class="config-tab-pane pipeline-pane" id="tab-pipeline-variables">
+                <div style="margin-bottom: 12px; font-weight: 600; color: var(--vscode-foreground);">Pipeline Variables</div>
+                <div class="empty-state">No variables defined. Click + to add a variable.</div>
             </div>
-            <div class="config-tab-pane" id="tab-user-properties">
-                <div class="empty-state">User properties will appear here</div>
+            <div class="config-tab-pane pipeline-pane" id="tab-pipeline-settings">
+                <div style="margin-bottom: 12px; font-weight: 600; color: var(--vscode-foreground);">Pipeline Settings</div>
+                <div class="property-group">
+                    <div class="property-label">Annotations</div>
+                    <textarea class="property-input" rows="3" placeholder="Add annotations..."></textarea>
+                </div>
             </div>
-            <div class="config-tab-pane" id="tab-variables">
-                <div class="empty-state">Variables will appear here</div>
+            <div class="config-tab-pane pipeline-pane" id="tab-output">
+                <div style="margin-bottom: 12px; font-weight: 600; color: var(--vscode-foreground);">Pipeline Output</div>
+                <div class="empty-state">Pipeline execution output will appear here</div>
+            </div>
+            
+            <!-- Activity-level tab panes -->
+            <div class="config-tab-pane activity-pane" id="tab-general" style="display: none;">
+                <div id="generalContent"></div>
+            </div>
+            <div class="config-tab-pane activity-pane" id="tab-settings" style="display: none;">
+                <div id="settingsContent"></div>
+            </div>
+            <div class="config-tab-pane activity-pane" id="tab-user-properties" style="display: none;">
+                <div id="userPropertiesContent"></div>
+            </div>
+            <div class="config-tab-pane activity-pane" id="tab-variables" style="display: none;">
+                <div id="variablesContent"></div>
             </div>
         </div>
     </div>
@@ -1490,10 +1525,56 @@ class PipelineEditorProvider {
             const rightPanel = document.getElementById('propertiesContent');
             const bottomPanel = document.getElementById('generalContent');
             
+            // Toggle between pipeline-level and activity-level tabs
+            const pipelineTabs = document.querySelectorAll('.pipeline-tab');
+            const activityTabs = document.querySelectorAll('.activity-tab');
+            const pipelinePanes = document.querySelectorAll('.pipeline-pane');
+            const activityPanes = document.querySelectorAll('.activity-pane');
+            
             if (!activity) {
+                // Show pipeline-level tabs, hide activity-level tabs
+                pipelineTabs.forEach(tab => tab.style.display = '');
+                activityTabs.forEach(tab => tab.style.display = 'none');
+                pipelinePanes.forEach(pane => pane.style.display = '');
+                activityPanes.forEach(pane => pane.style.display = 'none');
+                
+                // Activate first pipeline tab
+                document.querySelectorAll('.config-tab').forEach(t => {
+                    t.classList.remove('active');
+                    t.style.borderBottom = 'none';
+                });
+                document.querySelectorAll('.config-tab-pane').forEach(p => p.classList.remove('active'));
+                const firstPipelineTab = document.querySelector('.pipeline-tab');
+                if (firstPipelineTab) {
+                    firstPipelineTab.classList.add('active');
+                    firstPipelineTab.style.borderBottom = '2px solid var(--vscode-focusBorder)';
+                    firstPipelineTab.style.color = 'var(--vscode-tab-activeForeground)';
+                    document.getElementById('tab-parameters').classList.add('active');
+                }
+                
                 rightPanel.innerHTML = '<div class="empty-state">Select an activity to view its properties</div>';
-                bottomPanel.innerHTML = '<div class="empty-state">Select an activity to configure</div>';
                 return;
+            }
+            
+            // Show activity-level tabs, hide pipeline-level tabs
+            pipelineTabs.forEach(tab => tab.style.display = 'none');
+            activityTabs.forEach(tab => tab.style.display = '');
+            pipelinePanes.forEach(pane => pane.style.display = 'none');
+            activityPanes.forEach(pane => pane.style.display = '');
+            
+            // Activate first activity tab
+            document.querySelectorAll('.config-tab').forEach(t => {
+                t.classList.remove('active');
+                t.style.borderBottom = 'none';
+                t.style.color = 'var(--vscode-tab-inactiveForeground)';
+            });
+            document.querySelectorAll('.config-tab-pane').forEach(p => p.classList.remove('active'));
+            const firstActivityTab = document.querySelector('.activity-tab');
+            if (firstActivityTab) {
+                firstActivityTab.classList.add('active');
+                firstActivityTab.style.borderBottom = '2px solid var(--vscode-focusBorder)';
+                firstActivityTab.style.color = 'var(--vscode-tab-activeForeground)';
+                document.getElementById('tab-general').classList.add('active');
             }
 
             // Right sidebar - basic properties
@@ -1512,30 +1593,147 @@ class PipelineEditorProvider {
                 </div>
                 <div class="property-group">
                     <div class="property-label">Position</div>
-                    <div style="display: flex; gap: 8px;">
-                        <input type="number" class="property-input" id="propX" value="\${Math.round(activity.x)}" placeholder="X" style="flex: 1;">
-                        <input type="number" class="property-input" id="propY" value="\${Math.round(activity.y)}" placeholder="Y" style="flex: 1;">
+                    <div style="display: flex; gap: 8px; flex: 1;">
+                        <input type="number" class="property-input" id="propX" value="\${Math.round(activity.x)}" placeholder="X">
+                        <input type="number" class="property-input" id="propY" value="\${Math.round(activity.y)}" placeholder="Y">
                     </div>
                 </div>
             \`;
 
-            // Bottom panel - detailed configuration
-            bottomPanel.innerHTML = \`
-                <div class="property-group">
-                    <div class="property-label">Activity Name</div>
-                    <input type="text" class="property-input" value="\${activity.name}" readonly>
-                </div>
-                <div class="property-group">
-                    <div class="property-label">Activity Type</div>
-                    <input type="text" class="property-input" value="\${activity.type}" readonly>
-                </div>
-                <div style="margin-top: 16px; padding: 12px; background: var(--vscode-textBlockQuote-background); border-left: 3px solid var(--vscode-textBlockQuote-border); border-radius: 4px;">
-                    <strong>Activity Configuration</strong>
-                    <p style="margin: 8px 0 0 0; color: var(--vscode-descriptionForeground); font-size: 12px;">
-                        Activity-specific settings will be available here based on the activity type.
-                    </p>
-                </div>
-            \`;
+            // Populate tabs based on schema
+            const schema = ${JSON.stringify(activitySchemas)}[activity.type];
+            const generalContent = document.getElementById('generalContent');
+            const settingsContent = document.getElementById('settingsContent');
+            const userPropertiesContent = document.getElementById('userPropertiesContent');
+            
+            // General Tab - Common properties and Policy
+            let generalHtml = '';
+            if (schema && schema.commonProperties) {
+                for (const [key, prop] of Object.entries(schema.commonProperties)) {
+                    if (prop.section === 'policy') continue;
+                    generalHtml += generateFormField(key, prop, activity);
+                }
+                
+                // Policy section
+                const policyProps = Object.entries(schema.commonProperties).filter(([k, p]) => p.section === 'policy');
+                if (policyProps.length > 0) {
+                    generalHtml += '<div style="margin-top: 24px; margin-bottom: 12px; font-weight: 600; font-size: 13px; color: var(--vscode-foreground);">Policy</div>';
+                    policyProps.forEach(([key, prop]) => {
+                        generalHtml += generateFormField(key, prop, activity);
+                    });
+                }
+            }
+            generalContent.innerHTML = generalHtml || '<div class="empty-state">No general settings available</div>';
+            
+            // Settings Tab - Type-specific properties
+            let settingsHtml = '';
+            if (schema && schema.typeProperties) {
+                for (const [key, prop] of Object.entries(schema.typeProperties)) {
+                    settingsHtml += generateFormField(key, prop, activity);
+                }
+            }
+            settingsContent.innerHTML = settingsHtml || '<div class="empty-state">No activity-specific settings available</div>';
+            
+            // User Properties Tab - Key-value pairs
+            activity.userProperties = activity.userProperties || [];
+            let userPropsHtml = '<div style="margin-bottom: 12px;">';
+            userPropsHtml += '<button id="addUserPropBtn" style="padding: 6px 12px; background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; cursor: pointer; border-radius: 2px; font-size: 12px;">+ Add User Property</button>';
+            userPropsHtml += '</div>';
+            userPropsHtml += '<div id="userPropsList">';
+            activity.userProperties.forEach((prop, idx) => {
+                userPropsHtml += \`
+                    <div class="property-group" style="margin-bottom: 12px;">
+                        <input type="text" class="property-input" data-idx="\${idx}" data-field="name" value="\${prop.name}" placeholder="Property name" style="flex: 1;">
+                        <input type="text" class="property-input" data-idx="\${idx}" data-field="value" value="\${prop.value}" placeholder="Property value" style="flex: 1;">
+                        <button class="remove-user-prop" data-idx="\${idx}" style="padding: 6px 12px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px;">Remove</button>
+                    </div>
+                \`;
+            });
+            userPropsHtml += '</div>';
+            userPropertiesContent.innerHTML = userPropsHtml;
+            
+            // Add user property button handler
+            document.getElementById('addUserPropBtn')?.addEventListener('click', () => {
+                activity.userProperties.push({ name: '', value: '' });
+                showProperties(activity);
+            });
+            
+            // Remove user property handlers
+            document.querySelectorAll('.remove-user-prop').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const idx = parseInt(e.target.getAttribute('data-idx'));
+                    activity.userProperties.splice(idx, 1);
+                    showProperties(activity);
+                });
+            });
+            
+            // Update user property values
+            document.querySelectorAll('#userPropsList input').forEach(input => {
+                input.addEventListener('input', (e) => {
+                    const idx = parseInt(e.target.getAttribute('data-idx'));
+                    const field = e.target.getAttribute('data-field');
+                    activity.userProperties[idx][field] = e.target.value;
+                });
+            });
+            
+            // Helper function to generate form fields
+            function generateFormField(key, prop, activity) {
+                const value = activity[key] || prop.default || '';
+                const required = prop.required ? ' *' : '';
+                
+                let fieldHtml = \`<div class="property-group">\`;
+                fieldHtml += \`<div class="property-label">\${prop.label}\${required}</div>\`;
+                
+                switch (prop.type) {
+                    case 'string':
+                        if (prop.multiline) {
+                            fieldHtml += \`<textarea class="property-input" data-key="\${key}" rows="3" placeholder="\${prop.label}...">\${value}</textarea>\`;
+                        } else {
+                            fieldHtml += \`<input type="text" class="property-input" data-key="\${key}" value="\${value}" placeholder="\${prop.label}">\`;
+                        }
+                        break;
+                    case 'number':
+                        const min = prop.min !== undefined ? \`min="\${prop.min}"\` : '';
+                        const max = prop.max !== undefined ? \`max="\${prop.max}"\` : '';
+                        fieldHtml += \`<input type="number" class="property-input" data-key="\${key}" value="\${value}" \${min} \${max}>\`;
+                        break;
+                    case 'boolean':
+                        const checked = value ? 'checked' : '';
+                        fieldHtml += \`<input type="checkbox" data-key="\${key}" \${checked} style="width: auto;">\`;
+                        break;
+                    case 'select':
+                        fieldHtml += \`<select class="property-input" data-key="\${key}">\`;
+                        prop.options.forEach(opt => {
+                            const selected = opt === value ? 'selected' : '';
+                            fieldHtml += \`<option value="\${opt}" \${selected}>\${opt}</option>\`;
+                        });
+                        fieldHtml += \`</select>\`;
+                        break;
+                    case 'reference':
+                        fieldHtml += \`<div style="display: flex; gap: 8px; flex: 1;">\`;
+                        fieldHtml += \`<input type="text" class="property-input" data-key="\${key}" value="\${value}" placeholder="Select \${prop.label}..." readonly>\`;
+                        fieldHtml += \`<button style="padding: 6px 12px; background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; cursor: pointer; border-radius: 2px; flex-shrink: 0;">Browse</button>\`;
+                        fieldHtml += \`</div>\`;
+                        break;
+                    case 'expression':
+                        fieldHtml += \`<div style="display: flex; gap: 8px; flex: 1;">\`;
+                        fieldHtml += \`<input type="text" class="property-input" data-key="\${key}" value="\${value}" placeholder="Enter expression...">\`;
+                        fieldHtml += \`<button style="padding: 6px 12px; background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; cursor: pointer; border-radius: 2px; flex-shrink: 0;">fx</button>\`;
+                        fieldHtml += \`</div>\`;
+                        break;
+                    case 'object':
+                    case 'array':
+                        fieldHtml += \`<div style="padding: 8px; background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border); border-radius: 2px; font-family: monospace; font-size: 12px; color: var(--vscode-descriptionForeground); flex: 1; cursor: pointer;">\`;
+                        fieldHtml += \`Click to configure \${prop.label}...\`;
+                        fieldHtml += \`</div>\`;
+                        break;
+                    default:
+                        fieldHtml += \`<input type="text" class="property-input" data-key="\${key}" value="\${value}">\`;
+                }
+                
+                fieldHtml += \`</div>\`;
+                return fieldHtml;
+            }
 
             document.getElementById('propName').addEventListener('input', (e) => {
                 activity.updateName(e.target.value);

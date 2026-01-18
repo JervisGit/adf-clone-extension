@@ -745,11 +745,8 @@ class PipelineEditorProvider {
             <button class="config-tab pipeline-tab" data-tab="pipeline-settings" style="padding: 8px 16px; border: none; background: transparent; cursor: pointer; color: var(--vscode-tab-inactiveForeground);">Settings</button>
             <button class="config-tab pipeline-tab" data-tab="output" style="padding: 8px 16px; border: none; background: transparent; cursor: pointer; color: var(--vscode-tab-inactiveForeground);">Output</button>
             
-            <!-- Activity-level tabs (shown when activity selected) -->
-            <button class="config-tab activity-tab" data-tab="general" style="padding: 8px 16px; border: none; background: transparent; cursor: pointer; color: var(--vscode-tab-activeForeground); border-bottom: 2px solid var(--vscode-focusBorder); display: none;">General</button>
-            <button class="config-tab activity-tab" data-tab="settings" style="padding: 8px 16px; border: none; background: transparent; cursor: pointer; color: var(--vscode-tab-inactiveForeground); display: none;">Settings</button>
-            <button class="config-tab activity-tab" data-tab="user-properties" style="padding: 8px 16px; border: none; background: transparent; cursor: pointer; color: var(--vscode-tab-inactiveForeground); display: none;">User Properties</button>
-            <button class="config-tab activity-tab" data-tab="variables" style="padding: 8px 16px; border: none; background: transparent; cursor: pointer; color: var(--vscode-tab-inactiveForeground); display: none;">Variables</button>
+            <!-- Activity-level tabs (shown when activity selected, dynamically generated) -->
+            <div id="activityTabsContainer"></div>
             
             <button class="config-collapse-btn" id="configCollapseBtn" onclick="toggleConfig()" title="Collapse Configuration Panel">▼</button>
         </div>
@@ -775,19 +772,8 @@ class PipelineEditorProvider {
                 <div class="empty-state">Pipeline execution output will appear here</div>
             </div>
             
-            <!-- Activity-level tab panes -->
-            <div class="config-tab-pane activity-pane" id="tab-general" style="display: none;">
-                <div id="generalContent"></div>
-            </div>
-            <div class="config-tab-pane activity-pane" id="tab-settings" style="display: none;">
-                <div id="settingsContent"></div>
-            </div>
-            <div class="config-tab-pane activity-pane" id="tab-user-properties" style="display: none;">
-                <div id="userPropertiesContent"></div>
-            </div>
-            <div class="config-tab-pane activity-pane" id="tab-variables" style="display: none;">
-                <div id="variablesContent"></div>
-            </div>
+            <!-- Activity-level tab panes (dynamically generated) -->
+            <div id="activityPanesContainer"></div>
         </div>
     </div>
     </div>
@@ -1534,9 +1520,9 @@ class PipelineEditorProvider {
             if (!activity) {
                 // Show pipeline-level tabs, hide activity-level tabs
                 pipelineTabs.forEach(tab => tab.style.display = '');
-                activityTabs.forEach(tab => tab.style.display = 'none');
+                document.getElementById('activityTabsContainer').innerHTML = '';
+                document.getElementById('activityPanesContainer').innerHTML = '';
                 pipelinePanes.forEach(pane => pane.style.display = '');
-                activityPanes.forEach(pane => pane.style.display = 'none');
                 
                 // Activate first pipeline tab
                 document.querySelectorAll('.config-tab').forEach(t => {
@@ -1556,125 +1542,13 @@ class PipelineEditorProvider {
                 return;
             }
             
-            // Show activity-level tabs, hide pipeline-level tabs
-            pipelineTabs.forEach(tab => tab.style.display = 'none');
-            activityTabs.forEach(tab => tab.style.display = '');
-            pipelinePanes.forEach(pane => pane.style.display = 'none');
-            activityPanes.forEach(pane => pane.style.display = '');
-            
-            // Activate first activity tab
-            document.querySelectorAll('.config-tab').forEach(t => {
-                t.classList.remove('active');
-                t.style.borderBottom = 'none';
-                t.style.color = 'var(--vscode-tab-inactiveForeground)';
-            });
-            document.querySelectorAll('.config-tab-pane').forEach(p => p.classList.remove('active'));
-            const firstActivityTab = document.querySelector('.activity-tab');
-            if (firstActivityTab) {
-                firstActivityTab.classList.add('active');
-                firstActivityTab.style.borderBottom = '2px solid var(--vscode-focusBorder)';
-                firstActivityTab.style.color = 'var(--vscode-tab-activeForeground)';
-                document.getElementById('tab-general').classList.add('active');
-            }
-
-            // Right sidebar - basic properties
-            rightPanel.innerHTML = \`
-                <div class="property-group">
-                    <div class="property-label">Name</div>
-                    <input type="text" class="property-input" id="propName" value="\${activity.name}">
-                </div>
-                <div class="property-group">
-                    <div class="property-label">Type</div>
-                    <input type="text" class="property-input" value="\${activity.type}" readonly>
-                </div>
-                <div class="property-group">
-                    <div class="property-label">Description</div>
-                    <textarea class="property-input" id="propDescription" rows="3">\${activity.description}</textarea>
-                </div>
-                <div class="property-group">
-                    <div class="property-label">Position</div>
-                    <div style="display: flex; gap: 8px; flex: 1;">
-                        <input type="number" class="property-input" id="propX" value="\${Math.round(activity.x)}" placeholder="X">
-                        <input type="number" class="property-input" id="propY" value="\${Math.round(activity.y)}" placeholder="Y">
-                    </div>
-                </div>
-            \`;
-
-            // Populate tabs based on schema
+            // Get schema for activity
             const schema = ${JSON.stringify(activitySchemas)}[activity.type];
-            const generalContent = document.getElementById('generalContent');
-            const settingsContent = document.getElementById('settingsContent');
-            const userPropertiesContent = document.getElementById('userPropertiesContent');
+            const tabs = schema?.tabs || ['General', 'Settings', 'User Properties'];
             
-            // General Tab - Common properties and Policy
-            let generalHtml = '';
-            if (schema && schema.commonProperties) {
-                for (const [key, prop] of Object.entries(schema.commonProperties)) {
-                    if (prop.section === 'policy') continue;
-                    generalHtml += generateFormField(key, prop, activity);
-                }
-                
-                // Policy section
-                const policyProps = Object.entries(schema.commonProperties).filter(([k, p]) => p.section === 'policy');
-                if (policyProps.length > 0) {
-                    generalHtml += '<div style="margin-top: 24px; margin-bottom: 12px; font-weight: 600; font-size: 13px; color: var(--vscode-foreground);">Policy</div>';
-                    policyProps.forEach(([key, prop]) => {
-                        generalHtml += generateFormField(key, prop, activity);
-                    });
-                }
-            }
-            generalContent.innerHTML = generalHtml || '<div class="empty-state">No general settings available</div>';
-            
-            // Settings Tab - Type-specific properties
-            let settingsHtml = '';
-            if (schema && schema.typeProperties) {
-                for (const [key, prop] of Object.entries(schema.typeProperties)) {
-                    settingsHtml += generateFormField(key, prop, activity);
-                }
-            }
-            settingsContent.innerHTML = settingsHtml || '<div class="empty-state">No activity-specific settings available</div>';
-            
-            // User Properties Tab - Key-value pairs
-            activity.userProperties = activity.userProperties || [];
-            let userPropsHtml = '<div style="margin-bottom: 12px;">';
-            userPropsHtml += '<button id="addUserPropBtn" style="padding: 6px 12px; background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; cursor: pointer; border-radius: 2px; font-size: 12px;">+ Add User Property</button>';
-            userPropsHtml += '</div>';
-            userPropsHtml += '<div id="userPropsList">';
-            activity.userProperties.forEach((prop, idx) => {
-                userPropsHtml += \`
-                    <div class="property-group" style="margin-bottom: 12px;">
-                        <input type="text" class="property-input" data-idx="\${idx}" data-field="name" value="\${prop.name}" placeholder="Property name" style="flex: 1;">
-                        <input type="text" class="property-input" data-idx="\${idx}" data-field="value" value="\${prop.value}" placeholder="Property value" style="flex: 1;">
-                        <button class="remove-user-prop" data-idx="\${idx}" style="padding: 6px 12px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px;">Remove</button>
-                    </div>
-                \`;
-            });
-            userPropsHtml += '</div>';
-            userPropertiesContent.innerHTML = userPropsHtml;
-            
-            // Add user property button handler
-            document.getElementById('addUserPropBtn')?.addEventListener('click', () => {
-                activity.userProperties.push({ name: '', value: '' });
-                showProperties(activity);
-            });
-            
-            // Remove user property handlers
-            document.querySelectorAll('.remove-user-prop').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    const idx = parseInt(e.target.getAttribute('data-idx'));
-                    activity.userProperties.splice(idx, 1);
-                    showProperties(activity);
-                });
-            });
-            
-            // Update user property values
-            document.querySelectorAll('#userPropsList input').forEach(input => {
-                input.addEventListener('input', (e) => {
-                    const idx = parseInt(e.target.getAttribute('data-idx'));
-                    const field = e.target.getAttribute('data-field');
-                    activity.userProperties[idx][field] = e.target.value;
-                });
-            });
+            // Hide pipeline-level tabs
+            pipelineTabs.forEach(tab => tab.style.display = 'none');
+            pipelinePanes.forEach(pane => pane.style.display = 'none');
             
             // Helper function to generate form fields
             function generateFormField(key, prop, activity) {
@@ -1692,6 +1566,10 @@ class PipelineEditorProvider {
                             fieldHtml += \`<input type="text" class="property-input" data-key="\${key}" value="\${value}" placeholder="\${prop.label}">\`;
                         }
                         break;
+                    case 'text':
+                        const readonly = prop.readonly ? 'readonly' : '';
+                        fieldHtml += \`<input type="text" class="property-input" data-key="\${key}" value="\${value}" placeholder="\${prop.placeholder || prop.label}" \${readonly}>\`;
+                        break;
                     case 'number':
                         const min = prop.min !== undefined ? \`min="\${prop.min}"\` : '';
                         const max = prop.max !== undefined ? \`max="\${prop.max}"\` : '';
@@ -1708,6 +1586,11 @@ class PipelineEditorProvider {
                             fieldHtml += \`<option value="\${opt}" \${selected}>\${opt}</option>\`;
                         });
                         fieldHtml += \`</select>\`;
+                        break;
+                    case 'keyvalue':
+                        fieldHtml += \`<div style="flex: 1;"><div style="font-size: 11px; color: var(--vscode-descriptionForeground); margin-bottom: 8px;">Key-value pairs</div>\`;
+                        fieldHtml += \`<button class="add-kv-btn" data-key="\${key}" style="padding: 4px 8px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; font-size: 11px; margin-bottom: 8px;">+ Add</button>\`;
+                        fieldHtml += \`<div class="kv-list" data-key="\${key}"></div></div>\`;
                         break;
                     case 'reference':
                         fieldHtml += \`<div style="display: flex; gap: 8px; flex: 1;">\`;
@@ -1734,6 +1617,173 @@ class PipelineEditorProvider {
                 fieldHtml += \`</div>\`;
                 return fieldHtml;
             }
+            
+            // Build content for each tab
+            let generalContent = '';
+            if (schema && schema.commonProperties) {
+                for (const [key, prop] of Object.entries(schema.commonProperties)) {
+                    if (prop.section === 'policy') continue;
+                    generalContent += generateFormField(key, prop, activity);
+                }
+                
+                const policyProps = Object.entries(schema.commonProperties).filter(([k, p]) => p.section === 'policy');
+                if (policyProps.length > 0) {
+                    generalContent += '<div style="margin-top: 24px; margin-bottom: 12px; font-weight: 600; font-size: 13px; color: var(--vscode-foreground);">Policy</div>';
+                    policyProps.forEach(([key, prop]) => {
+                        generalContent += generateFormField(key, prop, activity);
+                    });
+                }
+            }
+            
+            let settingsContent = '';
+            if (schema && schema.typeProperties) {
+                for (const [key, prop] of Object.entries(schema.typeProperties)) {
+                    settingsContent += generateFormField(key, prop, activity);
+                }
+            }
+            if (!settingsContent) {
+                settingsContent = '<div style="color: var(--vscode-descriptionForeground); padding: 20px; text-align: center;">No activity-specific settings available</div>';
+            }
+            
+            activity.userProperties = activity.userProperties || [];
+            let userPropsContent = '<div style="margin-bottom: 12px;">';
+            userPropsContent += '<button id="addUserPropBtn" style="padding: 6px 12px; background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; cursor: pointer; border-radius: 2px; font-size: 12px;">+ Add User Property</button>';
+            userPropsContent += '</div>';
+            userPropsContent += '<div id="userPropsList">';
+            activity.userProperties.forEach((prop, idx) => {
+                userPropsContent += \`
+                    <div class="property-group" style="margin-bottom: 12px;">
+                        <input type="text" class="property-input" data-idx="\${idx}" data-field="name" value="\${prop.name}" placeholder="Property name" style="flex: 1;">
+                        <input type="text" class="property-input" data-idx="\${idx}" data-field="value" value="\${prop.value}" placeholder="Property value" style="flex: 1;">
+                        <button class="remove-user-prop" data-idx="\${idx}" style="padding: 6px 12px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px;">Remove</button>
+                    </div>
+                \`;
+            });
+            userPropsContent += '</div>';
+            
+            // Generate activity-level tabs with content already included
+            const tabsContainer = document.getElementById('activityTabsContainer');
+            const panesContainer = document.getElementById('activityPanesContainer');
+            
+            let tabsHtml = '';
+            let panesHtml = '';
+            
+            tabs.forEach((tabName, idx) => {
+                const tabId = tabName.toLowerCase().replace(/\s+/g, '-');
+                const isActive = idx === 0;
+                const activeClass = isActive ? ' active' : '';
+                const activeStyle = isActive ? 'color: var(--vscode-tab-activeForeground); border-bottom: 2px solid var(--vscode-focusBorder);' : 'color: var(--vscode-tab-inactiveForeground);';
+                
+                tabsHtml += \`<button class="config-tab activity-tab\${activeClass}" data-tab="\${tabId}" style="padding: 8px 16px; border: none; background: transparent; cursor: pointer; \${activeStyle}">\${tabName}</button>\`;
+                
+                // Get the content for this tab
+                let tabContent = '';
+                if (tabId === 'general') tabContent = generalContent;
+                else if (tabId === 'settings') tabContent = settingsContent;
+                else if (tabId === 'user-properties') tabContent = userPropsContent;
+                
+                const displayStyle = isActive ? 'display: block;' : 'display: none;';
+                panesHtml += \`<div class="config-tab-pane activity-pane\${activeClass}" id="tab-\${tabId}" style="\${displayStyle}">\${tabContent}</div>\`;
+            });
+            
+            tabsContainer.innerHTML = tabsHtml;
+            panesContainer.innerHTML = panesHtml;
+
+            // Right sidebar - basic properties
+            rightPanel.innerHTML = \`
+                <div class="property-group">
+                    <div class="property-label">Name</div>
+                    <input type="text" class="property-input" id="propName" value="\${activity.name}">
+                </div>
+                <div class="property-group">
+                    <div class="property-label">Type</div>
+                    <input type="text" class="property-input" value="\${activity.type}" readonly>
+                </div>
+                <div class="property-group">
+                    <div class="property-label">Description</div>
+                    <textarea class="property-input" id="propDescription" rows="3">\${activity.description}</textarea>
+                </div>
+                <div class="property-group">
+                    <div class="property-label">Position</div>
+                    <div style="display: flex; gap: 8px; flex: 1;">
+                        <input type="number" class="property-input" id="propX" value="\${Math.round(activity.x)}" placeholder="X">
+                        <input type="number" class="property-input" id="propY" value="\${Math.round(activity.y)}" placeholder="Y">
+                    </div>
+                </div>
+            \`;
+            
+            // Add event listeners for user properties
+            const addUserPropBtn = document.getElementById('addUserPropBtn');
+            if (addUserPropBtn) {
+                addUserPropBtn.addEventListener('click', () => {
+                    activity.userProperties.push({ name: '', value: '' });
+                    showProperties(activity);
+                });
+            }
+            
+            document.querySelectorAll('.remove-user-prop').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const idx = parseInt(e.target.getAttribute('data-idx'));
+                    activity.userProperties.splice(idx, 1);
+                    showProperties(activity);
+                });
+            });
+            
+            document.querySelectorAll('#userPropsList input').forEach(input => {
+                input.addEventListener('input', (e) => {
+                    const idx = parseInt(e.target.getAttribute('data-idx'));
+                    const field = e.target.getAttribute('data-field');
+                    activity.userProperties[idx][field] = e.target.value;
+                });
+            });
+            
+            // Add tab click handlers
+            document.querySelectorAll('.activity-tab').forEach(tab => {
+                tab.addEventListener('click', () => {
+                    document.querySelectorAll('.config-tab').forEach(t => {
+                        t.classList.remove('active');
+                        t.style.color = 'var(--vscode-tab-inactiveForeground)';
+                        t.style.borderBottom = 'none';
+                    });
+                    document.querySelectorAll('.activity-pane').forEach(p => {
+                        p.classList.remove('active');
+                        p.style.display = 'none';
+                    });
+                    
+                    tab.classList.add('active');
+                    tab.style.color = 'var(--vscode-tab-activeForeground)';
+                    tab.style.borderBottom = '2px solid var(--vscode-focusBorder)';
+                    const tabName = tab.getAttribute('data-tab');
+                    const pane = document.getElementById(\`tab-\${tabName}\`);
+                    if (pane) {
+                        pane.classList.add('active');
+                        pane.style.display = '';
+                    }
+                });
+            });
+
+            // Right sidebar - basic properties
+            rightPanel.innerHTML = \`
+                <div class="property-group">
+                    <div class="property-label">Name</div>
+                    <input type="text" class="property-input" id="propName" value="\${activity.name}">
+                </div>
+                <div class="property-group">
+                    <div class="property-label">Type</div>
+                    <input type="text" class="property-input" value="\${activity.type}" readonly>
+                </div>
+                <div class="property-group">
+                    <div class="property-label">Description</div>
+                    <textarea class="property-input" id="propDescription" rows="3">\${activity.description}</textarea>
+                </div>
+                <div class="property-group">
+                    <div class="property-label">Position</div>
+                    <div style="display: flex; gap: 8px; flex: 1;">
+                        <input type="number" class="property-input" id="propX" value="\${Math.round(activity.x)}" placeholder="X">
+                        <input type="number" class="property-input" id="propY" value="\${Math.round(activity.y)}" placeholder="Y">
+                    </div>
+                </div>
+            \`;
 
             document.getElementById('propName').addEventListener('input', (e) => {
                 activity.updateName(e.target.value);

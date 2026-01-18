@@ -1,160 +1,85 @@
 {
   "SynapseNotebook": {
     "name": "Synapse Notebook",
+    "tabs": ["General", "Settings", "User Properties"],
     "commonProperties": {
       "name": { "type": "string", "label": "Name", "required": true },
       "description": { "type": "string", "label": "Description", "multiline": true },
       "timeout": { "type": "string", "label": "Timeout", "default": "0.12:00:00", "section": "policy" },
       "retry": { "type": "number", "label": "Retry", "default": 0, "section": "policy" },
-      "retryIntervalInSeconds": { "type": "number", "label": "Retry Interval (seconds)", "default": 30, "section": "policy" },
-      "secureOutput": { "type": "boolean", "label": "Secure Output", "default": false, "section": "policy" },
-      "secureInput": { "type": "boolean", "label": "Secure Input", "default": false, "section": "policy" }
+      "retryIntervalInSeconds": { "type": "number", "label": "Retry interval (seconds)", "default": 30, "section": "policy" },
+      "secureOutput": { "type": "boolean", "label": "Secure output", "default": false, "section": "policy" },
+      "secureInput": { "type": "boolean", "label": "Secure input", "default": false, "section": "policy" }
     },
     "typeProperties": {
-      "notebook": { "type": "reference", "label": "Notebook", "referenceType": "NotebookReference", "required": true },
-      "sparkPool": { "type": "reference", "label": "Spark Pool", "referenceType": "BigDataPoolReference", "required": true },
+      "notebook": { "type": "text", "label": "Notebook", "required": true, "placeholder": "Enter notebook name" },
+      "parameters": { "type": "keyvalue", "label": "Base parameters", "valueTypes": ["string", "int", "float", "bool"] },
       "snapshot": { "type": "boolean", "label": "Snapshot", "default": true },
-      "executorSize": { "type": "select", "label": "Executor Size", "options": ["Small", "Medium", "Large"], "default": "Small" },
-      "driverSize": { "type": "select", "label": "Driver Size", "options": ["Small", "Medium", "Large"], "default": "Small" },
-      "numExecutors": { "type": "number", "label": "Number of Executors", "default": 1, "min": 1 },
-      "conf": { "type": "object", "label": "Spark Configuration", "properties": {
+      "sparkPool": { "type": "text", "label": "Spark pool", "default": "defaultSparkPool", "readonly": true },
+      "executorSize": { "type": "select", "label": "Executor size", "options": ["Small", "Medium", "Large", "XLarge", "XXLarge"], "default": "Small" },
+      "conf": { "type": "keyvalue", "label": "Spark configuration", "defaultKeys": {
         "spark.dynamicAllocation.enabled": { "type": "boolean", "default": false },
         "spark.dynamicAllocation.minExecutors": { "type": "number", "default": 1 },
         "spark.dynamicAllocation.maxExecutors": { "type": "number", "default": 1 }
-      }}
-    }
-  },
-  "SparkJob": {
-    "name": "Spark Job Definition",
-    "commonProperties": {
-      "name": { "type": "string", "label": "Name", "required": true },
-      "description": { "type": "string", "label": "Description", "multiline": true },
-      "timeout": { "type": "string", "label": "Timeout", "default": "0.12:00:00", "section": "policy" },
-      "retry": { "type": "number", "label": "Retry", "default": 0, "section": "policy" },
-      "retryIntervalInSeconds": { "type": "number", "label": "Retry Interval (seconds)", "default": 30, "section": "policy" }
-    },
-    "typeProperties": {
-      "sparkJob": { "type": "reference", "label": "Spark Job Definition", "referenceType": "SparkJobDefinitionReference", "required": true },
-      "sparkPool": { "type": "reference", "label": "Spark Pool", "referenceType": "BigDataPoolReference" },
-      "executorSize": { "type": "select", "label": "Executor Size", "options": ["Small", "Medium", "Large"], "default": "Small" },
-      "driverSize": { "type": "select", "label": "Driver Size", "options": ["Small", "Medium", "Large"], "default": "Small" },
-      "numExecutors": { "type": "number", "label": "Number of Executors", "default": 2, "min": 1 }
+      }},
+      "driverSize": { "type": "select", "label": "Driver size", "options": ["Small", "Medium", "Large", "XLarge", "XXLarge"], "default": "Small" },
+      "numExecutors": { "type": "number", "label": "Number of executors", "default": 1, "min": 1 }
     }
   },
   "Copy": {
     "name": "Copy Data",
+    "tabs": ["General", "Source", "Sink", "Mapping", "Settings", "User Properties"],
+    "commonProperties": {
+      "name": { "type": "string", "label": "Name", "required": true },
+      "description": { "type": "string", "label": "Description", "multiline": true },
+      "state": { "type": "select", "label": "State", "options": ["Active", "Inactive"], "default": "Active" },
+      "onInactiveMarkAs": { "type": "select", "label": "On inactive mark as", "options": ["Succeeded", "Failed", "Skipped"], "default": "Succeeded" },
+      "timeout": { "type": "string", "label": "Timeout", "default": "0.12:00:00", "section": "policy" },
+      "retry": { "type": "number", "label": "Retry", "default": 0, "section": "policy" },
+      "retryIntervalInSeconds": { "type": "number", "label": "Retry interval (seconds)", "default": 30, "section": "policy" },
+      "secureOutput": { "type": "boolean", "label": "Secure output", "default": false, "section": "policy" },
+      "secureInput": { "type": "boolean", "label": "Secure input", "default": false, "section": "policy" }
+    },
+    "sourceProperties": {
+      "type": { "type": "select", "label": "Source type", "options": ["DelimitedTextSource", "AzureSqlSource", "BlobSource"], "required": true },
+      "recursive": { "type": "boolean", "label": "Recursive", "default": true },
+      "wildcardFolderPath": { "type": "text", "label": "Wildcard folder path" },
+      "wildcardFileName": { "type": "text", "label": "Wildcard file name" },
+      "enablePartitionDiscovery": { "type": "boolean", "label": "Enable partition discovery", "default": false }
+    },
+    "sinkProperties": {
+      "type": { "type": "select", "label": "Sink type", "options": ["AzureSqlSink", "DelimitedTextSink", "BlobSink"], "required": true },
+      "writeBatchSize": { "type": "number", "label": "Write batch size", "default": 10000 },
+      "writeBatchTimeout": { "type": "text", "label": "Write batch timeout", "default": "00:30:00" },
+      "preCopyScript": { "type": "text", "label": "Pre-copy script", "multiline": true },
+      "maxConcurrentConnections": { "type": "number", "label": "Max concurrent connections" },
+      "writeBehavior": { "type": "select", "label": "Write behavior", "options": ["insert", "upsert"], "default": "insert" },
+      "sqlWriterUseTableLock": { "type": "boolean", "label": "Use table lock", "default": false },
+      "disableMetricsCollection": { "type": "boolean", "label": "Disable metrics collection", "default": false }
+    },
+    "typeProperties": {
+      "enableStaging": { "type": "boolean", "label": "Enable staging", "default": false },
+      "parallelCopies": { "type": "number", "label": "Parallel copies", "min": 1 },
+      "enableSkipIncompatibleRow": { "type": "boolean", "label": "Enable skip incompatible row", "default": false },
+      "dataIntegrationUnits": { "type": "number", "label": "Data integration units", "default": 4, "min": 2, "max": 256 }
+    }
+  },
+  "SparkJob": {
+    "name": "Spark Job Definition",
+    "tabs": ["General", "Settings", "User Properties"],
     "commonProperties": {
       "name": { "type": "string", "label": "Name", "required": true },
       "description": { "type": "string", "label": "Description", "multiline": true },
       "timeout": { "type": "string", "label": "Timeout", "default": "0.12:00:00", "section": "policy" },
       "retry": { "type": "number", "label": "Retry", "default": 0, "section": "policy" },
-      "retryIntervalInSeconds": { "type": "number", "label": "Retry Interval (seconds)", "default": 30, "section": "policy" }
+      "retryIntervalInSeconds": { "type": "number", "label": "Retry interval (seconds)", "default": 30, "section": "policy" }
     },
     "typeProperties": {
-      "source": { "type": "object", "label": "Source", "required": true },
-      "sink": { "type": "object", "label": "Sink", "required": true },
-      "enableStaging": { "type": "boolean", "label": "Enable Staging", "default": false },
-      "parallelCopies": { "type": "number", "label": "Parallel Copies", "min": 1 },
-      "dataIntegrationUnits": { "type": "number", "label": "Data Integration Units", "min": 2, "max": 256 }
-    }
-  },
-  "ExecuteDataFlow": {
-    "name": "Data Flow",
-    "commonProperties": {
-      "name": { "type": "string", "label": "Name", "required": true },
-      "description": { "type": "string", "label": "Description", "multiline": true },
-      "timeout": { "type": "string", "label": "Timeout", "default": "0.12:00:00", "section": "policy" },
-      "retry": { "type": "number", "label": "Retry", "default": 0, "section": "policy" }
-    },
-    "typeProperties": {
-      "dataFlow": { "type": "reference", "label": "Data Flow", "referenceType": "DataFlowReference", "required": true },
-      "compute": { "type": "object", "label": "Compute Configuration" },
-      "traceLevel": { "type": "select", "label": "Trace Level", "options": ["None", "Fine", "Coarse"], "default": "None" }
-    }
-  },
-  "Lookup": {
-    "name": "Lookup",
-    "commonProperties": {
-      "name": { "type": "string", "label": "Name", "required": true },
-      "description": { "type": "string", "label": "Description", "multiline": true },
-      "timeout": { "type": "string", "label": "Timeout", "default": "0.12:00:00", "section": "policy" }
-    },
-    "typeProperties": {
-      "source": { "type": "object", "label": "Source", "required": true },
-      "dataset": { "type": "reference", "label": "Dataset", "referenceType": "DatasetReference", "required": true },
-      "firstRowOnly": { "type": "boolean", "label": "First Row Only", "default": true }
-    }
-  },
-  "ForEach": {
-    "name": "ForEach",
-    "commonProperties": {
-      "name": { "type": "string", "label": "Name", "required": true },
-      "description": { "type": "string", "label": "Description", "multiline": true }
-    },
-    "typeProperties": {
-      "items": { "type": "expression", "label": "Items", "required": true },
-      "isSequential": { "type": "boolean", "label": "Sequential", "default": false },
-      "batchCount": { "type": "number", "label": "Batch Count", "min": 1, "max": 50 },
-      "activities": { "type": "array", "label": "Activities", "required": true }
-    }
-  },
-  "IfCondition": {
-    "name": "If Condition",
-    "commonProperties": {
-      "name": { "type": "string", "label": "Name", "required": true },
-      "description": { "type": "string", "label": "Description", "multiline": true }
-    },
-    "typeProperties": {
-      "expression": { "type": "expression", "label": "Expression", "required": true },
-      "ifTrueActivities": { "type": "array", "label": "If True Activities" },
-      "ifFalseActivities": { "type": "array", "label": "If False Activities" }
-    }
-  },
-  "Wait": {
-    "name": "Wait",
-    "commonProperties": {
-      "name": { "type": "string", "label": "Name", "required": true },
-      "description": { "type": "string", "label": "Description", "multiline": true }
-    },
-    "typeProperties": {
-      "waitTimeInSeconds": { "type": "number", "label": "Wait Time (seconds)", "required": true, "min": 1 }
-    }
-  },
-  "SetVariable": {
-    "name": "Set Variable",
-    "commonProperties": {
-      "name": { "type": "string", "label": "Name", "required": true },
-      "description": { "type": "string", "label": "Description", "multiline": true }
-    },
-    "typeProperties": {
-      "variableName": { "type": "string", "label": "Variable Name", "required": true },
-      "value": { "type": "expression", "label": "Value", "required": true }
-    }
-  },
-  "AppendVariable": {
-    "name": "Append Variable",
-    "commonProperties": {
-      "name": { "type": "string", "label": "Name", "required": true },
-      "description": { "type": "string", "label": "Description", "multiline": true }
-    },
-    "typeProperties": {
-      "variableName": { "type": "string", "label": "Variable Name", "required": true },
-      "value": { "type": "expression", "label": "Value", "required": true }
-    }
-  },
-  "WebActivity": {
-    "name": "Web Activity",
-    "commonProperties": {
-      "name": { "type": "string", "label": "Name", "required": true },
-      "description": { "type": "string", "label": "Description", "multiline": true },
-      "timeout": { "type": "string", "label": "Timeout", "default": "0.12:00:00", "section": "policy" }
-    },
-    "typeProperties": {
-      "url": { "type": "expression", "label": "URL", "required": true },
-      "method": { "type": "select", "label": "Method", "options": ["GET", "POST", "PUT", "DELETE"], "default": "GET", "required": true },
-      "headers": { "type": "object", "label": "Headers" },
-      "body": { "type": "expression", "label": "Body" },
-      "authentication": { "type": "object", "label": "Authentication" }
+      "sparkJob": { "type": "text", "label": "Spark job definition", "required": true },
+      "sparkPool": { "type": "text", "label": "Spark pool", "default": "defaultSparkPool", "readonly": true },
+      "executorSize": { "type": "select", "label": "Executor size", "options": ["Small", "Medium", "Large"], "default": "Small" },
+      "driverSize": { "type": "select", "label": "Driver size", "options": ["Small", "Medium", "Large"], "default": "Small" },
+      "numExecutors": { "type": "number", "label": "Number of executors", "default": 2, "min": 1 }
     }
   }
 }

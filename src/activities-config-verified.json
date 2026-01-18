@@ -1,0 +1,170 @@
+{
+  "documentation": {
+    "source": "Verified against Azure Data Factory UI (2026-01-18)",
+    "note": "Activities organized exactly as shown in the Azure Data Factory UI"
+  },
+  "categories": [
+    {
+      "name": "Move & transform",
+      "id": "move-transform",
+      "activities": [
+        {
+          "name": "Copy data",
+          "type": "Copy",
+          "icon": "📋",
+          "description": "Copy data from a source data store to a destination data store"
+        },
+        {
+          "name": "Data Flow",
+          "type": "ExecuteDataFlow",
+          "icon": "🌊",
+          "description": "Execute a mapping data flow for data transformation"
+        }
+      ]
+    },
+    {
+      "name": "Synapse",
+      "id": "synapse",
+      "activities": [
+        {
+          "name": "Notebook",
+          "type": "SynapseNotebook",
+          "icon": "📓",
+          "description": "Run a Synapse notebook"
+        },
+        {
+          "name": "Spark job definition",
+          "type": "SparkJob",
+          "icon": "✨",
+          "description": "Run a Spark job definition"
+        }
+      ]
+    },
+    {
+      "name": "General",
+      "id": "general",
+      "activities": [
+        {
+          "name": "Append Variable",
+          "type": "AppendVariable",
+          "icon": "➕",
+          "description": "Append a value to an existing array variable"
+        },
+        {
+          "name": "Delete",
+          "type": "Delete",
+          "icon": "🗑️",
+          "description": "Delete files or folders from a data store"
+        },
+        {
+          "name": "Execute Pipeline",
+          "type": "ExecutePipeline",
+          "icon": "🔗",
+          "description": "Execute another pipeline"
+        },
+        {
+          "name": "Execute SSIS package",
+          "type": "ExecuteSSISPackage",
+          "icon": "📦",
+          "description": "Execute an SSIS package"
+        },
+        {
+          "name": "Fail",
+          "type": "Fail",
+          "icon": "❌",
+          "description": "Fail the pipeline with a custom error message"
+        },
+        {
+          "name": "Get Metadata",
+          "type": "GetMetadata",
+          "icon": "📄",
+          "description": "Get metadata of data in a data store"
+        },
+        {
+          "name": "Lookup",
+          "type": "Lookup",
+          "icon": "🔍",
+          "description": "Read or look up a value from any external source"
+        },
+        {
+          "name": "Stored procedure",
+          "type": "SqlServerStoredProcedure",
+          "icon": "🔷",
+          "description": "Invoke a stored procedure"
+        },
+        {
+          "name": "Script",
+          "type": "Script",
+          "icon": "📜",
+          "description": "Run a script activity"
+        },
+        {
+          "name": "Set Variable",
+          "type": "SetVariable",
+          "icon": "📌",
+          "description": "Set the value of an existing variable"
+        },
+        {
+          "name": "Validation",
+          "type": "Validation",
+          "icon": "✅",
+          "description": "Validate that a dataset exists"
+        },
+        {
+          "name": "Web",
+          "type": "WebActivity",
+          "icon": "🌐",
+          "description": "Call a custom REST endpoint"
+        },
+        {
+          "name": "WebHook",
+          "type": "WebHook",
+          "icon": "🪝",
+          "description": "Call an endpoint and pass a callback URL"
+        },
+        {
+          "name": "Wait",
+          "type": "Wait",
+          "icon": "⏱️",
+          "description": "Wait for a specified period of time"
+        }
+      ]
+    },
+    {
+      "name": "Iteration & conditionals",
+      "id": "iteration-conditionals",
+      "activities": [
+        {
+          "name": "Filter",
+          "type": "Filter",
+          "icon": "🔎",
+          "description": "Apply a filter expression to an input array"
+        },
+        {
+          "name": "ForEach",
+          "type": "ForEach",
+          "icon": "🔁",
+          "description": "Repeat activities in a loop"
+        },
+        {
+          "name": "If Condition",
+          "type": "IfCondition",
+          "icon": "❓",
+          "description": "Execute activities based on a condition"
+        },
+        {
+          "name": "Switch",
+          "type": "Switch",
+          "icon": "🔀",
+          "description": "Execute activities based on matching case"
+        },
+        {
+          "name": "Until",
+          "type": "Until",
+          "icon": "🔄",
+          "description": "Execute activities until a condition is true"
+        }
+      ]
+    }
+  ]
+}

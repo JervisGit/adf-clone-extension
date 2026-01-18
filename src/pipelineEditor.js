@@ -1,4 +1,5 @@
 ﻿const vscode = require('vscode');
+const activitiesConfig = require('./activities-config-verified.json');
 
 class PipelineEditorProvider {
 	static currentPanel;
@@ -126,7 +127,8 @@ class PipelineEditorProvider {
             border-right: 1px solid var(--vscode-panel-border);
             display: flex !important;
             flex-direction: column;
-            overflow-y: auto;
+            overflow-y: auto !important;
+            overflow-x: hidden;
             flex-shrink: 0;
         }
 
@@ -176,7 +178,7 @@ class PipelineEditorProvider {
         }
 
         .activity-group:not(.collapsed) .activity-group-content {
-            max-height: 200px;
+            max-height: 300px;
             overflow-y: auto;
             overflow-x: hidden;
             display: block;
@@ -223,6 +225,33 @@ class PipelineEditorProvider {
             align-items: center;
             padding: 0 16px;
             gap: 8px;
+        }
+
+        .toolbar-spacer {
+            flex: 1;
+        }
+
+        .expand-properties-btn {
+            padding: 6px 12px;
+            border: 1px solid var(--vscode-button-border);
+            background: var(--vscode-button-secondaryBackground);
+            color: var(--vscode-button-secondaryForeground);
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+
+        .expand-properties-btn:hover {
+            background: var(--vscode-button-secondaryHoverBackground);
+        }
+
+        body:not(.properties-visible) .expand-properties-btn {
+            display: block;
+        }
+
+        body.properties-visible .expand-properties-btn {
+            display: none;
         }
 
         .toolbar-button {
@@ -452,7 +481,36 @@ class PipelineEditorProvider {
             display: flex;
             flex-direction: column;
             overflow-y: auto;
+            overflow-x: hidden;
             flex-shrink: 0;
+            transition: width 0.3s ease, min-width 0.3s ease, max-width 0.3s ease;
+        }
+
+        .properties-panel.collapsed {
+            width: 0;
+            min-width: 0;
+            max-width: 0;
+            border-left: none;
+            overflow: hidden;
+            padding: 0;
+        }
+
+        .properties-collapse-btn {
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            font-size: 18px;
+            color: var(--vscode-foreground);
+            padding: 4px 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s ease;
+            border-radius: 4px;
+        }
+
+        .properties-collapse-btn:hover {
+            background: var(--vscode-list-hoverBackground);
         }
 
         .properties-header {
@@ -460,6 +518,9 @@ class PipelineEditorProvider {
             border-bottom: 1px solid var(--vscode-panel-border);
             font-size: 14px;
             font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
         }
 
         .properties-content {
@@ -478,6 +539,36 @@ class PipelineEditorProvider {
             overflow: visible !important;
             flex-shrink: 0 !important;
             z-index: 1000 !important;
+            transition: height 0.2s ease;
+        }
+
+        .config-panel.minimized {
+            height: 40px !important;
+            min-height: 40px !important;
+            max-height: 40px !important;
+        }
+
+        .config-panel.minimized .config-content {
+            display: none;
+        }
+
+        .config-collapse-btn {
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            color: var(--vscode-foreground);
+            padding: 4px 8px;
+            margin-left: auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s ease;
+            border-radius: 4px;
+        }
+
+        .config-collapse-btn:hover {
+            background: var(--vscode-list-hoverBackground);
         }
 
         .config-tabs {
@@ -596,118 +687,19 @@ class PipelineEditorProvider {
         <!-- Sidebar with Activities -->
         <div class="sidebar">
             <div class="sidebar-header">Activities</div>
-            
+            ${activitiesConfig.categories.map(category => `
             <div class="activity-group collapsed">
                 <div class="activity-group-title" onclick="toggleCategory(this)">
-                    <span class="category-arrow">▼</span> Move & transform
+                    <span class="category-arrow">▼</span> ${category.name}
                 </div>
                 <div class="activity-group-content">
-                    <div class="activity-item" draggable="true" data-type="Copy">
-                        <div class="activity-icon">📋</div>
-                        <span>Copy</span>
-                    </div>
-                    <div class="activity-item" draggable="true" data-type="ExecuteDataFlow">
-                        <div class="activity-icon">🌊</div>
-                        <span>Data Flow</span>
-                    </div>
-                    <div class="activity-item" draggable="true" data-type="AzureFunctionActivity">
-                        <div class="activity-icon">⚡</div>
-                        <span>Azure Function</span>
-                    </div>
+                    ${category.activities.map(activity => `
+                    <div class="activity-item" draggable="true" data-type="${activity.type}">
+                        <div class="activity-icon">${activity.icon}</div>
+                        <span>${activity.name}</span>
+                    </div>`).join('')}
                 </div>
-            </div>
-
-            <div class="activity-group collapsed">
-                <div class="activity-group-title" onclick="toggleCategory(this)">
-                    <span class="category-arrow">▼</span> Synapse
-                </div>
-                <div class="activity-group-content">
-                    <div class="activity-item" draggable="true" data-type="SynapseNotebook">
-                        <div class="activity-icon">📓</div>
-                        <span>Notebook</span>
-                    </div>
-                    <div class="activity-item" draggable="true" data-type="SparkJob">
-                        <div class="activity-icon">✨</div>
-                        <span>Spark job definition</span>
-                    </div>
-                    <div class="activity-item" draggable="true" data-type="SqlServerStoredProcedure">
-                        <div class="activity-icon">🔷</div>
-                        <span>SQL script</span>
-                    </div>
-                </div>
-            </div>
-
-            <div class="activity-group collapsed">
-                <div class="activity-group-title" onclick="toggleCategory(this)">
-                    <span class="category-arrow">▼</span> General
-                </div>
-                <div class="activity-group-content">
-                    <div class="activity-item" draggable="true" data-type="WebActivity">
-                        <div class="activity-icon">🌐</div>
-                        <span>Web</span>
-                    </div>
-                    <div class="activity-item" draggable="true" data-type="GetMetadata">
-                        <div class="activity-icon">📄</div>
-                        <span>Get Metadata</span>
-                    </div>
-                    <div class="activity-item" draggable="true" data-type="Lookup">
-                        <div class="activity-icon">🔍</div>
-                        <span>Lookup</span>
-                    </div>
-                    <div class="activity-item" draggable="true" data-type="Delete">
-                        <div class="activity-icon">🗑️</div>
-                        <span>Delete</span>
-                    </div>
-                    <div class="activity-item" draggable="true" data-type="Wait">
-                        <div class="activity-icon">⏱️</div>
-                        <span>Wait</span>
-                    </div>
-                    <div class="activity-item" draggable="true" data-type="Validation">
-                        <div class="activity-icon">✅</div>
-                        <span>Validation</span>
-                    </div>
-                    <div class="activity-item" draggable="true" data-type="Script">
-                        <div class="activity-icon">📜</div>
-                        <span>Script</span>
-                    </div>
-                </div>
-            </div>
-
-            <div class="activity-group collapsed">
-                <div class="activity-group-title" onclick="toggleCategory(this)">
-                    <span class="category-arrow">▼</span> Iteration & conditionals
-                </div>
-                <div class="activity-group-content">
-                    <div class="activity-item" draggable="true" data-type="ForEach">
-                        <div class="activity-icon">🔁</div>
-                        <span>ForEach</span>
-                    </div>
-                    <div class="activity-item" draggable="true" data-type="IfCondition">
-                        <div class="activity-icon">❓</div>
-                        <span>If Condition</span>
-                    </div>
-                    <div class="activity-item" draggable="true" data-type="Switch">
-                        <div class="activity-icon">🔀</div>
-                        <span>Switch</span>
-                    </div>
-                    <div class="activity-item" draggable="true" data-type="Until">
-                        <div class="activity-icon">🔄</div>
-                        <span>Until</span>
-                    </div>
-                    <div class="activity-item" draggable="true" data-type="SetVariable">
-                        <div class="activity-icon">📌</div>
-                        <span>Set Variable</span>
-                    </div>
-                    <div class="activity-item" draggable="true" data-type="AppendVariable">
-                        <div class="activity-icon">➕</div>
-                        <span>Append Variable</span>
-                    </div>
-                    <div class="activity-item" draggable="true" data-type="Filter">
-                        <div class="activity-icon">🔎</div>
-                        <span>Filter</span>
-                    </div>
-                </div>
-            </div>
+            </div>`).join('')}
         </div>
 
         <!-- Canvas Area -->
@@ -718,6 +710,8 @@ class PipelineEditorProvider {
                 <button class="toolbar-button" id="zoomInBtn">ðŸ”+ Zoom In</button>
                 <button class="toolbar-button" id="zoomOutBtn">ðŸ”- Zoom Out</button>
                 <button class="toolbar-button" id="fitBtn">â¬œ Fit to Screen</button>
+                <div class="toolbar-spacer"></div>
+                <button class="expand-properties-btn" id="expandPropertiesBtn" onclick="toggleProperties()">« Properties</button>
             </div>
             <div class="canvas-wrapper" id="canvasWrapper">
                 <canvas id="canvas"></canvas>
@@ -726,9 +720,12 @@ class PipelineEditorProvider {
 
         <!-- Properties Panel (Right Sidebar) -->
         <div class="properties-panel">
-            <div class="properties-header">Properties</div>
+            <div class="properties-header">
+                <span>Pipeline Properties</span>
+                <button class="properties-collapse-btn" onclick="toggleProperties()" title="Collapse Properties Panel">»</button>
+            </div>
             <div id="propertiesContent" class="properties-content">
-                <div class="empty-state">Select an activity to view its properties</div>
+                <div class="empty-state">Pipeline properties and settings</div>
             </div>
         </div>
     </div>
@@ -741,6 +738,7 @@ class PipelineEditorProvider {
             <button class="config-tab" data-tab="settings" style="padding: 8px 16px; border: none; background: transparent; cursor: pointer; color: var(--vscode-tab-inactiveForeground);">Settings</button>
             <button class="config-tab" data-tab="user-properties" style="padding: 8px 16px; border: none; background: transparent; cursor: pointer; color: var(--vscode-tab-inactiveForeground);">User Properties</button>
             <button class="config-tab" data-tab="variables" style="padding: 8px 16px; border: none; background: transparent; cursor: pointer; color: var(--vscode-tab-inactiveForeground);">Variables</button>
+            <button class="config-collapse-btn" id="configCollapseBtn" onclick="toggleConfig()" title="Collapse Configuration Panel">▼</button>
         </div>
         <div class="config-content" id="configContent" style="flex: 1; overflow-y: auto; padding: 16px; background: var(--vscode-editor-background);">
             <div class="config-tab-pane active" id="tab-general">
@@ -777,6 +775,30 @@ class PipelineEditorProvider {
         console.log('=== Pipeline Editor Script Starting ===');
         const vscode = acquireVsCodeApi();
         console.log('vscode API acquired');
+        
+        // Toggle properties panel
+        function toggleProperties() {
+            const panel = document.querySelector('.properties-panel');
+            panel.classList.toggle('collapsed');
+            // Toggle body class for button visibility
+            if (panel.classList.contains('collapsed')) {
+                document.body.classList.remove('properties-visible');
+            } else {
+                document.body.classList.add('properties-visible');
+            }
+        }
+
+        // Initialize properties state
+        document.body.classList.add('properties-visible');
+        
+        // Toggle config panel function
+        function toggleConfig() {
+            const panel = document.querySelector('.config-panel');
+            const btn = document.getElementById('configCollapseBtn');
+            panel.classList.toggle('minimized');
+            // Change button icon
+            btn.textContent = panel.classList.contains('minimized') ? '▲' : '▼';
+        }
         
         // Canvas state
         let canvas = document.getElementById('canvas');

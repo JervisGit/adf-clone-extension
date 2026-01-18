@@ -30,13 +30,8 @@
       "adf-pipeline-explorer": [
         {
           "id": "adf-pipelines",
-          "name": "Pipelines",
-          "contextualTitle": "Synapse Pipelines"
-        },
-        {
-          "id": "adf-activities",
-          "name": "Activities",
-          "contextualTitle": "Synapse Activities"
+          "name": "Synapse Resources",
+          "contextualTitle": "Synapse Resources"
         }
       ]
     },
@@ -48,37 +43,32 @@
         "icon": "$(edit)"
       },
       {
-        "command": "adf-pipeline-clone.addActivity",
-        "title": "Synapse: Add Activity",
-        "category": "Pipeline"
-      },
-      {
-        "command": "adf-pipeline-clone.addActivityFromTree",
-        "title": "Add to Pipeline",
-        "icon": "$(add)"
-      },
-      {
-        "command": "adf-pipeline-clone.refreshActivities",
-        "title": "Refresh Activities",
-        "icon": "$(refresh)"
-      },
-      {
         "command": "adf-pipeline-clone.refreshPipelines",
-        "title": "Refresh Pipelines",
+        "title": "Refresh",
         "icon": "$(refresh)"
       },
       {
         "command": "adf-pipeline-clone.openPipelineFile",
         "title": "Open Pipeline File"
+      },
+      {
+        "command": "adf-pipeline-clone.createPipeline",
+        "title": "New Pipeline",
+        "icon": "$(add)"
+      },
+      {
+        "command": "adf-pipeline-clone.createDataset",
+        "title": "New Dataset",
+        "icon": "$(add)"
+      },
+      {
+        "command": "adf-pipeline-clone.createTrigger",
+        "title": "New Trigger",
+        "icon": "$(add)"
       }
     ],
     "menus": {
       "view/title": [
-        {
-          "command": "adf-pipeline-clone.refreshActivities",
-          "when": "view == adf-activities",
-          "group": "navigation"
-        },
         {
           "command": "adf-pipeline-clone.refreshPipelines",
           "when": "view == adf-pipelines",
@@ -87,8 +77,18 @@
       ],
       "view/item/context": [
         {
-          "command": "adf-pipeline-clone.addActivityFromTree",
-          "when": "view == adf-activities && viewItem == activity",
+          "command": "adf-pipeline-clone.createPipeline",
+          "when": "view == adf-pipelines && viewItem == folder-pipeline",
+          "group": "inline"
+        },
+        {
+          "command": "adf-pipeline-clone.createDataset",
+          "when": "view == adf-pipelines && viewItem == folder-dataset",
+          "group": "inline"
+        },
+        {
+          "command": "adf-pipeline-clone.createTrigger",
+          "when": "view == adf-pipelines && viewItem == folder-trigger",
           "group": "inline"
         }
       ]

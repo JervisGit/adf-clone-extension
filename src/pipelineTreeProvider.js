@@ -44,26 +44,30 @@ class PipelineTreeDataProvider {
 		const workspaceRoot = vscode.workspace.workspaceFolders[0].uri.fsPath;
 
 		if (!element) {
-			// Root level - show folder categories
+			// Root level - show three main categories
 			const folders = [];
 			
-			const pipelineDir = path.join(workspaceRoot, 'pipeline');
 			const datasetDir = path.join(workspaceRoot, 'dataset');
+			const pipelineDir = path.join(workspaceRoot, 'pipeline');
 			const triggerDir = path.join(workspaceRoot, 'trigger');
 			
-			if (fs.existsSync(pipelineDir)) {
-				folders.push(new FolderItem('Pipelines', pipelineDir, 'pipeline'));
-			}
-			if (fs.existsSync(datasetDir)) {
+			if (fs.existsSync(datasetDir) || true) { // Always show even if doesn't exist
 				folders.push(new FolderItem('Datasets', datasetDir, 'dataset'));
 			}
-			if (fs.existsSync(triggerDir)) {
+			if (fs.existsSync(pipelineDir) || true) {
+				folders.push(new FolderItem('Pipelines', pipelineDir, 'pipeline'));
+			}
+			if (fs.existsSync(triggerDir) || true) {
 				folders.push(new FolderItem('Triggers', triggerDir, 'trigger'));
 			}
 			
 			return folders;
 		} else if (element.folderType) {
 			// Show files in the folder
+			if (!fs.existsSync(element.folderPath)) {
+				return [];
+			}
+			
 			const files = fs.readdirSync(element.folderPath)
 				.filter(file => file.endsWith('.json'))
 				.map(file => new FileItem(
@@ -84,7 +88,7 @@ class FolderItem extends vscode.TreeItem {
 		super(label, vscode.TreeItemCollapsibleState.Expanded);
 		this.folderPath = folderPath;
 		this.folderType = folderType;
-		this.contextValue = 'folder';
+		this.contextValue = `folder-${folderType}`;
 		this.iconPath = new vscode.ThemeIcon('folder');
 	}
 }

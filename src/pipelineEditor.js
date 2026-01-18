@@ -4,6 +4,7 @@ const activitySchemas = require('./activity-schemas.json');
 
 class PipelineEditorProvider {
 	static currentPanel;
+	static currentPipelineFile = null;
 
 	constructor(context) {
 		this.context = context;
@@ -62,7 +63,7 @@ class PipelineEditorProvider {
 		panel.onDidDispose(
 			() => {
 				PipelineEditorProvider.currentPanel = undefined;
-				this.currentPipelineFile = null;
+				PipelineEditorProvider.currentPipelineFile = null;
 				this.pendingPipelineFile = null;
 			},
 			null,
@@ -96,7 +97,7 @@ class PipelineEditorProvider {
 				const pipelineJson = JSON.parse(content);
 				
 				// Store the current file path
-				this.currentPipelineFile = filePath;
+				PipelineEditorProvider.currentPipelineFile = filePath;
 				
 				// Send to webview
 				PipelineEditorProvider.currentPanel.webview.postMessage({
@@ -147,8 +148,8 @@ class PipelineEditorProvider {
 			
 			// Determine file path
 			let filePath;
-			if (this.currentPipelineFile) {
-				filePath = this.currentPipelineFile;
+			if (PipelineEditorProvider.currentPipelineFile) {
+				filePath = PipelineEditorProvider.currentPipelineFile;
 			} else {
 				// Create new file with unique name
 				let fileName = `${synapseJson.name}.json`;
@@ -162,7 +163,7 @@ class PipelineEditorProvider {
 					counter++;
 				}
 				
-				this.currentPipelineFile = filePath;
+				PipelineEditorProvider.currentPipelineFile = filePath;
 			}
 			
 			// Write file
@@ -848,7 +849,7 @@ class PipelineEditorProvider {
             <!-- Activity-level tabs (shown when activity selected, dynamically generated) -->
             <div id="activityTabsContainer"></div>
             
-            <button class="config-collapse-btn" id="configCollapseBtn" onclick="toggleConfig()" title="Collapse Configuration Panel">v</button>
+            <button class="config-collapse-btn" id="configCollapseBtn" onclick="toggleConfig()" title="Collapse Configuration Panel">»</button>
         </div>
         <div class="config-content" id="configContent" style="flex: 1; overflow-y: auto; padding: 16px; background: var(--vscode-editor-background);">
             <!-- Pipeline-level tab panes -->
@@ -918,7 +919,7 @@ class PipelineEditorProvider {
             const btn = document.getElementById('configCollapseBtn');
             panel.classList.toggle('minimized');
             // Change button icon
-            btn.textContent = panel.classList.contains('minimized') ? '^' : 'v';
+            btn.textContent = panel.classList.contains('minimized') ? '«' : '»';
         }
         
         // Canvas state
@@ -1985,20 +1986,63 @@ class PipelineEditorProvider {
         document.getElementById('saveBtn').addEventListener('click', () => {
             const data = {
                 name: "pipeline1", // TODO: Get from pipeline name input
-                activities: activities.map(a => ({
-                    name: a.name,
-                    type: a.type,
-                    dependsOn: [], // TODO: Build from connections
-                    policy: {
-                        timeout: a.timeout || "0.12:00:00",
-                        retry: a.retry || 0,
-                        retryIntervalInSeconds: a.retryIntervalInSeconds || 30,
-                        secureOutput: a.secureOutput || false,
-                        secureInput: a.secureInput || false
-                    },
-                    userProperties: a.userProperties || [],
-                    typeProperties: a.typeProperties || {}
-                }))
+                activities: activities.map(a => {
+                    // Build the activity JSON with all properties
+                    const activity = {
+                        name: a.name,
+                        type: a.type,
+                        dependsOn: connections
+                            .filter(c => c.to === a)
+                            .map(c => ({
+                                activity: c.from.name,
+                                dependencyConditions: [c.condition || 'Succeeded']
+                            })),
+                        policy: {
+                            timeout: a.timeout || "0.12:00:00",
+                            retry: a.retry || 0,
+                            retryIntervalInSeconds: a.retryIntervalInSeconds || 30,
+                            secureOutput: a.secureOutput || false,
+                            secureInput: a.secureInput || false
+                        },
+                        userProperties: a.userProperties || []
+                    };
+                    
+                    // Add optional description
+                    if (a.description) {
+                        activity.description = a.description;
+                    }
+                    
+                    // Add optional state (for Copy activity)
+                    if (a.state) {
+                        activity.state = a.state;
+                    }
+                    if (a.onInactiveMarkAs) {
+                        activity.onInactiveMarkAs = a.onInactiveMarkAs;
+                    }
+                    
+                    // Collect all typeProperties from the activity object
+                    const typeProperties = {};
+                    const commonProps = ['id', 'type', 'x', 'y', 'width', 'height', 'name', 'description', 'color', 'container', 'element', 
+                                         'timeout', 'retry', 'retryIntervalInSeconds', 'secureOutput', 'secureInput', 'userProperties', 'state', 'onInactiveMarkAs'];
+                    
+                    for (const key in a) {
+                        if (!commonProps.includes(key) && a.hasOwnProperty(key) && typeof a[key] !== 'function') {
+                            typeProperties[key] = a[key];
+                        }
+                    }
+                    
+                    activity.typeProperties = typeProperties;
+                    
+                    // Add inputs/outputs if present (for Copy activity)
+                    if (a.inputs) {
+                        activity.inputs = a.inputs;
+                    }
+                    if (a.outputs) {
+                        activity.outputs = a.outputs;
+                    }
+                    
+                    return activity;
+                })
             };
             vscode.postMessage({ type: 'save', data: data });
         });

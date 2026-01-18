@@ -1644,6 +1644,7 @@ class PipelineEditorProvider {
             if (!settingsContent) {
                 settingsContent = '<div style="color: var(--vscode-descriptionForeground); padding: 20px; text-align: center;">No activity-specific settings available</div>';
             }
+            console.log('Settings content length:', settingsContent.length);
             
             activity.userProperties = activity.userProperties || [];
             let userPropsContent = '<div style="margin-bottom: 12px;">';
@@ -1660,6 +1661,9 @@ class PipelineEditorProvider {
                 \`;
             });
             userPropsContent += '</div>';
+            console.log('User props content length:', userPropsContent.length);
+            console.log('Schema:', schema);
+            console.log('Activity type:', activity.type);
             
             // Generate activity-level tabs with content already included
             const tabsContainer = document.getElementById('activityTabsContainer');
@@ -1669,7 +1673,7 @@ class PipelineEditorProvider {
             let panesHtml = '';
             
             tabs.forEach((tabName, idx) => {
-                const tabId = tabName.toLowerCase().replace(/\s+/g, '-');
+                const tabId = tabName.toLowerCase().split(' ').join('-');
                 const isActive = idx === 0;
                 const activeClass = isActive ? ' active' : '';
                 const activeStyle = isActive ? 'color: var(--vscode-tab-activeForeground); border-bottom: 2px solid var(--vscode-focusBorder);' : 'color: var(--vscode-tab-inactiveForeground);';
@@ -1681,6 +1685,8 @@ class PipelineEditorProvider {
                 if (tabId === 'general') tabContent = generalContent;
                 else if (tabId === 'settings') tabContent = settingsContent;
                 else if (tabId === 'user-properties') tabContent = userPropsContent;
+                
+                console.log(\`Tab \${tabName} (id: \${tabId}) content length: \${tabContent.length}\`);
                 
                 const displayStyle = isActive ? 'display: block;' : 'display: none;';
                 panesHtml += \`<div class="config-tab-pane activity-pane\${activeClass}" id="tab-\${tabId}" style="\${displayStyle}">\${tabContent}</div>\`;

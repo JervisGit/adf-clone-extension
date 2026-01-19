@@ -3,28 +3,33 @@ const activitiesConfig = require('./activities-config-verified.json');
 const activitySchemas = require('./activity-schemas.json');
 
 class PipelineEditorProvider {
-	static currentPanel;
-	static currentPipelineFile = null;
+	static panels = new Map(); // Map<filePath, panel>
 
 	constructor(context) {
 		this.context = context;
 	}
 
-	createOrShow() {
+	createOrShow(filePath = null) {
 		const column = vscode.window.activeTextEditor
 			? vscode.window.activeTextEditor.viewColumn
 			: undefined;
 
-		// If we already have a panel, show it
-		if (PipelineEditorProvider.currentPanel) {
-			PipelineEditorProvider.currentPanel.reveal(column);
-			return;
+		// If opening a specific file, check if panel already exists
+		if (filePath && PipelineEditorProvider.panels.has(filePath)) {
+			PipelineEditorProvider.panels.get(filePath).reveal(column);
+			return PipelineEditorProvider.panels.get(filePath);
 		}
+
+		// Create title from filename if provided
+		const path = require('path');
+		const title = filePath 
+			? path.basename(filePath, '.json')
+			: 'Synapse Pipeline Editor';
 
 		// Otherwise, create a new panel
 		const panel = vscode.window.createWebviewPanel(
 			'adfPipelineEditor',
-			'Pipeline Editor',
+			title,
 			column || vscode.ViewColumn.One,
 			{
 				enableScripts: true,
@@ -35,7 +40,10 @@ class PipelineEditorProvider {
 			}
 		);
 
-		PipelineEditorProvider.currentPanel = panel;
+		// Store panel with associated file path
+		if (filePath) {
+			PipelineEditorProvider.panels.set(filePath, panel);
+		}
 
 		// Set the webview's initial html content
 		panel.webview.html = this.getHtmlContent(panel.webview);
@@ -48,7 +56,10 @@ class PipelineEditorProvider {
 						vscode.window.showInformationMessage(message.text);
 						break;
 					case 'save':
-						await this.savePipelineToWorkspace(message.data);
+						console.log('[Extension] Received save message:', message);
+						// Use filePath from message if available, otherwise use closure filePath
+						const saveFilePath = message.filePath || filePath;
+						await this.savePipelineToWorkspace(message.data, saveFilePath);
 						break;
 					case 'log':
 						console.log('Webview:', message.text);
@@ -62,8 +73,10 @@ class PipelineEditorProvider {
 		// Reset when the current panel is closed
 		panel.onDidDispose(
 			() => {
-				PipelineEditorProvider.currentPanel = undefined;
-				PipelineEditorProvider.currentPipelineFile = null;
+				// Remove panel from map
+				if (filePath) {
+					PipelineEditorProvider.panels.delete(filePath);
+				}
 				this.pendingPipelineFile = null;
 			},
 			null,
@@ -76,11 +89,17 @@ class PipelineEditorProvider {
 			this.pendingPipelineFile = null;
 			this.loadPipelineFile(fileToLoad);
 		}
+		
+		return panel;
 	}
 
 	addActivity(activityType) {
-		if (PipelineEditorProvider.currentPanel) {
-			PipelineEditorProvider.currentPanel.webview.postMessage({
+		// Find the most recently used panel
+		const panels = Array.from(PipelineEditorProvider.panels.values());
+		const panel = panels.length > 0 ? panels[panels.length - 1] : null;
+		
+		if (panel) {
+			panel.webview.postMessage({
 				type: 'addActivity',
 				activityType: activityType
 			});
@@ -90,36 +109,34 @@ class PipelineEditorProvider {
 	}
 
 	loadPipelineFile(filePath) {
-		if (PipelineEditorProvider.currentPanel) {
-			const fs = require('fs');
-			try {
-				const content = fs.readFileSync(filePath, 'utf8');
-				const pipelineJson = JSON.parse(content);
-				
-				// Store the current file path
-				PipelineEditorProvider.currentPipelineFile = filePath;
-				
-				// Send to webview
-				PipelineEditorProvider.currentPanel.webview.postMessage({
-					type: 'loadPipeline',
-					data: pipelineJson
-				});
-				
-				vscode.window.showInformationMessage(`Loaded pipeline: ${require('path').basename(filePath)}`);
-			} catch (error) {
-				vscode.window.showErrorMessage(`Failed to load pipeline: ${error.message}`);
-			}
-		} else {
-			// Open editor first, then load
-			this.createOrShow();
-			// Store file path to load after panel is ready
-			this.pendingPipelineFile = filePath;
+		// Create or show panel for this file
+		const panel = this.createOrShow(filePath);
+		
+		const fs = require('fs');
+		try {
+			const content = fs.readFileSync(filePath, 'utf8');
+			const pipelineJson = JSON.parse(content);
+			
+			// Send to webview
+			panel.webview.postMessage({
+				type: 'loadPipeline',
+				data: pipelineJson,
+				filePath: filePath
+			});
+			
+			vscode.window.showInformationMessage(`Loaded pipeline: ${require('path').basename(filePath)}`);
+		} catch (error) {
+			vscode.window.showErrorMessage(`Failed to load pipeline: ${error.message}`);
 		}
 	}
 
-	async savePipelineToWorkspace(pipelineData) {
+	async savePipelineToWorkspace(pipelineData, filePath) {
 		const fs = require('fs');
 		const path = require('path');
+		
+		console.log('[Extension] savePipelineToWorkspace called');
+		console.log('[Extension] Pipeline data:', JSON.stringify(pipelineData, null, 2));
+		console.log('[Extension] File path:', filePath);
 		
 		try {
 			// Get workspace folder
@@ -136,21 +153,130 @@ class PipelineEditorProvider {
 				fs.mkdirSync(pipelineDir, { recursive: true });
 			}
 			
+			console.log('[Extension] Converting to Synapse format...');
+			console.log('[Extension] Number of activities:', pipelineData.activities?.length || 0);
+			
 			// Convert to Synapse format
 			const synapseJson = {
 				name: pipelineData.name || "pipeline1",
 				properties: {
-					activities: pipelineData.activities || [],
+					activities: (pipelineData.activities || []).map(a => {
+						console.log('[Extension] Processing activity:', a.name, 'Type:', a.type);
+						
+						const activity = {
+							name: a.name,
+							type: a.type
+						};
+						
+						if (a.description) activity.description = a.description;
+						if (a.state) activity.state = a.state;
+						if (a.onInactiveMarkAs) activity.onInactiveMarkAs = a.onInactiveMarkAs;
+						if (a.dependsOn) activity.dependsOn = a.dependsOn;
+						if (a.userProperties) activity.userProperties = a.userProperties;
+						
+						// Add policy
+						const policy = {};
+						if (a.timeout !== undefined) policy.timeout = a.timeout;
+						if (a.retry !== undefined) policy.retry = a.retry;
+						if (a.retryIntervalInSeconds !== undefined) policy.retryIntervalInSeconds = a.retryIntervalInSeconds;
+						if (a.secureOutput !== undefined) policy.secureOutput = a.secureOutput;
+						if (a.secureInput !== undefined) policy.secureInput = a.secureInput;
+						if (Object.keys(policy).length > 0) activity.policy = policy;
+						
+						// Collect typeProperties
+						const typeProperties = {};
+						const commonProps = ['id', 'type', 'x', 'y', 'width', 'height', 'name', 'description', 'color', 'container', 'element', 
+											 'timeout', 'retry', 'retryIntervalInSeconds', 'secureOutput', 'secureInput', 'userProperties', 'state', 'onInactiveMarkAs',
+											 'dynamicAllocation', 'minExecutors', 'maxExecutors', 'dependsOn',
+											 'sourceDataset', 'sinkDataset', 'recursive', 'wildcardFolderPath', 'wildcardFileName', 'enablePartitionDiscovery',
+											 'writeBatchSize', 'writeBatchTimeout', 'preCopyScript', 'maxConcurrentConnections', 'writeBehavior', 
+											 'sqlWriterUseTableLock', 'disableMetricsCollection', '_sourceObject', '_sinkObject'];
+						
+						for (const key in a) {
+							if (!commonProps.includes(key) && a.hasOwnProperty(key) && typeof a[key] !== 'function') {
+								typeProperties[key] = a[key];
+							}
+						}
+						
+						// For SynapseNotebook, convert dynamicAllocation fields back to conf object
+						if (a.type === 'SynapseNotebook') {
+							if (a.dynamicAllocation !== undefined || a.minExecutors || a.maxExecutors) {
+								typeProperties.conf = {};
+								if (a.dynamicAllocation !== undefined) {
+									typeProperties.conf['spark.dynamicAllocation.enabled'] = a.dynamicAllocation;
+								}
+								if (a.minExecutors !== undefined) {
+									typeProperties.conf['spark.dynamicAllocation.minExecutors'] = a.minExecutors;
+								}
+								if (a.maxExecutors !== undefined) {
+									typeProperties.conf['spark.dynamicAllocation.maxExecutors'] = a.maxExecutors;
+								}
+							}
+						}
+						
+						// For Copy activity, reconstruct nested source/sink structures and inputs/outputs
+						if (a.type === 'Copy') {
+							console.log('[Extension] Copy activity - reconstructing source/sink');
+							console.log('[Extension] Source dataset:', a.sourceDataset);
+							console.log('[Extension] Sink dataset:', a.sinkDataset);
+							
+							// Reconstruct source object
+							if (a._sourceObject) {
+								typeProperties.source = JSON.parse(JSON.stringify(a._sourceObject));
+								console.log('[Extension] Restored _sourceObject:', typeProperties.source);
+								// Update with any changed values
+								if (typeProperties.source.storeSettings) {
+									if (a.recursive !== undefined) typeProperties.source.storeSettings.recursive = a.recursive;
+									if (a.wildcardFolderPath !== undefined) typeProperties.source.storeSettings.wildcardFolderPath = a.wildcardFolderPath;
+									if (a.wildcardFileName !== undefined) typeProperties.source.storeSettings.wildcardFileName = a.wildcardFileName;
+									if (a.enablePartitionDiscovery !== undefined) typeProperties.source.storeSettings.enablePartitionDiscovery = a.enablePartitionDiscovery;
+								}
+							}
+							
+							// Reconstruct sink object
+							if (a._sinkObject) {
+								typeProperties.sink = JSON.parse(JSON.stringify(a._sinkObject));
+								console.log('[Extension] Restored _sinkObject:', typeProperties.sink);
+								// Update with any changed values
+								if (a.writeBatchSize !== undefined) typeProperties.sink.writeBatchSize = a.writeBatchSize;
+								if (a.writeBatchTimeout !== undefined) typeProperties.sink.writeBatchTimeout = a.writeBatchTimeout;
+								if (a.preCopyScript !== undefined) typeProperties.sink.preCopyScript = a.preCopyScript;
+								if (a.maxConcurrentConnections !== undefined) typeProperties.sink.maxConcurrentConnections = a.maxConcurrentConnections;
+								if (a.writeBehavior !== undefined) typeProperties.sink.writeBehavior = a.writeBehavior;
+								if (a.sqlWriterUseTableLock !== undefined) typeProperties.sink.sqlWriterUseTableLock = a.sqlWriterUseTableLock;
+								if (a.disableMetricsCollection !== undefined) typeProperties.sink.disableMetricsCollection = a.disableMetricsCollection;
+								console.log('[Extension] Reconstructed sink:', typeProperties.sink);
+							}
+							
+							// Add inputs/outputs for Copy activity
+							if (a.sourceDataset) {
+								activity.inputs = [{
+									referenceName: a.sourceDataset,
+									type: 'DatasetReference'
+								}];
+								console.log('[Extension] Added inputs:', activity.inputs);
+							}
+							if (a.sinkDataset) {
+								activity.outputs = [{
+									referenceName: a.sinkDataset,
+									type: 'DatasetReference'
+								}];
+								console.log('[Extension] Added outputs:', activity.outputs);
+							}
+						}
+						
+						activity.typeProperties = typeProperties;
+						console.log('[Extension] Final activity object:', JSON.stringify(activity, null, 2));
+						
+						return activity;
+					}),
 					annotations: [],
 					lastPublishTime: new Date().toISOString()
 				}
 			};
 			
 			// Determine file path
-			let filePath;
-			if (PipelineEditorProvider.currentPipelineFile) {
-				filePath = PipelineEditorProvider.currentPipelineFile;
-			} else {
+			if (!filePath) {
 				// Create new file with unique name
 				let fileName = `${synapseJson.name}.json`;
 				filePath = path.join(pipelineDir, fileName);
@@ -162,15 +288,17 @@ class PipelineEditorProvider {
 					filePath = path.join(pipelineDir, fileName);
 					counter++;
 				}
-				
-				PipelineEditorProvider.currentPipelineFile = filePath;
 			}
 			
 			// Write file
+			console.log('[Extension] Writing to file:', filePath);
+			console.log('[Extension] Final Synapse format:', JSON.stringify(synapseJson, null, 2));
 			fs.writeFileSync(filePath, JSON.stringify(synapseJson, null, 2));
+			console.log('[Extension] File written successfully');
 			vscode.window.showInformationMessage(`Pipeline saved: ${path.basename(filePath)}`);
 			
 		} catch (error) {
+			console.error('[Extension] Save error:', error);
 			vscode.window.showErrorMessage(`Failed to save pipeline: ${error.message}`);
 		}
 	}
@@ -930,6 +1058,7 @@ class PipelineEditorProvider {
         let activities = [];
         let connections = [];
         let selectedActivity = null;
+        let currentFilePath = null; // Track the current file path
         let draggedActivity = null;
         let connectionStart = null;
         let isDragging = false;
@@ -1653,7 +1782,13 @@ class PipelineEditorProvider {
             
             // Helper function to generate form fields
             function generateFormField(key, prop, activity) {
-                const value = activity[key] || prop.default || '';
+                let value = activity[key] || prop.default || '';
+                
+                // Handle reference objects (e.g., {referenceName: "...", type: "..."})
+                if (prop.type === 'reference' && typeof value === 'object' && value !== null) {
+                    value = value.referenceName || JSON.stringify(value);
+                }
+                
                 const required = prop.required ? ' *' : '';
                 
                 let fieldHtml = \`<div class="property-group">\`;
@@ -1868,6 +2003,30 @@ class PipelineEditorProvider {
                 });
             });
             
+            // Add event listeners to all config panel inputs to update activity object in real-time
+            document.querySelectorAll('#configContent .property-input').forEach(input => {
+                const key = input.getAttribute('data-key');
+                if (!key) return;
+                
+                if (input.type === 'checkbox') {
+                    input.addEventListener('change', (e) => {
+                        activity[key] = e.target.checked;
+                        console.log('Updated ' + key + ':', activity[key]);
+                    });
+                } else {
+                    input.addEventListener('input', (e) => {
+                        const value = e.target.value;
+                        // Convert to appropriate type
+                        if (input.type === 'number') {
+                            activity[key] = parseFloat(value) || 0;
+                        } else {
+                            activity[key] = value;
+                        }
+                        console.log('Updated ' + key + ':', activity[key]);
+                    });
+                }
+            });
+            
             // Add event listeners for keyvalue add buttons
             document.querySelectorAll('.add-kv-btn').forEach(btn => {
                 btn.addEventListener('click', (e) => {
@@ -2023,7 +2182,11 @@ class PipelineEditorProvider {
                     // Collect all typeProperties from the activity object
                     const typeProperties = {};
                     const commonProps = ['id', 'type', 'x', 'y', 'width', 'height', 'name', 'description', 'color', 'container', 'element', 
-                                         'timeout', 'retry', 'retryIntervalInSeconds', 'secureOutput', 'secureInput', 'userProperties', 'state', 'onInactiveMarkAs'];
+                                         'timeout', 'retry', 'retryIntervalInSeconds', 'secureOutput', 'secureInput', 'userProperties', 'state', 'onInactiveMarkAs',
+                                         'dynamicAllocation', 'minExecutors', 'maxExecutors', 'dependsOn', 'policy',
+                                         'sourceDataset', 'sinkDataset', 'recursive', 'wildcardFolderPath', 'wildcardFileName', 'enablePartitionDiscovery',
+                                         'writeBatchSize', 'writeBatchTimeout', 'preCopyScript', 'maxConcurrentConnections', 'writeBehavior', 
+                                         'sqlWriterUseTableLock', 'disableMetricsCollection', '_sourceObject', '_sinkObject'];
                     
                     for (const key in a) {
                         if (!commonProps.includes(key) && a.hasOwnProperty(key) && typeof a[key] !== 'function') {
@@ -2031,7 +2194,76 @@ class PipelineEditorProvider {
                         }
                     }
                     
+                    // For SynapseNotebook, convert dynamicAllocation fields back to conf object
+                    if (a.type === 'SynapseNotebook') {
+                        if (a.dynamicAllocation !== undefined || a.minExecutors || a.maxExecutors) {
+                            typeProperties.conf = {};
+                            if (a.dynamicAllocation !== undefined) {
+                                typeProperties.conf['spark.dynamicAllocation.enabled'] = a.dynamicAllocation;
+                            }
+                            if (a.minExecutors !== undefined) {
+                                typeProperties.conf['spark.dynamicAllocation.minExecutors'] = a.minExecutors;
+                            }
+                            if (a.maxExecutors !== undefined) {
+                                typeProperties.conf['spark.dynamicAllocation.maxExecutors'] = a.maxExecutors;
+                            }
+                        }
+                    }
+                    
+                    // For Copy activity, reconstruct nested source/sink structures and inputs/outputs
+                    if (a.type === 'Copy') {
+                        console.log('[Extension] Copy activity - reconstructing source/sink');
+                        console.log('[Extension] Source dataset:', a.sourceDataset);
+                        console.log('[Extension] Sink dataset:', a.sinkDataset);
+                        
+                        // Reconstruct source object
+                        if (a._sourceObject) {
+                            typeProperties.source = JSON.parse(JSON.stringify(a._sourceObject));
+                            console.log('[Extension] Restored _sourceObject:', typeProperties.source);
+                            // Update with any changed values
+                            if (a.sourceType) typeProperties.source.type = a.sourceType;
+                            if (typeProperties.source.storeSettings) {
+                                if (a.recursive !== undefined) typeProperties.source.storeSettings.recursive = a.recursive;
+                                if (a.wildcardFolderPath !== undefined) typeProperties.source.storeSettings.wildcardFolderPath = a.wildcardFolderPath;
+                                if (a.wildcardFileName !== undefined) typeProperties.source.storeSettings.wildcardFileName = a.wildcardFileName;
+                                if (a.enablePartitionDiscovery !== undefined) typeProperties.source.storeSettings.enablePartitionDiscovery = a.enablePartitionDiscovery;
+                            }
+                        }
+                        
+                        // Reconstruct sink object
+                        if (a._sinkObject) {
+                            typeProperties.sink = JSON.parse(JSON.stringify(a._sinkObject));
+                            // Update with any changed values
+                            if (a.sinkType) typeProperties.sink.type = a.sinkType;
+                            if (a.writeBatchSize !== undefined) typeProperties.sink.writeBatchSize = a.writeBatchSize;
+                            if (a.writeBatchTimeout !== undefined) typeProperties.sink.writeBatchTimeout = a.writeBatchTimeout;
+                            if (a.preCopyScript !== undefined) typeProperties.sink.preCopyScript = a.preCopyScript;
+                            if (a.maxConcurrentConnections !== undefined) typeProperties.sink.maxConcurrentConnections = a.maxConcurrentConnections;
+                            if (a.writeBehavior !== undefined) typeProperties.sink.writeBehavior = a.writeBehavior;
+                            if (a.sqlWriterUseTableLock !== undefined) typeProperties.sink.sqlWriterUseTableLock = a.sqlWriterUseTableLock;
+                            if (a.disableMetricsCollection !== undefined) typeProperties.sink.disableMetricsCollection = a.disableMetricsCollection;
+                            console.log('[Extension] Reconstructed sink:', typeProperties.sink);
+                        }
+                        
+                        // Add inputs/outputs for Copy activity
+                        if (a.sourceDataset) {
+                            activity.inputs = [{
+                                referenceName: a.sourceDataset,
+                                type: 'DatasetReference'
+                            }];
+                            console.log('[Extension] Added inputs:', activity.inputs);
+                        }
+                        if (a.sinkDataset) {
+                            activity.outputs = [{
+                                referenceName: a.sinkDataset,
+                                type: 'DatasetReference'
+                            }];
+                            console.log('[Extension] Added outputs:', activity.outputs);
+                        }
+                    }
+                    
                     activity.typeProperties = typeProperties;
+                    console.log('[Extension] Final activity object:', JSON.stringify(activity, null, 2));
                     
                     // Add inputs/outputs if present (for Copy activity)
                     if (a.inputs) {
@@ -2044,7 +2276,13 @@ class PipelineEditorProvider {
                     return activity;
                 })
             };
-            vscode.postMessage({ type: 'save', data: data });
+            
+            console.log('[Webview] Sending save message with filePath:', currentFilePath);
+            vscode.postMessage({ 
+                type: 'save', 
+                data: data,
+                filePath: currentFilePath 
+            });
         });
 
         document.getElementById('clearBtn').addEventListener('click', () => {
@@ -2087,6 +2325,7 @@ class PipelineEditorProvider {
                 activities.push(activity);
                 draw();
             } else if (message.type === 'loadPipeline') {
+                currentFilePath = message.filePath || null; // Store the file path
                 loadPipelineFromJson(message.data);
             }
         });
@@ -2101,8 +2340,10 @@ class PipelineEditorProvider {
                 // Extract activities from Synapse format
                 const pipelineActivities = pipelineJson.properties?.activities || pipelineJson.activities || [];
                 
-                // Create activities
+                // Create activities first
                 const canvasWrapper = document.getElementById('canvasWrapper');
+                const activityMap = new Map();
+                
                 pipelineActivities.forEach((activityData, index) => {
                     const x = 100 + (index % 5) * 200;
                     const y = 100 + Math.floor(index / 5) * 150;
@@ -2120,12 +2361,125 @@ class PipelineEditorProvider {
                         activity.secureInput = activityData.policy.secureInput;
                     }
                     
+                    // Load state (for Copy activity)
+                    if (activityData.state) {
+                        activity.state = activityData.state;
+                    }
+                    if (activityData.onInactiveMarkAs) {
+                        activity.onInactiveMarkAs = activityData.onInactiveMarkAs;
+                    }
+                    
                     activity.userProperties = activityData.userProperties || [];
                     
+                    // Load inputs/outputs (for Copy activity)
+                    if (activityData.inputs) {
+                        activity.inputs = activityData.inputs;
+                    }
+                    if (activityData.outputs) {
+                        activity.outputs = activityData.outputs;
+                    }
+                    
                     // Copy all typeProperties to activity object
-                    Object.assign(activity, activityData.typeProperties || {});
+                    if (activityData.typeProperties) {
+                        // Handle special case: conf object for Spark settings
+                        if (activityData.typeProperties.conf) {
+                            const conf = activityData.typeProperties.conf;
+                            if (conf['spark.dynamicAllocation.enabled'] !== undefined) {
+                                activity.dynamicAllocation = conf['spark.dynamicAllocation.enabled'];
+                            }
+                            if (conf['spark.dynamicAllocation.minExecutors'] !== undefined) {
+                                activity.minExecutors = conf['spark.dynamicAllocation.minExecutors'];
+                            }
+                            if (conf['spark.dynamicAllocation.maxExecutors'] !== undefined) {
+                                activity.maxExecutors = conf['spark.dynamicAllocation.maxExecutors'];
+                            }
+                            // Don't copy the raw conf object
+                            delete activityData.typeProperties.conf;
+                        }
+                        
+                        // Handle Copy activity source/sink nested structures
+                        if (activityData.type === 'Copy') {
+                            const tp = activityData.typeProperties;
+                            
+                            // Parse inputs (source dataset)
+                            if (activityData.inputs && activityData.inputs.length > 0) {
+                                if (typeof activityData.inputs[0] === 'object' && activityData.inputs[0].referenceName) {
+                                    activity.sourceDataset = activityData.inputs[0].referenceName;
+                                } else {
+                                    activity.sourceDataset = activityData.inputs[0];
+                                }
+                            }
+                            
+                            // Parse outputs (sink dataset)
+                            if (activityData.outputs && activityData.outputs.length > 0) {
+                                if (typeof activityData.outputs[0] === 'object' && activityData.outputs[0].referenceName) {
+                                    activity.sinkDataset = activityData.outputs[0].referenceName;
+                                } else {
+                                    activity.sinkDataset = activityData.outputs[0];
+                                }
+                            }
+                            
+                            // Flatten source properties
+                            if (tp.source) {
+                                // Store the full source object for saving later
+                                activity._sourceObject = tp.source;
+                                
+                                // Flatten storeSettings
+                                if (tp.source.storeSettings) {
+                                    const store = tp.source.storeSettings;
+                                    activity.recursive = store.recursive;
+                                    activity.wildcardFolderPath = store.wildcardFolderPath;
+                                    activity.wildcardFileName = store.wildcardFileName;
+                                    activity.enablePartitionDiscovery = store.enablePartitionDiscovery;
+                                }
+                            }
+                            
+                            // Flatten sink properties
+                            if (tp.sink) {
+                                // Store the full sink object for saving later
+                                activity._sinkObject = tp.sink;
+                                
+                                activity.writeBatchSize = tp.sink.writeBatchSize;
+                                activity.writeBatchTimeout = tp.sink.writeBatchTimeout;
+                                activity.preCopyScript = tp.sink.preCopyScript;
+                                activity.maxConcurrentConnections = tp.sink.maxConcurrentConnections;
+                                activity.writeBehavior = tp.sink.writeBehavior;
+                                activity.sqlWriterUseTableLock = tp.sink.sqlWriterUseTableLock;
+                                activity.disableMetricsCollection = tp.sink.disableMetricsCollection;
+                            }
+                            
+                            // Copy other typeProperties
+                            activity.enableStaging = tp.enableStaging;
+                            activity.stagingSettings = tp.stagingSettings;
+                            activity.parallelCopies = tp.parallelCopies;
+                            activity.enableSkipIncompatibleRow = tp.enableSkipIncompatibleRow;
+                            activity.logSettings = tp.logSettings;
+                            activity.dataIntegrationUnits = tp.dataIntegrationUnits;
+                            activity.translator = tp.translator;
+                        } else {
+                            Object.assign(activity, activityData.typeProperties);
+                        }
+                    }
                     
                     activities.push(activity);
+                    activityMap.set(activityData.name, activity);
+                });
+                
+                // Create connections based on dependsOn
+                pipelineActivities.forEach((activityData) => {
+                    if (activityData.dependsOn && activityData.dependsOn.length > 0) {
+                        const toActivity = activityMap.get(activityData.name);
+                        if (toActivity) {
+                            activityData.dependsOn.forEach(dep => {
+                                const fromActivity = activityMap.get(dep.activity);
+                                if (fromActivity) {
+                                    const condition = dep.dependencyConditions?.[0] || 'Succeeded';
+                                    const connection = new Connection(fromActivity, toActivity, condition);
+                                    connections.push(connection);
+                                }
+                            });
+                        }
+                    }
                 });
                 
                 draw();

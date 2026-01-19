@@ -13,10 +13,10 @@
       "secureInput": { "type": "boolean", "label": "Secure input", "default": false, "section": "policy" }
     },
     "typeProperties": {
-      "notebook": { "type": "text", "label": "Notebook", "required": true, "placeholder": "Enter notebook name" },
+      "notebook": { "type": "reference", "label": "Notebook", "required": true, "placeholder": "Select notebook" },
       "parameters": { "type": "keyvalue", "label": "Base parameters", "valueTypes": ["string", "int", "float", "bool"] },
       "snapshot": { "type": "boolean", "label": "Snapshot", "default": true },
-      "sparkPool": { "type": "text", "label": "Spark pool", "default": "defaultSparkPool", "readonly": true },
+      "sparkPool": { "type": "reference", "label": "Spark pool", "placeholder": "Select Spark pool" },
       "executorSize": { "type": "select", "label": "Executor size", "options": ["Small", "Medium", "Large", "XLarge", "XXLarge"], "default": "Small" },
       "driverSize": { "type": "select", "label": "Driver size", "options": ["Small", "Medium", "Large", "XLarge", "XXLarge"], "default": "Small" },
       "dynamicAllocation": { "type": "boolean", "label": "Dynamically allocate executors", "default": false },
@@ -31,6 +31,8 @@
     "commonProperties": {
       "name": { "type": "string", "label": "Name", "required": true },
       "description": { "type": "string", "label": "Description", "multiline": true },
+      "sourceDataset": { "type": "reference", "label": "Source dataset", "required": true },
+      "sinkDataset": { "type": "reference", "label": "Sink dataset", "required": true },
       "state": { "type": "select", "label": "State", "options": ["Active", "Inactive"], "default": "Active" },
       "onInactiveMarkAs": { "type": "select", "label": "On inactive mark as", "options": ["Succeeded", "Failed", "Skipped"], "default": "Succeeded" },
       "timeout": { "type": "string", "label": "Timeout", "default": "0.12:00:00", "section": "policy" },
@@ -40,14 +42,12 @@
       "secureInput": { "type": "boolean", "label": "Secure input", "default": false, "section": "policy" }
     },
     "sourceProperties": {
-      "type": { "type": "select", "label": "Source type", "options": ["DelimitedTextSource", "AzureSqlSource", "BlobSource"], "required": true },
       "recursive": { "type": "boolean", "label": "Recursive", "default": true },
       "wildcardFolderPath": { "type": "text", "label": "Wildcard folder path" },
       "wildcardFileName": { "type": "text", "label": "Wildcard file name" },
       "enablePartitionDiscovery": { "type": "boolean", "label": "Enable partition discovery", "default": false }
     },
     "sinkProperties": {
-      "type": { "type": "select", "label": "Sink type", "options": ["AzureSqlSink", "DelimitedTextSink", "BlobSink"], "required": true },
       "writeBatchSize": { "type": "number", "label": "Write batch size", "default": 10000 },
       "writeBatchTimeout": { "type": "text", "label": "Write batch timeout", "default": "00:30:00" },
       "preCopyScript": { "type": "text", "label": "Pre-copy script", "multiline": true },

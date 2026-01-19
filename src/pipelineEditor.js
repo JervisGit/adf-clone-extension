@@ -188,7 +188,8 @@ class PipelineEditorProvider {
 						const commonProps = ['id', 'type', 'x', 'y', 'width', 'height', 'name', 'description', 'color', 'container', 'element', 
 											 'timeout', 'retry', 'retryIntervalInSeconds', 'secureOutput', 'secureInput', 'userProperties', 'state', 'onInactiveMarkAs',
 											 'dynamicAllocation', 'minExecutors', 'maxExecutors', 'dependsOn',
-											 'sourceDataset', 'sinkDataset', 'recursive', 'wildcardFolderPath', 'wildcardFileName', 'enablePartitionDiscovery',
+											 'sourceDataset', 'sinkDataset', 'recursive', 'modifiedDatetimeStart', 'modifiedDatetimeEnd',
+											 'wildcardFolderPath', 'wildcardFileName', 'enablePartitionDiscovery',
 											 'writeBatchSize', 'writeBatchTimeout', 'preCopyScript', 'maxConcurrentConnections', 'writeBehavior', 
 											 'sqlWriterUseTableLock', 'disableMetricsCollection', '_sourceObject', '_sinkObject'];
 						
@@ -1823,6 +1824,18 @@ class PipelineEditorProvider {
                         });
                         fieldHtml += \`</select>\`;
                         break;
+                    case 'radio':
+                        fieldHtml += \`<div style="display: flex; gap: 16px; flex: 1; align-items: center;">\`;
+                        prop.options.forEach(opt => {
+                            const checked = opt === value ? 'checked' : '';
+                            const displayName = opt === 'storedProcedure' ? 'Stored procedure' : opt.charAt(0).toUpperCase() + opt.slice(1);
+                            fieldHtml += \`<label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">\`;
+                            fieldHtml += \`<input type="radio" name="\${key}" data-key="\${key}" value="\${opt}" \${checked} style="margin: 0;">\`;
+                            fieldHtml += \`<span>\${displayName}</span>\`;
+                            fieldHtml += \`</label>\`;
+                        });
+                        fieldHtml += \`</div>\`;
+                        break;
                     case 'keyvalue':
                         fieldHtml += \`<div style="flex: 1;"><div style="font-size: 11px; color: var(--vscode-descriptionForeground); margin-bottom: 8px;">Key-value pairs</div>\`;
                         fieldHtml += \`<button class="add-kv-btn" data-key="\${key}" style="padding: 4px 8px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; font-size: 11px; margin-bottom: 8px;">+ Add</button>\`;
@@ -2027,6 +2040,17 @@ class PipelineEditorProvider {
                 }
             });
             
+            // Add event listeners for radio buttons
+            document.querySelectorAll('#configContent input[type="radio"]').forEach(radio => {
+                radio.addEventListener('change', (e) => {
+                    if (e.target.checked) {
+                        const key = e.target.getAttribute('data-key');
+                        activity[key] = e.target.value;
+                        console.log('Updated ' + key + ':', activity[key]);
+                    }
+                });
+            });
+            
             // Add event listeners for keyvalue add buttons
             document.querySelectorAll('.add-kv-btn').forEach(btn => {
                 btn.addEventListener('click', (e) => {
@@ -2184,7 +2208,8 @@ class PipelineEditorProvider {
                     const commonProps = ['id', 'type', 'x', 'y', 'width', 'height', 'name', 'description', 'color', 'container', 'element', 
                                          'timeout', 'retry', 'retryIntervalInSeconds', 'secureOutput', 'secureInput', 'userProperties', 'state', 'onInactiveMarkAs',
                                          'dynamicAllocation', 'minExecutors', 'maxExecutors', 'dependsOn', 'policy',
-                                         'sourceDataset', 'sinkDataset', 'recursive', 'wildcardFolderPath', 'wildcardFileName', 'enablePartitionDiscovery',
+                                         'sourceDataset', 'sinkDataset', 'recursive', 'modifiedDatetimeStart', 'modifiedDatetimeEnd',
+                                         'wildcardFolderPath', 'wildcardFileName', 'enablePartitionDiscovery',
                                          'writeBatchSize', 'writeBatchTimeout', 'preCopyScript', 'maxConcurrentConnections', 'writeBehavior', 
                                          'sqlWriterUseTableLock', 'disableMetricsCollection', '_sourceObject', '_sinkObject'];
                     
@@ -2224,6 +2249,8 @@ class PipelineEditorProvider {
                             if (a.sourceType) typeProperties.source.type = a.sourceType;
                             if (typeProperties.source.storeSettings) {
                                 if (a.recursive !== undefined) typeProperties.source.storeSettings.recursive = a.recursive;
+                                if (a.modifiedDatetimeStart !== undefined) typeProperties.source.storeSettings.modifiedDatetimeStart = a.modifiedDatetimeStart;
+                                if (a.modifiedDatetimeEnd !== undefined) typeProperties.source.storeSettings.modifiedDatetimeEnd = a.modifiedDatetimeEnd;
                                 if (a.wildcardFolderPath !== undefined) typeProperties.source.storeSettings.wildcardFolderPath = a.wildcardFolderPath;
                                 if (a.wildcardFileName !== undefined) typeProperties.source.storeSettings.wildcardFileName = a.wildcardFileName;
                                 if (a.enablePartitionDiscovery !== undefined) typeProperties.source.storeSettings.enablePartitionDiscovery = a.enablePartitionDiscovery;
@@ -2401,6 +2428,10 @@ class PipelineEditorProvider {
                         if (activityData.type === 'Copy') {
                             const tp = activityData.typeProperties;
                             
+                            console.log('[Load] Copy activity detected:', activityData.name);
+                            console.log('[Load] inputs:', activityData.inputs);
+                            console.log('[Load] outputs:', activityData.outputs);
+                            
                             // Parse inputs (source dataset)
                             if (activityData.inputs && activityData.inputs.length > 0) {
                                 if (typeof activityData.inputs[0] === 'object' && activityData.inputs[0].referenceName) {
@@ -2408,6 +2439,9 @@ class PipelineEditorProvider {
                                 } else {
                                     activity.sourceDataset = activityData.inputs[0];
                                 }
+                                console.log('[Load] Set sourceDataset to:', activity.sourceDataset);
+                            } else {
+                                console.log('[Load] No inputs found for Copy activity');
                             }
                             
                             // Parse outputs (sink dataset)
@@ -2417,6 +2451,9 @@ class PipelineEditorProvider {
                                 } else {
                                     activity.sinkDataset = activityData.outputs[0];
                                 }
+                                console.log('[Load] Set sinkDataset to:', activity.sinkDataset);
+                            } else {
+                                console.log('[Load] No outputs found for Copy activity');
                             }
                             
                             // Flatten source properties
@@ -2428,6 +2465,8 @@ class PipelineEditorProvider {
                                 if (tp.source.storeSettings) {
                                     const store = tp.source.storeSettings;
                                     activity.recursive = store.recursive;
+                                    activity.modifiedDatetimeStart = store.modifiedDatetimeStart;
+                                    activity.modifiedDatetimeEnd = store.modifiedDatetimeEnd;
                                     activity.wildcardFolderPath = store.wildcardFolderPath;
                                     activity.wildcardFileName = store.wildcardFileName;
                                     activity.enablePartitionDiscovery = store.enablePartitionDiscovery;

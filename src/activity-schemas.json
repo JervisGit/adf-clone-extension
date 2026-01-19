@@ -31,36 +31,37 @@
     "commonProperties": {
       "name": { "type": "string", "label": "Name", "required": true },
       "description": { "type": "string", "label": "Description", "multiline": true },
-      "sourceDataset": { "type": "reference", "label": "Source dataset", "required": true },
-      "sinkDataset": { "type": "reference", "label": "Sink dataset", "required": true },
-      "state": { "type": "select", "label": "State", "options": ["Active", "Inactive"], "default": "Active" },
-      "onInactiveMarkAs": { "type": "select", "label": "On inactive mark as", "options": ["Succeeded", "Failed", "Skipped"], "default": "Succeeded" },
+      "state": { "type": "select", "label": "Activity state", "options": ["Active", "Inactive"], "default": "Active" },
+      "onInactiveMarkAs": { "type": "select", "label": "Mark activity as", "options": ["Succeeded", "Failed", "Skipped"], "default": "Succeeded" },
       "timeout": { "type": "string", "label": "Timeout", "default": "0.12:00:00", "section": "policy" },
       "retry": { "type": "number", "label": "Retry", "default": 0, "section": "policy" },
-      "retryIntervalInSeconds": { "type": "number", "label": "Retry interval (seconds)", "default": 30, "section": "policy" },
+      "retryIntervalInSeconds": { "type": "number", "label": "Retry interval (sec)", "default": 30, "section": "policy" },
       "secureOutput": { "type": "boolean", "label": "Secure output", "default": false, "section": "policy" },
       "secureInput": { "type": "boolean", "label": "Secure input", "default": false, "section": "policy" }
     },
     "sourceProperties": {
-      "recursive": { "type": "boolean", "label": "Recursive", "default": true },
+      "sourceDataset": { "type": "reference", "label": "Source dataset", "required": true },
+      "recursive": { "type": "boolean", "label": "Recursively", "default": true },
+      "modifiedDatetimeStart": { "type": "text", "label": "Start time (UTC)", "placeholder": "1/18/2026, 12:00:00 AM" },
+      "modifiedDatetimeEnd": { "type": "text", "label": "End time (UTC)", "placeholder": "1/21/2026, 12:00:00 AM" },
       "wildcardFolderPath": { "type": "text", "label": "Wildcard folder path" },
       "wildcardFileName": { "type": "text", "label": "Wildcard file name" },
-      "enablePartitionDiscovery": { "type": "boolean", "label": "Enable partition discovery", "default": false }
+      "enablePartitionDiscovery": { "type": "boolean", "label": "Enable partitions discovery", "default": false }
     },
     "sinkProperties": {
-      "writeBatchSize": { "type": "number", "label": "Write batch size", "default": 10000 },
-      "writeBatchTimeout": { "type": "text", "label": "Write batch timeout", "default": "00:30:00" },
+      "sinkDataset": { "type": "reference", "label": "Sink dataset", "required": true },
+      "writeBehavior": { "type": "radio", "label": "Write behavior", "options": ["insert", "upsert", "storedProcedure"], "default": "insert" },
+      "sqlWriterUseTableLock": { "type": "boolean", "label": "Bulk insert table lock", "default": false },
       "preCopyScript": { "type": "text", "label": "Pre-copy script", "multiline": true },
+      "writeBatchTimeout": { "type": "text", "label": "Write batch timeout", "default": "00:30:00" },
+      "writeBatchSize": { "type": "number", "label": "Write batch size", "default": 10000 },
       "maxConcurrentConnections": { "type": "number", "label": "Max concurrent connections" },
-      "writeBehavior": { "type": "select", "label": "Write behavior", "options": ["insert", "upsert"], "default": "insert" },
-      "sqlWriterUseTableLock": { "type": "boolean", "label": "Use table lock", "default": false },
-      "disableMetricsCollection": { "type": "boolean", "label": "Disable metrics collection", "default": false }
+      "disableMetricsCollection": { "type": "boolean", "label": "Disable performance metrics analytics", "default": false }
     },
     "typeProperties": {
-      "enableStaging": { "type": "boolean", "label": "Enable staging", "default": false },
-      "parallelCopies": { "type": "number", "label": "Parallel copies", "min": 1 },
-      "enableSkipIncompatibleRow": { "type": "boolean", "label": "Enable skip incompatible row", "default": false },
-      "dataIntegrationUnits": { "type": "number", "label": "Data integration units", "default": 4, "min": 2, "max": 256 }
+      "dataIntegrationUnits": { "type": "number", "label": "Maximum data integration unit", "default": 4, "min": 2, "max": 256 },
+      "parallelCopies": { "type": "number", "label": "Degree of copy parallelism", "min": 1 },
+      "enableSkipIncompatibleRow": { "type": "boolean", "label": "Fault tolerance - Skip incompatible rows", "default": false }
     }
   },
   "SparkJob": {

@@ -1,6 +1,7 @@
 ﻿const vscode = require('vscode');
 const activitiesConfig = require('./activities-config-verified.json');
 const activitySchemas = require('./activity-schemas.json');
+const datasetSchemas = require('./dataset-schemas.json');
 
 class PipelineEditorProvider {
 	static panels = new Map(); // Map<filePath, panel>
@@ -47,6 +48,39 @@ class PipelineEditorProvider {
 
 		// Set the webview's initial html content
 		panel.webview.html = this.getHtmlContent(panel.webview);
+
+		// Send dataset schemas and list to webview after a short delay to ensure it's loaded
+		setImmediate(() => {
+			const fs = require('fs');
+			const path = require('path');
+			let datasetList = [];
+			let datasetContents = {};
+			
+			if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
+				const datasetPath = path.join(vscode.workspace.workspaceFolders[0].uri.fsPath, 'dataset');
+				if (fs.existsSync(datasetPath)) {
+					const files = fs.readdirSync(datasetPath).filter(f => f.endsWith('.json'));
+					files.forEach(file => {
+						const name = file.replace('.json', '');
+						datasetList.push(name);
+						try {
+							const filePath = path.join(datasetPath, file);
+							const content = fs.readFileSync(filePath, 'utf8');
+							datasetContents[name] = JSON.parse(content);
+						} catch (err) {
+							console.error(`Error reading dataset ${file}:`, err);
+						}
+					});
+				}
+			}
+			
+			panel.webview.postMessage({
+				type: 'initSchemas',
+				datasetSchemas: datasetSchemas,
+				datasetList: datasetList,
+				datasetContents: datasetContents
+			});
+		});
 
 		// Handle messages from the webview
 		panel.webview.onDidReceiveMessage(
@@ -221,35 +255,58 @@ class PipelineEditorProvider {
 							console.log('[Extension] Source dataset:', a.sourceDataset);
 							console.log('[Extension] Sink dataset:', a.sinkDataset);
 							
-							// Reconstruct source object
+							// Reconstruct source object or create default based on dataset type
 							if (a._sourceObject) {
 								typeProperties.source = JSON.parse(JSON.stringify(a._sourceObject));
-								console.log('[Extension] Restored _sourceObject:', typeProperties.source);
-								// Update with any changed values
-								if (typeProperties.source.storeSettings) {
-									if (a.recursive !== undefined) typeProperties.source.storeSettings.recursive = a.recursive;
-									if (a.wildcardFolderPath !== undefined) typeProperties.source.storeSettings.wildcardFolderPath = a.wildcardFolderPath;
-									if (a.wildcardFileName !== undefined) typeProperties.source.storeSettings.wildcardFileName = a.wildcardFileName;
-									if (a.enablePartitionDiscovery !== undefined) typeProperties.source.storeSettings.enablePartitionDiscovery = a.enablePartitionDiscovery;
-								}
+							} else if (a._sourceDatasetType) {
+								// Create basic source structure based on dataset type
+								typeProperties.source = {
+									type: a._sourceDatasetType + 'Source',
+									storeSettings: {
+										type: a._sourceDatasetType.includes('Sql') ? 'AzureSqlDatabaseReadSettings' : 'AzureBlobStorageReadSettings'
+									}
+								};
 							}
 							
-							// Reconstruct sink object
+							// Update with any changed values
+							if (typeProperties.source) {
+								console.log('[Extension] Updating source with field values');
+								if (!typeProperties.source.storeSettings) typeProperties.source.storeSettings = {};
+								
+								if (a.recursive !== undefined) typeProperties.source.storeSettings.recursive = a.recursive;
+								if (a.modifiedDatetimeStart !== undefined && a.modifiedDatetimeStart !== '') typeProperties.source.storeSettings.modifiedDatetimeStart = a.modifiedDatetimeStart;
+								if (a.modifiedDatetimeEnd !== undefined && a.modifiedDatetimeEnd !== '') typeProperties.source.storeSettings.modifiedDatetimeEnd = a.modifiedDatetimeEnd;
+								if (a.wildcardFolderPath !== undefined && a.wildcardFolderPath !== '') typeProperties.source.storeSettings.wildcardFolderPath = a.wildcardFolderPath;
+								if (a.wildcardFileName !== undefined && a.wildcardFileName !== '') typeProperties.source.storeSettings.wildcardFileName = a.wildcardFileName;
+								if (a.enablePartitionDiscovery !== undefined) typeProperties.source.storeSettings.enablePartitionDiscovery = a.enablePartitionDiscovery;
+								if (a.maxConcurrentConnections !== undefined) typeProperties.source.storeSettings.maxConcurrentConnections = a.maxConcurrentConnections;
+							}
+							
+							// Reconstruct sink object or create default based on dataset type
 							if (a._sinkObject) {
 								typeProperties.sink = JSON.parse(JSON.stringify(a._sinkObject));
-								console.log('[Extension] Restored _sinkObject:', typeProperties.sink);
-								// Update with any changed values
-								if (a.writeBatchSize !== undefined) typeProperties.sink.writeBatchSize = a.writeBatchSize;
-								if (a.writeBatchTimeout !== undefined) typeProperties.sink.writeBatchTimeout = a.writeBatchTimeout;
-								if (a.preCopyScript !== undefined) typeProperties.sink.preCopyScript = a.preCopyScript;
+							} else if (a._sinkDatasetType) {
+								// Create basic sink structure based on dataset type
+								typeProperties.sink = {
+									type: a._sinkDatasetType + 'Sink',
+									writeBehavior: 'insert'
+								};
+							}
+							
+							// Update with any changed values
+							if (typeProperties.sink) {
+								console.log('[Extension] Updating sink with field values');
+								if (a.writeBatchSize !== undefined && a.writeBatchSize !== '') typeProperties.sink.writeBatchSize = a.writeBatchSize;
+								if (a.writeBatchTimeout !== undefined && a.writeBatchTimeout !== '') typeProperties.sink.writeBatchTimeout = a.writeBatchTimeout;
+								if (a.preCopyScript !== undefined && a.preCopyScript !== '') typeProperties.sink.preCopyScript = a.preCopyScript;
 								if (a.maxConcurrentConnections !== undefined) typeProperties.sink.maxConcurrentConnections = a.maxConcurrentConnections;
-								if (a.writeBehavior !== undefined) typeProperties.sink.writeBehavior = a.writeBehavior;
+								if (a.writeBehavior !== undefined && a.writeBehavior !== '') typeProperties.sink.writeBehavior = a.writeBehavior;
 								if (a.sqlWriterUseTableLock !== undefined) typeProperties.sink.sqlWriterUseTableLock = a.sqlWriterUseTableLock;
 								if (a.disableMetricsCollection !== undefined) typeProperties.sink.disableMetricsCollection = a.disableMetricsCollection;
 								console.log('[Extension] Reconstructed sink:', typeProperties.sink);
 							}
 							
-							// Add inputs/outputs for Copy activity
+							// Add inputs/outputs for Copy activity (at activity level, not typeProperties)
 							if (a.sourceDataset) {
 								activity.inputs = [{
 									referenceName: a.sourceDataset,
@@ -1026,6 +1083,11 @@ class PipelineEditorProvider {
         console.log('=== Pipeline Editor Script Starting ===');
         const vscode = acquireVsCodeApi();
         console.log('vscode API acquired');
+        
+        // Dataset schemas and list will be sent via message
+        let datasetSchemas = {};
+        let datasetList = [];
+        let datasetContents = {};
         
         // Toggle properties panel
         function toggleProperties() {
@@ -1841,6 +1903,17 @@ class PipelineEditorProvider {
                         fieldHtml += \`<button class="add-kv-btn" data-key="\${key}" style="padding: 4px 8px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; font-size: 11px; margin-bottom: 8px;">+ Add</button>\`;
                         fieldHtml += \`<div class="kv-list" data-key="\${key}"></div></div>\`;
                         break;
+                    case 'dataset':
+                        fieldHtml += \`<select class="property-input dataset-select" data-key="\${key}">\`;
+                        fieldHtml += \`<option value="">Select dataset...</option>\`;
+                        if (datasetList && datasetList.length > 0) {
+                            datasetList.forEach(ds => {
+                                const selected = ds === value ? 'selected' : '';
+                                fieldHtml += \`<option value="\${ds}" \${selected}>\${ds}</option>\`;
+                            });
+                        }
+                        fieldHtml += \`</select>\`;
+                        break;
                     case 'reference':
                         fieldHtml += \`<div style="display: flex; gap: 8px; flex: 1;">\`;
                         fieldHtml += \`<input type="text" class="property-input" data-key="\${key}" value="\${value}" placeholder="Select \${prop.label}..." readonly>\`;
@@ -1901,6 +1974,20 @@ class PipelineEditorProvider {
                 for (const [key, prop] of Object.entries(schema.sourceProperties)) {
                     sourceContent += generateFormField(key, prop, activity);
                 }
+                
+                // If sourceDataset is selected, dynamically load dataset-specific fields
+                if (activity.sourceDataset && activity._sourceDatasetType) {
+                    const datasetType = activity._sourceDatasetType;
+                    console.log('Adding source fields for dataset type:', datasetType);
+                    if (datasetSchemas[datasetType] && datasetSchemas[datasetType].sourceFields) {
+                        sourceContent += '<div style="border-top: 1px solid var(--vscode-panel-border); margin: 16px 0; padding-top: 16px;"></div>';
+                        sourceContent += '<div style="font-size: 13px; font-weight: bold; color: var(--vscode-foreground); margin-bottom: 12px;">Source Settings (' + datasetSchemas[datasetType].name + ')</div>';
+                        for (const [key, prop] of Object.entries(datasetSchemas[datasetType].sourceFields)) {
+                            sourceContent += generateFormField(key, prop, activity);
+                        }
+                        console.log('Added', Object.keys(datasetSchemas[datasetType].sourceFields).length, 'source fields');
+                    }
+                }
             }
             
             // Build Sink tab content
@@ -1908,6 +1995,20 @@ class PipelineEditorProvider {
             if (schema && schema.sinkProperties) {
                 for (const [key, prop] of Object.entries(schema.sinkProperties)) {
                     sinkContent += generateFormField(key, prop, activity);
+                }
+                
+                // If sinkDataset is selected, dynamically load dataset-specific fields
+                if (activity.sinkDataset && activity._sinkDatasetType) {
+                    const datasetType = activity._sinkDatasetType;
+                    console.log('Adding sink fields for dataset type:', datasetType);
+                    if (datasetSchemas[datasetType] && datasetSchemas[datasetType].sinkFields) {
+                        sinkContent += '<div style="border-top: 1px solid var(--vscode-panel-border); margin: 16px 0; padding-top: 16px;"></div>';
+                        sinkContent += '<div style="font-size: 13px; font-weight: bold; color: var(--vscode-foreground); margin-bottom: 12px;">Sink Settings (' + datasetSchemas[datasetType].name + ')</div>';
+                        for (const [key, prop] of Object.entries(datasetSchemas[datasetType].sinkFields)) {
+                            sinkContent += generateFormField(key, prop, activity);
+                        }
+                        console.log('Added', Object.keys(datasetSchemas[datasetType].sinkFields).length, 'sink fields');
+                    }
                 }
             }
             
@@ -2038,6 +2139,33 @@ class PipelineEditorProvider {
                         console.log('Updated ' + key + ':', activity[key]);
                     });
                 }
+            });
+            
+            // Add event listeners for dataset dropdowns to trigger dynamic field loading
+            document.querySelectorAll('#configContent .dataset-select').forEach(select => {
+                select.addEventListener('change', (e) => {
+                    const key = select.getAttribute('data-key');
+                    const datasetName = e.target.value;
+                    activity[key] = datasetName;
+                    console.log('Updated ' + key + ':', activity[key]);
+                    
+                    // Get dataset type and store it
+                    if (datasetName && datasetContents[datasetName]) {
+                        const datasetType = datasetContents[datasetName].properties?.type;
+                        console.log('Dataset selected:', datasetName, 'Type:', datasetType);
+                        
+                        // Store dataset type in activity for later use
+                        if (key === 'sourceDataset') {
+                            activity._sourceDatasetType = datasetType;
+                        } else if (key === 'sinkDataset') {
+                            activity._sinkDatasetType = datasetType;
+                        }
+                        
+                        // Re-render the current tab to show dataset-specific fields
+                        const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                        showProperties(activity, activeTab);
+                    }
+                });
             });
             
             // Add event listeners for radio buttons
@@ -2346,7 +2474,14 @@ class PipelineEditorProvider {
         window.addEventListener('message', event => {
             const message = event.data;
             
-            if (message.type === 'addActivity') {
+            if (message.type === 'initSchemas') {
+                datasetSchemas = message.datasetSchemas;
+                datasetList = message.datasetList || [];
+                datasetContents = message.datasetContents || {};
+                console.log('Dataset schemas loaded:', Object.keys(datasetSchemas));
+                console.log('Dataset list loaded:', datasetList);
+                console.log('Dataset contents loaded:', Object.keys(datasetContents).length, 'datasets');
+            } else if (message.type === 'addActivity') {
                 const canvasWrapper = document.getElementById('canvasWrapper');
                 const activity = new Activity(message.activityType, 100, 100, canvasWrapper);
                 activities.push(activity);
@@ -2440,6 +2575,12 @@ class PipelineEditorProvider {
                                     activity.sourceDataset = activityData.inputs[0];
                                 }
                                 console.log('[Load] Set sourceDataset to:', activity.sourceDataset);
+                                
+                                // Get dataset type from loaded contents
+                                if (activity.sourceDataset && datasetContents[activity.sourceDataset]) {
+                                    activity._sourceDatasetType = datasetContents[activity.sourceDataset].properties?.type;
+                                    console.log('[Load] Source dataset type:', activity._sourceDatasetType);
+                                }
                             } else {
                                 console.log('[Load] No inputs found for Copy activity');
                             }
@@ -2452,6 +2593,12 @@ class PipelineEditorProvider {
                                     activity.sinkDataset = activityData.outputs[0];
                                 }
                                 console.log('[Load] Set sinkDataset to:', activity.sinkDataset);
+                                
+                                // Get dataset type from loaded contents
+                                if (activity.sinkDataset && datasetContents[activity.sinkDataset]) {
+                                    activity._sinkDatasetType = datasetContents[activity.sinkDataset].properties?.type;
+                                    console.log('[Load] Sink dataset type:', activity._sinkDatasetType);
+                                }
                             } else {
                                 console.log('[Load] No outputs found for Copy activity');
                             }
@@ -2540,4 +2687,3 @@ class PipelineEditorProvider {
 module.exports = {
 	PipelineEditorProvider
 };
-

@@ -1,0 +1,112 @@
+{
+  "AzureSqlTable": {
+    "name": "Azure SQL Database Table",
+    "sourceFields": {
+      "sqlReaderQuery": { "type": "text", "label": "Query", "multiline": true, "placeholder": "SELECT * FROM table" },
+      "sqlReaderStoredProcedureName": { "type": "text", "label": "Stored procedure name" },
+      "isolationLevel": { "type": "select", "label": "Isolation level", "options": ["None", "ReadCommitted", "ReadUncommitted", "RepeatableRead", "Serializable", "Snapshot"], "default": "ReadCommitted" },
+      "partitionOption": { "type": "select", "label": "Partition option", "options": ["None", "PhysicalPartitionsOfTable", "DynamicRange"], "default": "None" }
+    },
+    "sinkFields": {
+      "writeBehavior": { "type": "radio", "label": "Write behavior", "options": ["insert", "upsert", "storedProcedure"], "default": "insert" },
+      "tableOption": { "type": "radio", "label": "Table option", "options": ["useExisting", "autoCreate"], "default": "useExisting" },
+      "sqlWriterUseTableLock": { "type": "boolean", "label": "Bulk insert table lock", "default": false },
+      "preCopyScript": { "type": "text", "label": "Pre-copy script", "multiline": true },
+      "writeBatchSize": { "type": "number", "label": "Write batch size", "default": 10000 },
+      "writeBatchTimeout": { "type": "text", "label": "Write batch timeout", "default": "00:30:00" },
+      "maxConcurrentConnections": { "type": "number", "label": "Max concurrent connections" },
+      "disableMetricsCollection": { "type": "boolean", "label": "Disable performance metrics analytics", "default": false }
+    }
+  },
+  "DelimitedText": {
+    "name": "Delimited Text (CSV/TSV)",
+    "sourceFields": {
+      "filePathType": { "type": "radio", "label": "File path type", "options": ["filePathInDataset", "wildcardFilePath", "listOfFiles"], "default": "wildcardFilePath" },
+      "recursive": { "type": "boolean", "label": "Recursively", "default": true },
+      "modifiedDatetimeStart": { "type": "text", "label": "Start time (UTC)", "placeholder": "1/18/2026, 12:00:00 AM" },
+      "modifiedDatetimeEnd": { "type": "text", "label": "End time (UTC)", "placeholder": "1/21/2026, 12:00:00 AM" },
+      "wildcardFolderPath": { "type": "text", "label": "Wildcard folder path" },
+      "wildcardFileName": { "type": "text", "label": "Wildcard file name", "default": "*" },
+      "enablePartitionDiscovery": { "type": "boolean", "label": "Enable partitions discovery", "default": false },
+      "maxConcurrentConnections": { "type": "number", "label": "Max concurrent connections" },
+      "deleteFilesAfterCompletion": { "type": "boolean", "label": "Delete files after completion", "default": false }
+    },
+    "sinkFields": {
+      "copyBehavior": { "type": "select", "label": "Copy behavior", "options": ["None", "PreserveHierarchy", "FlattenHierarchy", "MergeFiles"], "default": "None" },
+      "fileExtension": { "type": "text", "label": "File extension", "default": ".csv" },
+      "maxConcurrentConnections": { "type": "number", "label": "Max concurrent connections" },
+      "blockSizeInMB": { "type": "number", "label": "Block size in MB" },
+      "disableMetricsCollection": { "type": "boolean", "label": "Disable performance metrics analytics", "default": false }
+    }
+  },
+  "Parquet": {
+    "name": "Parquet",
+    "sourceFields": {
+      "filePathType": { "type": "radio", "label": "File path type", "options": ["filePathInDataset", "wildcardFilePath", "listOfFiles"], "default": "wildcardFilePath" },
+      "recursive": { "type": "boolean", "label": "Recursively", "default": true },
+      "modifiedDatetimeStart": { "type": "text", "label": "Start time (UTC)", "placeholder": "1/18/2026, 12:00:00 AM" },
+      "modifiedDatetimeEnd": { "type": "text", "label": "End time (UTC)", "placeholder": "1/21/2026, 12:00:00 AM" },
+      "wildcardFolderPath": { "type": "text", "label": "Wildcard folder path" },
+      "wildcardFileName": { "type": "text", "label": "Wildcard file name", "default": "*.parquet" },
+      "enablePartitionDiscovery": { "type": "boolean", "label": "Enable partitions discovery", "default": false },
+      "maxConcurrentConnections": { "type": "number", "label": "Max concurrent connections" },
+      "deleteFilesAfterCompletion": { "type": "boolean", "label": "Delete files after completion", "default": false }
+    },
+    "sinkFields": {
+      "copyBehavior": { "type": "select", "label": "Copy behavior", "options": ["None", "PreserveHierarchy", "FlattenHierarchy", "MergeFiles"], "default": "None" },
+      "maxConcurrentConnections": { "type": "number", "label": "Max concurrent connections" },
+      "blockSizeInMB": { "type": "number", "label": "Block size in MB" },
+      "disableMetricsCollection": { "type": "boolean", "label": "Disable performance metrics analytics", "default": false }
+    }
+  },
+  "Json": {
+    "name": "JSON",
+    "sourceFields": {
+      "filePathType": { "type": "radio", "label": "File path type", "options": ["filePathInDataset", "wildcardFilePath", "listOfFiles"], "default": "wildcardFilePath" },
+      "recursive": { "type": "boolean", "label": "Recursively", "default": true },
+      "modifiedDatetimeStart": { "type": "text", "label": "Start time (UTC)", "placeholder": "1/18/2026, 12:00:00 AM" },
+      "modifiedDatetimeEnd": { "type": "text", "label": "End time (UTC)", "placeholder": "1/21/2026, 12:00:00 AM" },
+      "wildcardFolderPath": { "type": "text", "label": "Wildcard folder path" },
+      "wildcardFileName": { "type": "text", "label": "Wildcard file name", "default": "*.json" },
+      "enablePartitionDiscovery": { "type": "boolean", "label": "Enable partitions discovery", "default": false },
+      "maxConcurrentConnections": { "type": "number", "label": "Max concurrent connections" }
+    },
+    "sinkFields": {
+      "copyBehavior": { "type": "select", "label": "Copy behavior", "options": ["None", "PreserveHierarchy", "FlattenHierarchy", "MergeFiles"], "default": "None" },
+      "filePattern": { "type": "select", "label": "File pattern", "options": ["setOfObjects", "arrayOfObjects"], "default": "setOfObjects" },
+      "maxConcurrentConnections": { "type": "number", "label": "Max concurrent connections" },
+      "blockSizeInMB": { "type": "number", "label": "Block size in MB" },
+      "disableMetricsCollection": { "type": "boolean", "label": "Disable performance metrics analytics", "default": false }
+    }
+  },
+  "Avro": {
+    "name": "Avro",
+    "sourceFields": {
+      "recursive": { "type": "boolean", "label": "Recursively", "default": true },
+      "wildcardFolderPath": { "type": "text", "label": "Wildcard folder path" },
+      "wildcardFileName": { "type": "text", "label": "Wildcard file name", "default": "*.avro" },
+      "enablePartitionDiscovery": { "type": "boolean", "label": "Enable partitions discovery", "default": false },
+      "maxConcurrentConnections": { "type": "number", "label": "Max concurrent connections" }
+    },
+    "sinkFields": {
+      "copyBehavior": { "type": "select", "label": "Copy behavior", "options": ["None", "PreserveHierarchy", "FlattenHierarchy", "MergeFiles"], "default": "None" },
+      "maxConcurrentConnections": { "type": "number", "label": "Max concurrent connections" },
+      "disableMetricsCollection": { "type": "boolean", "label": "Disable performance metrics analytics", "default": false }
+    }
+  },
+  "ORC": {
+    "name": "ORC",
+    "sourceFields": {
+      "recursive": { "type": "boolean", "label": "Recursively", "default": true },
+      "wildcardFolderPath": { "type": "text", "label": "Wildcard folder path" },
+      "wildcardFileName": { "type": "text", "label": "Wildcard file name", "default": "*.orc" },
+      "enablePartitionDiscovery": { "type": "boolean", "label": "Enable partitions discovery", "default": false },
+      "maxConcurrentConnections": { "type": "number", "label": "Max concurrent connections" }
+    },
+    "sinkFields": {
+      "copyBehavior": { "type": "select", "label": "Copy behavior", "options": ["None", "PreserveHierarchy", "FlattenHierarchy", "MergeFiles"], "default": "None" },
+      "maxConcurrentConnections": { "type": "number", "label": "Max concurrent connections" },
+      "disableMetricsCollection": { "type": "boolean", "label": "Disable performance metrics analytics", "default": false }
+    }
+  }
+}

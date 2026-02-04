@@ -10,6 +10,7 @@ module.exports = {
 			console: "readonly",
 			__dirname: "readonly",
 			__filename: "readonly",
+			setImmediate: "readonly",
 			suite: "readonly",
 			test: "readonly"
 		}

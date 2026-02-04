@@ -254,6 +254,8 @@ class PipelineEditorProvider {
 							console.log('[Extension] Copy activity - reconstructing source/sink');
 							console.log('[Extension] Source dataset:', a.sourceDataset);
 							console.log('[Extension] Sink dataset:', a.sinkDataset);
+							console.log('[Extension] Inputs from activity:', a.inputs);
+							console.log('[Extension] Outputs from activity:', a.outputs);
 							
 							// Reconstruct source object or create default based on dataset type
 							if (a._sourceObject) {
@@ -307,16 +309,19 @@ class PipelineEditorProvider {
 							}
 							
 							// Add inputs/outputs for Copy activity (at activity level, not typeProperties)
-							if (a.sourceDataset) {
+							// Check both sourceDataset property and inputs array
+							if (a.sourceDataset || (a.inputs && a.inputs.length > 0)) {
+								const sourceRef = a.sourceDataset || (a.inputs[0].referenceName || a.inputs[0]);
 								activity.inputs = [{
-									referenceName: a.sourceDataset,
+									referenceName: sourceRef,
 									type: 'DatasetReference'
 								}];
 								console.log('[Extension] Added inputs:', activity.inputs);
 							}
-							if (a.sinkDataset) {
+							if (a.sinkDataset || (a.outputs && a.outputs.length > 0)) {
+								const sinkRef = a.sinkDataset || (a.outputs[0].referenceName || a.outputs[0]);
 								activity.outputs = [{
-									referenceName: a.sinkDataset,
+									referenceName: sinkRef,
 									type: 'DatasetReference'
 								}];
 								console.log('[Extension] Added outputs:', activity.outputs);
@@ -1904,11 +1909,13 @@ class PipelineEditorProvider {
                         fieldHtml += \`<div class="kv-list" data-key="\${key}"></div></div>\`;
                         break;
                     case 'dataset':
+                        console.log('[GenerateField] Dataset field -', 'key:', key, 'value:', value, 'type:', typeof value);
                         fieldHtml += \`<select class="property-input dataset-select" data-key="\${key}">\`;
                         fieldHtml += \`<option value="">Select dataset...</option>\`;
                         if (datasetList && datasetList.length > 0) {
                             datasetList.forEach(ds => {
                                 const selected = ds === value ? 'selected' : '';
+                                if (selected) console.log('[GenerateField] Selected dataset:', ds, 'matches value:', value);
                                 fieldHtml += \`<option value="\${ds}" \${selected}>\${ds}</option>\`;
                             });
                         }
@@ -2331,6 +2338,16 @@ class PipelineEditorProvider {
                         activity.onInactiveMarkAs = a.onInactiveMarkAs;
                     }
                     
+                    // Preserve sourceDataset and sinkDataset for Copy activities
+                    if (a.type === 'Copy') {
+                        if (a.sourceDataset) activity.sourceDataset = a.sourceDataset;
+                        if (a.sinkDataset) activity.sinkDataset = a.sinkDataset;
+                        if (a._sourceDatasetType) activity._sourceDatasetType = a._sourceDatasetType;
+                        if (a._sinkDatasetType) activity._sinkDatasetType = a._sinkDatasetType;
+                        if (a._sourceObject) activity._sourceObject = a._sourceObject;
+                        if (a._sinkObject) activity._sinkObject = a._sinkObject;
+                    }
+                    
                     // Collect all typeProperties from the activity object
                     const typeProperties = {};
                     const commonProps = ['id', 'type', 'x', 'y', 'width', 'height', 'name', 'description', 'color', 'container', 'element', 
@@ -2339,7 +2356,7 @@ class PipelineEditorProvider {
                                          'sourceDataset', 'sinkDataset', 'recursive', 'modifiedDatetimeStart', 'modifiedDatetimeEnd',
                                          'wildcardFolderPath', 'wildcardFileName', 'enablePartitionDiscovery',
                                          'writeBatchSize', 'writeBatchTimeout', 'preCopyScript', 'maxConcurrentConnections', 'writeBehavior', 
-                                         'sqlWriterUseTableLock', 'disableMetricsCollection', '_sourceObject', '_sinkObject'];
+                                         'sqlWriterUseTableLock', 'disableMetricsCollection', '_sourceObject', '_sinkObject', '_sourceDatasetType', '_sinkDatasetType'];
                     
                     for (const key in a) {
                         if (!commonProps.includes(key) && a.hasOwnProperty(key) && typeof a[key] !== 'function') {
@@ -2419,14 +2436,6 @@ class PipelineEditorProvider {
                     
                     activity.typeProperties = typeProperties;
                     console.log('[Extension] Final activity object:', JSON.stringify(activity, null, 2));
-                    
-                    // Add inputs/outputs if present (for Copy activity)
-                    if (a.inputs) {
-                        activity.inputs = a.inputs;
-                    }
-                    if (a.outputs) {
-                        activity.outputs = a.outputs;
-                    }
                     
                     return activity;
                 })

@@ -1982,6 +1982,12 @@ class PipelineEditorProvider {
                     sourceContent += generateFormField(key, prop, activity);
                 }
                 
+                // Ensure _sourceDatasetType is set if we have a sourceDataset
+                if (activity.sourceDataset && !activity._sourceDatasetType && datasetContents[activity.sourceDataset]) {
+                    activity._sourceDatasetType = datasetContents[activity.sourceDataset].properties?.type;
+                    console.log('[ShowProps] Auto-detected source dataset type:', activity._sourceDatasetType);
+                }
+                
                 // If sourceDataset is selected, dynamically load dataset-specific fields
                 if (activity.sourceDataset && activity._sourceDatasetType) {
                     const datasetType = activity._sourceDatasetType;
@@ -2002,6 +2008,12 @@ class PipelineEditorProvider {
             if (schema && schema.sinkProperties) {
                 for (const [key, prop] of Object.entries(schema.sinkProperties)) {
                     sinkContent += generateFormField(key, prop, activity);
+                }
+                
+                // Ensure _sinkDatasetType is set if we have a sinkDataset
+                if (activity.sinkDataset && !activity._sinkDatasetType && datasetContents[activity.sinkDataset]) {
+                    activity._sinkDatasetType = datasetContents[activity.sinkDataset].properties?.type;
+                    console.log('[ShowProps] Auto-detected sink dataset type:', activity._sinkDatasetType);
                 }
                 
                 // If sinkDataset is selected, dynamically load dataset-specific fields
@@ -2356,7 +2368,8 @@ class PipelineEditorProvider {
                                          'sourceDataset', 'sinkDataset', 'recursive', 'modifiedDatetimeStart', 'modifiedDatetimeEnd',
                                          'wildcardFolderPath', 'wildcardFileName', 'enablePartitionDiscovery',
                                          'writeBatchSize', 'writeBatchTimeout', 'preCopyScript', 'maxConcurrentConnections', 'writeBehavior', 
-                                         'sqlWriterUseTableLock', 'disableMetricsCollection', '_sourceObject', '_sinkObject', '_sourceDatasetType', '_sinkDatasetType'];
+                                         'sqlWriterUseTableLock', 'disableMetricsCollection', '_sourceObject', '_sinkObject', '_sourceDatasetType', '_sinkDatasetType',
+                                         'typeProperties', 'inputs', 'outputs', 'source', 'sink']; // Exclude nested objects that will be reconstructed
                     
                     for (const key in a) {
                         if (!commonProps.includes(key) && a.hasOwnProperty(key) && typeof a[key] !== 'function') {
@@ -2575,6 +2588,7 @@ class PipelineEditorProvider {
                             console.log('[Load] Copy activity detected:', activityData.name);
                             console.log('[Load] inputs:', activityData.inputs);
                             console.log('[Load] outputs:', activityData.outputs);
+                            console.log('[Load] typeProperties keys:', Object.keys(tp));
                             
                             // Parse inputs (source dataset)
                             if (activityData.inputs && activityData.inputs.length > 0) {
@@ -2612,35 +2626,51 @@ class PipelineEditorProvider {
                                 console.log('[Load] No outputs found for Copy activity');
                             }
                             
+                            // Handle incorrectly nested structure (typeProperties.typeProperties)
+                            // This happens when the save created a double-nested structure
+                            let sourceObj = tp.source;
+                            let sinkObj = tp.sink;
+                            
+                            if (tp.typeProperties) {
+                                console.log('[Load] Found nested typeProperties, using deeper level');
+                                if (tp.typeProperties.source) sourceObj = tp.typeProperties.source;
+                                if (tp.typeProperties.sink) sinkObj = tp.typeProperties.sink;
+                            }
+                            
                             // Flatten source properties
-                            if (tp.source) {
+                            if (sourceObj) {
                                 // Store the full source object for saving later
-                                activity._sourceObject = tp.source;
+                                activity._sourceObject = sourceObj;
+                                console.log('[Load] Source object:', sourceObj);
                                 
                                 // Flatten storeSettings
-                                if (tp.source.storeSettings) {
-                                    const store = tp.source.storeSettings;
+                                if (sourceObj.storeSettings) {
+                                    const store = sourceObj.storeSettings;
                                     activity.recursive = store.recursive;
                                     activity.modifiedDatetimeStart = store.modifiedDatetimeStart;
                                     activity.modifiedDatetimeEnd = store.modifiedDatetimeEnd;
                                     activity.wildcardFolderPath = store.wildcardFolderPath;
                                     activity.wildcardFileName = store.wildcardFileName;
                                     activity.enablePartitionDiscovery = store.enablePartitionDiscovery;
+                                    activity.maxConcurrentConnections = store.maxConcurrentConnections;
+                                    console.log('[Load] Flattened source fields - wildcardFolderPath:', activity.wildcardFolderPath);
                                 }
                             }
                             
                             // Flatten sink properties
-                            if (tp.sink) {
+                            if (sinkObj) {
                                 // Store the full sink object for saving later
-                                activity._sinkObject = tp.sink;
+                                activity._sinkObject = sinkObj;
+                                console.log('[Load] Sink object:', sinkObj);
                                 
-                                activity.writeBatchSize = tp.sink.writeBatchSize;
-                                activity.writeBatchTimeout = tp.sink.writeBatchTimeout;
-                                activity.preCopyScript = tp.sink.preCopyScript;
-                                activity.maxConcurrentConnections = tp.sink.maxConcurrentConnections;
-                                activity.writeBehavior = tp.sink.writeBehavior;
-                                activity.sqlWriterUseTableLock = tp.sink.sqlWriterUseTableLock;
-                                activity.disableMetricsCollection = tp.sink.disableMetricsCollection;
+                                activity.writeBatchSize = sinkObj.writeBatchSize;
+                                activity.writeBatchTimeout = sinkObj.writeBatchTimeout;
+                                activity.preCopyScript = sinkObj.preCopyScript;
+                                activity.maxConcurrentConnections = sinkObj.maxConcurrentConnections;
+                                activity.writeBehavior = sinkObj.writeBehavior;
+                                activity.sqlWriterUseTableLock = sinkObj.sqlWriterUseTableLock;
+                                activity.disableMetricsCollection = sinkObj.disableMetricsCollection;
+                                console.log('[Load] Flattened sink fields - writeBatchSize:', activity.writeBatchSize, 'preCopyScript:', activity.preCopyScript);
                             }
                             
                             // Copy other typeProperties

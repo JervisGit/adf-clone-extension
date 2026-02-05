@@ -1952,9 +1952,32 @@ class PipelineEditorProvider {
                         fieldHtml += \`</div>\`;
                         break;
                     case 'keyvalue':
-                        fieldHtml += \`<div style="flex: 1;"><div style="font-size: 11px; color: var(--vscode-descriptionForeground); margin-bottom: 8px;">Key-value pairs</div>\`;
-                        fieldHtml += \`<button class="add-kv-btn" data-key="\${key}" style="padding: 4px 8px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; font-size: 11px; margin-bottom: 8px;">+ Add</button>\`;
-                        fieldHtml += \`<div class="kv-list" data-key="\${key}"></div></div>\`;
+                        fieldHtml += \`<div style="flex: 1;"><div style="font-size: 11px; color: var(--vscode-descriptionForeground); margin-bottom: 8px;">Key-value pairs with types</div>\`;
+                        fieldHtml += \`<button class="add-kv-btn" data-key="\${key}" style="padding: 4px 8px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; font-size: 11px; margin-bottom: 8px;">+ Add Parameter</button>\`;
+                        fieldHtml += \`<div class="kv-list" data-key="\${key}">\`;
+                        
+                        // Load existing parameters if they exist
+                        if (value && typeof value === 'object') {
+                            for (const [paramKey, paramValue] of Object.entries(value)) {
+                                const paramVal = paramValue?.value || '';
+                                const paramType = paramValue?.type || 'string';
+                                const types = prop.valueTypes || ['string', 'int', 'float', 'bool'];
+                                const typeOptions = types.map(t => 
+                                    \`<option value="\${t}" \${t === paramType ? 'selected' : ''}>\${t}</option>\`
+                                ).join('');
+                                
+                                fieldHtml += \`
+                                    <div class="property-group" style="margin-bottom: 8px; display: flex; gap: 8px; align-items: center;">
+                                        <input type="text" class="property-input kv-key" value="\${paramKey}" placeholder="Key" style="flex: 1;">
+                                        <input type="text" class="property-input kv-value" value="\${paramVal}" placeholder="Value" style="flex: 1;">
+                                        <select class="property-input kv-type" style="flex: 0 0 80px;">\${typeOptions}</select>
+                                        <button class="remove-kv-btn" style="padding: 6px 12px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; flex-shrink: 0;">Remove</button>
+                                    </div>
+                                \`;
+                            }
+                        }
+                        
+                        fieldHtml += \`</div></div>\`;
                         break;
                     case 'dataset':
                         console.log('[GenerateField] Dataset field -', 'key:', key, 'value:', value, 'type:', typeof value);
@@ -2263,18 +2286,81 @@ class PipelineEditorProvider {
                         const kvPair = document.createElement('div');
                         kvPair.className = 'property-group';
                         kvPair.style.marginBottom = '8px';
+                        kvPair.style.display = 'flex';
+                        kvPair.style.gap = '8px';
+                        kvPair.style.alignItems = 'center';
                         kvPair.innerHTML = \`
-                            <input type="text" class="property-input" placeholder="Key" style="flex: 1; margin-right: 8px;">
-                            <input type="text" class="property-input" placeholder="Value" style="flex: 1; margin-right: 8px;">
-                            <button class="remove-kv-btn" style="padding: 6px 12px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px;">Remove</button>
+                            <input type="text" class="property-input kv-key" placeholder="Key" style="flex: 1;">
+                            <input type="text" class="property-input kv-value" placeholder="Value" style="flex: 1;">
+                            <select class="property-input kv-type" style="flex: 0 0 80px;">
+                                <option value="string">string</option>
+                                <option value="int">int</option>
+                                <option value="float">float</option>
+                                <option value="bool">bool</option>
+                            </select>
+                            <button class="remove-kv-btn" style="padding: 6px 12px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; flex-shrink: 0;">Remove</button>
                         \`;
                         kvList.appendChild(kvPair);
                         
                         // Add remove listener
                         kvPair.querySelector('.remove-kv-btn').addEventListener('click', () => {
                             kvPair.remove();
+                            // Update activity parameters when removed
+                            updateActivityParameters(key);
+                        });
+                        
+                        // Add change listeners to update activity
+                        kvPair.querySelectorAll('.kv-key, .kv-value, .kv-type').forEach(input => {
+                            input.addEventListener('change', () => updateActivityParameters(key));
+                            input.addEventListener('input', () => updateActivityParameters(key));
                         });
                     }
+                });
+            });
+            
+            // Function to update activity parameters from UI
+            function updateActivityParameters(fieldKey) {
+                const kvList = document.querySelector(\`.kv-list[data-key="\${fieldKey}"]\`);
+                if (!kvList) return;
+                
+                const parameters = {};
+                kvList.querySelectorAll('.property-group').forEach(pair => {
+                    const keyInput = pair.querySelector('.kv-key');
+                    const valueInput = pair.querySelector('.kv-value');
+                    const typeSelect = pair.querySelector('.kv-type');
+                    
+                    if (keyInput && valueInput && typeSelect) {
+                        const key = keyInput.value.trim();
+                        const value = valueInput.value.trim();
+                        const type = typeSelect.value;
+                        
+                        if (key) {
+                            parameters[key] = {
+                                value: value,
+                                type: type
+                            };
+                        }
+                    }
+                });
+                
+                // Store in activity object
+                activity[fieldKey] = Object.keys(parameters).length > 0 ? parameters : undefined;
+                console.log('Updated', fieldKey + ':', activity[fieldKey]);
+            }
+            
+            // Add change listeners to existing parameter inputs
+            document.querySelectorAll('.kv-list').forEach(kvList => {
+                const fieldKey = kvList.getAttribute('data-key');
+                kvList.querySelectorAll('.property-group').forEach(pair => {
+                    pair.querySelectorAll('.kv-key, .kv-value, .kv-type').forEach(input => {
+                        input.addEventListener('change', () => updateActivityParameters(fieldKey));
+                        input.addEventListener('input', () => updateActivityParameters(fieldKey));
+                    });
+                    
+                    pair.querySelector('.remove-kv-btn')?.addEventListener('click', () => {
+                        pair.remove();
+                        updateActivityParameters(fieldKey);
+                    });
                 });
             });
             

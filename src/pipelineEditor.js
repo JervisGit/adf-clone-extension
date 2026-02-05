@@ -1944,6 +1944,10 @@ class PipelineEditorProvider {
                         break;
                     case 'select':
                         fieldHtml += \`<select class="property-input" data-key="\${key}">\`;
+                        // Add placeholder option if specified and no value is set
+                        if (prop.placeholder && !value) {
+                            fieldHtml += \`<option value="" disabled selected>\${prop.placeholder}</option>\`;
+                        }
                         prop.options.forEach(opt => {
                             const selected = opt === value ? 'selected' : '';
                             fieldHtml += \`<option value="\${opt}" \${selected}>\${opt}</option>\`;
@@ -2238,6 +2242,15 @@ class PipelineEditorProvider {
                             activity[key] = value;
                         }
                         console.log('Updated ' + key + ':', activity[key]);
+                        
+                        // Mirror executorSize to driverSize for SynapseNotebook activities
+                        if (key === 'executorSize' && activity.type === 'SynapseNotebook') {
+                            activity.driverSize = value;
+                            const driverSizeInput = document.querySelector('#configContent .property-input[data-key="driverSize"]');
+                            if (driverSizeInput) {
+                                driverSizeInput.value = value;
+                            }
+                        }
                     });
                 }
             });
@@ -2553,6 +2566,11 @@ class PipelineEditorProvider {
                     if (a.type === 'SynapseNotebook') {
                         // Always add snapshot: true
                         typeProperties.snapshot = true;
+                        
+                        // Set driverSize equal to executorSize if executorSize is provided
+                        if (typeProperties.executorSize) {
+                            typeProperties.driverSize = typeProperties.executorSize;
+                        }
                         
                         if (a.dynamicAllocation !== undefined || a.minExecutors !== undefined || a.maxExecutors !== undefined || a.numExecutors !== undefined) {
                             typeProperties.conf = {};

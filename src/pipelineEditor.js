@@ -195,6 +195,15 @@ class PipelineEditorProvider {
 					activities: (pipelineData.activities || []).map(a => {
 						console.log('[Extension] Processing activity:', a.name, 'Type:', a.type);
 						
+						// Flatten typeProperties from webview onto activity object
+						if (a.typeProperties && typeof a.typeProperties === 'object') {
+							for (const key in a.typeProperties) {
+								if (a.typeProperties.hasOwnProperty(key)) {
+									a[key] = a.typeProperties[key];
+								}
+							}
+						}
+						
 						const activity = {
 							name: a.name,
 							type: a.type
@@ -219,7 +228,7 @@ class PipelineEditorProvider {
 						const typeProperties = {};
 						const commonProps = ['id', 'type', 'x', 'y', 'width', 'height', 'name', 'description', 'color', 'container', 'element', 
 											 'timeout', 'retry', 'retryIntervalInSeconds', 'secureOutput', 'secureInput', 'userProperties', 'state', 'onInactiveMarkAs',
-											 'dynamicAllocation', 'minExecutors', 'maxExecutors', 'dependsOn', 'policy',
+											 'dynamicAllocation', 'minExecutors', 'maxExecutors', 'numExecutors', 'dependsOn', 'policy',
 											 'sourceDataset', 'sinkDataset', 'recursive', 'modifiedDatetimeStart', 'modifiedDatetimeEnd',
 											 'wildcardFolderPath', 'wildcardFileName', 'enablePartitionDiscovery',
 											 'writeBatchSize', 'writeBatchTimeout', 'preCopyScript', 'maxConcurrentConnections', 'writeBehavior', 
@@ -234,16 +243,35 @@ class PipelineEditorProvider {
 						
 						// For SynapseNotebook, convert dynamicAllocation fields back to conf object
 						if (a.type === 'SynapseNotebook') {
-							if (a.dynamicAllocation !== undefined || a.minExecutors || a.maxExecutors) {
+							// Always add snapshot: true
+							typeProperties.snapshot = true;
+							
+							if (a.dynamicAllocation !== undefined || a.minExecutors !== undefined || a.maxExecutors !== undefined || a.numExecutors !== undefined) {
 								typeProperties.conf = {};
+								
+								// Convert 'Enabled'/'Disabled' to boolean
+								const isDynamicEnabled = a.dynamicAllocation === 'Enabled';
+								
 								if (a.dynamicAllocation !== undefined) {
-									typeProperties.conf['spark.dynamicAllocation.enabled'] = a.dynamicAllocation;
+									typeProperties.conf['spark.dynamicAllocation.enabled'] = isDynamicEnabled;
 								}
-								if (a.minExecutors !== undefined) {
-									typeProperties.conf['spark.dynamicAllocation.minExecutors'] = a.minExecutors;
-								}
-								if (a.maxExecutors !== undefined) {
-									typeProperties.conf['spark.dynamicAllocation.maxExecutors'] = a.maxExecutors;
+								
+								// Only add min/max executors if dynamicAllocation is Enabled and values are provided
+								if (isDynamicEnabled) {
+									if (a.minExecutors !== undefined && a.minExecutors !== '') {
+										typeProperties.conf['spark.dynamicAllocation.minExecutors'] = parseInt(a.minExecutors);
+									}
+									if (a.maxExecutors !== undefined && a.maxExecutors !== '') {
+										typeProperties.conf['spark.dynamicAllocation.maxExecutors'] = parseInt(a.maxExecutors);
+									}
+								} else {
+									// When disabled, set min/max to numExecutors value
+									if (a.numExecutors !== undefined && a.numExecutors !== '') {
+										const numExec = parseInt(a.numExecutors);
+										typeProperties.conf['spark.dynamicAllocation.minExecutors'] = numExec;
+										typeProperties.conf['spark.dynamicAllocation.maxExecutors'] = numExec;
+										typeProperties.numExecutors = numExec;
+									}
 								}
 							}
 						}
@@ -1853,6 +1881,23 @@ class PipelineEditorProvider {
             
             // Helper function to generate form fields
             function generateFormField(key, prop, activity) {
+                // Check conditional rendering
+                if (prop.conditional) {
+                    const conditionField = prop.conditional.field;
+                    const conditionValue = prop.conditional.value;
+                    const actualValue = activity[conditionField];
+                    
+                    // For dynamicAllocation: if undefined, default to 'Enabled' behavior (show min/max)
+                    const effectiveValue = (conditionField === 'dynamicAllocation' && actualValue === undefined) 
+                        ? 'Enabled' 
+                        : actualValue;
+                    
+                    // Skip this field if condition is not met
+                    if (effectiveValue !== conditionValue) {
+                        return '';
+                    }
+                }
+                
                 let value = activity[key] || prop.default || '';
                 
                 // Handle reference objects (e.g., {referenceName: "...", type: "..."})
@@ -2197,6 +2242,14 @@ class PipelineEditorProvider {
                         const key = e.target.getAttribute('data-key');
                         activity[key] = e.target.value;
                         console.log('Updated ' + key + ':', activity[key]);
+                        
+                        // If dynamicAllocation changed, re-render the Settings tab to show/hide conditional fields
+                        if (key === 'dynamicAllocation') {
+                            const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                            if (activeTab === 'settings') {
+                                showProperties(activity, 'settings');
+                            }
+                        }
                     }
                 });
             });
@@ -2367,7 +2420,7 @@ class PipelineEditorProvider {
                     const typeProperties = {};
                     const commonProps = ['id', 'type', 'x', 'y', 'width', 'height', 'name', 'description', 'color', 'container', 'element', 
                                          'timeout', 'retry', 'retryIntervalInSeconds', 'secureOutput', 'secureInput', 'userProperties', 'state', 'onInactiveMarkAs',
-                                         'dynamicAllocation', 'minExecutors', 'maxExecutors', 'dependsOn', 'policy',
+                                         'dynamicAllocation', 'minExecutors', 'maxExecutors', 'numExecutors', 'dependsOn', 'policy',
                                          'sourceDataset', 'sinkDataset', 'recursive', 'modifiedDatetimeStart', 'modifiedDatetimeEnd',
                                          'wildcardFolderPath', 'wildcardFileName', 'enablePartitionDiscovery',
                                          'writeBatchSize', 'writeBatchTimeout', 'preCopyScript', 'maxConcurrentConnections', 'writeBehavior', 
@@ -2382,16 +2435,35 @@ class PipelineEditorProvider {
                     
                     // For SynapseNotebook, convert dynamicAllocation fields back to conf object
                     if (a.type === 'SynapseNotebook') {
-                        if (a.dynamicAllocation !== undefined || a.minExecutors || a.maxExecutors) {
+                        // Always add snapshot: true
+                        typeProperties.snapshot = true;
+                        
+                        if (a.dynamicAllocation !== undefined || a.minExecutors !== undefined || a.maxExecutors !== undefined || a.numExecutors !== undefined) {
                             typeProperties.conf = {};
+                            
+                            // Convert 'Enabled'/'Disabled' to boolean
+                            const isDynamicEnabled = a.dynamicAllocation === 'Enabled';
+                            
                             if (a.dynamicAllocation !== undefined) {
-                                typeProperties.conf['spark.dynamicAllocation.enabled'] = a.dynamicAllocation;
+                                typeProperties.conf['spark.dynamicAllocation.enabled'] = isDynamicEnabled;
                             }
-                            if (a.minExecutors !== undefined) {
-                                typeProperties.conf['spark.dynamicAllocation.minExecutors'] = a.minExecutors;
-                            }
-                            if (a.maxExecutors !== undefined) {
-                                typeProperties.conf['spark.dynamicAllocation.maxExecutors'] = a.maxExecutors;
+                            
+                            // Only add min/max executors if dynamicAllocation is Enabled and values are provided
+                            if (isDynamicEnabled) {
+                                if (a.minExecutors !== undefined && a.minExecutors !== '') {
+                                    typeProperties.conf['spark.dynamicAllocation.minExecutors'] = parseInt(a.minExecutors);
+                                }
+                                if (a.maxExecutors !== undefined && a.maxExecutors !== '') {
+                                    typeProperties.conf['spark.dynamicAllocation.maxExecutors'] = parseInt(a.maxExecutors);
+                                }
+                            } else {
+                                // When disabled, set min/max to numExecutors value
+                                if (a.numExecutors !== undefined && a.numExecutors !== '') {
+                                    const numExec = parseInt(a.numExecutors);
+                                    typeProperties.conf['spark.dynamicAllocation.minExecutors'] = numExec;
+                                    typeProperties.conf['spark.dynamicAllocation.maxExecutors'] = numExec;
+                                    typeProperties.numExecutors = numExec;
+                                }
                             }
                         }
                     }
@@ -2572,7 +2644,8 @@ class PipelineEditorProvider {
                         if (activityData.typeProperties.conf) {
                             const conf = activityData.typeProperties.conf;
                             if (conf['spark.dynamicAllocation.enabled'] !== undefined) {
-                                activity.dynamicAllocation = conf['spark.dynamicAllocation.enabled'];
+                                // Convert boolean to 'Enabled'/'Disabled' string
+                                activity.dynamicAllocation = conf['spark.dynamicAllocation.enabled'] ? 'Enabled' : 'Disabled';
                             }
                             if (conf['spark.dynamicAllocation.minExecutors'] !== undefined) {
                                 activity.minExecutors = conf['spark.dynamicAllocation.minExecutors'];

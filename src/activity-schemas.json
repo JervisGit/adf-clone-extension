@@ -5,7 +5,7 @@
     "commonProperties": {
       "name": { "type": "string", "label": "Name", "required": true },
       "description": { "type": "string", "label": "Description", "multiline": true },
-      "state": { "type": "select", "label": "Activity state", "options": ["Activated", "Deactivated"], "default": "Activated" },
+      "state": { "type": "radio", "label": "Activity state", "options": ["Activated", "Deactivated"] },
       "timeout": { "type": "string", "label": "Timeout", "default": "0.12:00:00", "section": "policy" },
       "retry": { "type": "number", "label": "Retry", "default": 0, "section": "policy" },
       "retryIntervalInSeconds": { "type": "number", "label": "Retry interval (seconds)", "default": 30, "section": "policy" },
@@ -15,14 +15,13 @@
     "typeProperties": {
       "notebook": { "type": "reference", "label": "Notebook", "required": true, "placeholder": "Select notebook" },
       "parameters": { "type": "keyvalue", "label": "Base parameters", "valueTypes": ["string", "int", "float", "bool"] },
-      "snapshot": { "type": "boolean", "label": "Snapshot", "default": true },
       "sparkPool": { "type": "reference", "label": "Spark pool", "placeholder": "Select Spark pool" },
       "executorSize": { "type": "select", "label": "Executor size", "options": ["Small", "Medium", "Large", "XLarge", "XXLarge"], "default": "Small" },
       "driverSize": { "type": "select", "label": "Driver size", "options": ["Small", "Medium", "Large", "XLarge", "XXLarge"], "default": "Small" },
-      "dynamicAllocation": { "type": "boolean", "label": "Dynamically allocate executors", "default": false },
-      "minExecutors": { "type": "number", "label": "Min executors", "default": 1, "min": 1, "conditional": { "field": "dynamicAllocation", "value": true } },
-      "maxExecutors": { "type": "number", "label": "Max executors", "default": 4, "min": 1, "conditional": { "field": "dynamicAllocation", "value": true } },
-      "numExecutors": { "type": "number", "label": "Number of executors", "default": 2, "min": 1, "conditional": { "field": "dynamicAllocation", "value": false } }
+      "dynamicAllocation": { "type": "radio", "label": "Dynamically allocate executors", "options": ["Enabled", "Disabled"] },
+      "minExecutors": { "type": "number", "label": "Min executors", "min": 1, "conditional": { "field": "dynamicAllocation", "value": "Enabled" } },
+      "maxExecutors": { "type": "number", "label": "Max executors", "min": 1, "conditional": { "field": "dynamicAllocation", "value": "Enabled" } },
+      "numExecutors": { "type": "number", "label": "Number of executors", "min": 1, "conditional": { "field": "dynamicAllocation", "value": "Disabled" } }
     }
   },
   "Copy": {

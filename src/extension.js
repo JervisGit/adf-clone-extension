@@ -149,15 +149,6 @@ function activate(context) {
 			}
 		})
 	);
-
-	// Open pipeline editor when the view becomes visible for the first time
-	let viewOpened = false;
-	pipelineTreeView.onDidChangeVisibility((e) => {
-		if (e.visible && !viewOpened) {
-			viewOpened = true;
-			editorProvider.createOrShow();
-		}
-	});
 }
 
 function deactivate() {}

@@ -157,8 +157,6 @@ class PipelineEditorProvider {
 				data: pipelineJson,
 				filePath: filePath
 			});
-			
-			vscode.window.showInformationMessage(`Loaded pipeline: ${require('path').basename(filePath)}`);
 		} catch (error) {
 			vscode.window.showErrorMessage(`Failed to load pipeline: ${error.message}`);
 		}
@@ -221,11 +219,12 @@ class PipelineEditorProvider {
 						const typeProperties = {};
 						const commonProps = ['id', 'type', 'x', 'y', 'width', 'height', 'name', 'description', 'color', 'container', 'element', 
 											 'timeout', 'retry', 'retryIntervalInSeconds', 'secureOutput', 'secureInput', 'userProperties', 'state', 'onInactiveMarkAs',
-											 'dynamicAllocation', 'minExecutors', 'maxExecutors', 'dependsOn',
+											 'dynamicAllocation', 'minExecutors', 'maxExecutors', 'dependsOn', 'policy',
 											 'sourceDataset', 'sinkDataset', 'recursive', 'modifiedDatetimeStart', 'modifiedDatetimeEnd',
 											 'wildcardFolderPath', 'wildcardFileName', 'enablePartitionDiscovery',
 											 'writeBatchSize', 'writeBatchTimeout', 'preCopyScript', 'maxConcurrentConnections', 'writeBehavior', 
-											 'sqlWriterUseTableLock', 'disableMetricsCollection', '_sourceObject', '_sinkObject'];
+											 'sqlWriterUseTableLock', 'disableMetricsCollection', '_sourceObject', '_sinkObject',
+											 '_sourceDatasetType', '_sinkDatasetType', 'inputs', 'outputs', 'source', 'sink', 'typeProperties'];
 						
 						for (const key in a) {
 							if (!commonProps.includes(key) && a.hasOwnProperty(key) && typeof a[key] !== 'function') {
@@ -257,24 +256,17 @@ class PipelineEditorProvider {
 							console.log('[Extension] Inputs from activity:', a.inputs);
 							console.log('[Extension] Outputs from activity:', a.outputs);
 							
-							// Reconstruct source object or create default based on dataset type
-							if (a._sourceObject) {
-								typeProperties.source = JSON.parse(JSON.stringify(a._sourceObject));
-							} else if (a._sourceDatasetType) {
-								// Create basic source structure based on dataset type
-								typeProperties.source = {
-									type: a._sourceDatasetType + 'Source',
-									storeSettings: {
-										type: a._sourceDatasetType.includes('Sql') ? 'AzureSqlDatabaseReadSettings' : 'AzureBlobStorageReadSettings'
-									}
-								};
-							}
-							
+						// Use the already-constructed source/sink from typeProperties if available
+						// (the webview already built these with updated values)
+						if (a.typeProperties && a.typeProperties.source) {
+							typeProperties.source = a.typeProperties.source;
+							console.log('[Extension] Using source from a.typeProperties.source (already updated)');
+						} else if (a._sourceObject) {
+							// Fallback: reconstruct from _sourceObject
+							typeProperties.source = JSON.parse(JSON.stringify(a._sourceObject));
+							console.log('[Extension] Reconstructed source from _sourceObject');
 							// Update with any changed values
-							if (typeProperties.source) {
-								console.log('[Extension] Updating source with field values');
-								if (!typeProperties.source.storeSettings) typeProperties.source.storeSettings = {};
-								
+							if (typeProperties.source.storeSettings) {
 								if (a.recursive !== undefined) typeProperties.source.storeSettings.recursive = a.recursive;
 								if (a.modifiedDatetimeStart !== undefined && a.modifiedDatetimeStart !== '') typeProperties.source.storeSettings.modifiedDatetimeStart = a.modifiedDatetimeStart;
 								if (a.modifiedDatetimeEnd !== undefined && a.modifiedDatetimeEnd !== '') typeProperties.source.storeSettings.modifiedDatetimeEnd = a.modifiedDatetimeEnd;
@@ -283,50 +275,61 @@ class PipelineEditorProvider {
 								if (a.enablePartitionDiscovery !== undefined) typeProperties.source.storeSettings.enablePartitionDiscovery = a.enablePartitionDiscovery;
 								if (a.maxConcurrentConnections !== undefined) typeProperties.source.storeSettings.maxConcurrentConnections = a.maxConcurrentConnections;
 							}
-							
-							// Reconstruct sink object or create default based on dataset type
-							if (a._sinkObject) {
-								typeProperties.sink = JSON.parse(JSON.stringify(a._sinkObject));
-							} else if (a._sinkDatasetType) {
-								// Create basic sink structure based on dataset type
-								typeProperties.sink = {
-									type: a._sinkDatasetType + 'Sink',
-									writeBehavior: 'insert'
-								};
-							}
-							
-							// Update with any changed values
-							if (typeProperties.sink) {
-								console.log('[Extension] Updating sink with field values');
-								if (a.writeBatchSize !== undefined && a.writeBatchSize !== '') typeProperties.sink.writeBatchSize = a.writeBatchSize;
-								if (a.writeBatchTimeout !== undefined && a.writeBatchTimeout !== '') typeProperties.sink.writeBatchTimeout = a.writeBatchTimeout;
-								if (a.preCopyScript !== undefined && a.preCopyScript !== '') typeProperties.sink.preCopyScript = a.preCopyScript;
-								if (a.maxConcurrentConnections !== undefined) typeProperties.sink.maxConcurrentConnections = a.maxConcurrentConnections;
-								if (a.writeBehavior !== undefined && a.writeBehavior !== '') typeProperties.sink.writeBehavior = a.writeBehavior;
-								if (a.sqlWriterUseTableLock !== undefined) typeProperties.sink.sqlWriterUseTableLock = a.sqlWriterUseTableLock;
-								if (a.disableMetricsCollection !== undefined) typeProperties.sink.disableMetricsCollection = a.disableMetricsCollection;
-								console.log('[Extension] Reconstructed sink:', typeProperties.sink);
-							}
-							
-							// Add inputs/outputs for Copy activity (at activity level, not typeProperties)
-							// Check both sourceDataset property and inputs array
-							if (a.sourceDataset || (a.inputs && a.inputs.length > 0)) {
-								const sourceRef = a.sourceDataset || (a.inputs[0].referenceName || a.inputs[0]);
-								activity.inputs = [{
-									referenceName: sourceRef,
-									type: 'DatasetReference'
-								}];
-								console.log('[Extension] Added inputs:', activity.inputs);
-							}
-							if (a.sinkDataset || (a.outputs && a.outputs.length > 0)) {
-								const sinkRef = a.sinkDataset || (a.outputs[0].referenceName || a.outputs[0]);
-								activity.outputs = [{
-									referenceName: sinkRef,
-									type: 'DatasetReference'
-								}];
-								console.log('[Extension] Added outputs:', activity.outputs);
-							}
+						} else if (a._sourceDatasetType) {
+							// Create basic source structure based on dataset type
+							typeProperties.source = {
+								type: a._sourceDatasetType + 'Source',
+								storeSettings: {
+									type: a._sourceDatasetType.includes('Sql') ? 'AzureSqlDatabaseReadSettings' : 'AzureBlobStorageReadSettings'
+								}
+							};
+							console.log('[Extension] Created new source from dataset type');
 						}
+						
+						// Use the already-constructed sink from typeProperties if available
+						if (a.typeProperties && a.typeProperties.sink) {
+							typeProperties.sink = a.typeProperties.sink;
+							console.log('[Extension] Using sink from a.typeProperties.sink (already updated)');
+						} else if (a._sinkObject) {
+							// Fallback: reconstruct from _sinkObject
+							typeProperties.sink = JSON.parse(JSON.stringify(a._sinkObject));
+							console.log('[Extension] Reconstructed sink from _sinkObject');
+							// Update with any changed values
+							if (a.writeBatchSize !== undefined && a.writeBatchSize !== '') typeProperties.sink.writeBatchSize = a.writeBatchSize;
+							if (a.writeBatchTimeout !== undefined && a.writeBatchTimeout !== '') typeProperties.sink.writeBatchTimeout = a.writeBatchTimeout;
+							if (a.preCopyScript !== undefined && a.preCopyScript !== '') typeProperties.sink.preCopyScript = a.preCopyScript;
+							if (a.maxConcurrentConnections !== undefined) typeProperties.sink.maxConcurrentConnections = a.maxConcurrentConnections;
+							if (a.writeBehavior !== undefined && a.writeBehavior !== '') typeProperties.sink.writeBehavior = a.writeBehavior;
+							if (a.sqlWriterUseTableLock !== undefined) typeProperties.sink.sqlWriterUseTableLock = a.sqlWriterUseTableLock;
+							if (a.disableMetricsCollection !== undefined) typeProperties.sink.disableMetricsCollection = a.disableMetricsCollection;
+							console.log('[Extension] Reconstructed sink:', typeProperties.sink);
+						} else if (a._sinkDatasetType) {
+							// Create basic sink structure based on dataset type
+							typeProperties.sink = {
+								type: a._sinkDatasetType + 'Sink',
+								writeBehavior: 'insert'
+							};
+							console.log('[Extension] Created new sink from dataset type');
+						}
+						
+						// Add inputs/outputs from activity
+						if (a.sourceDataset || (a.inputs && a.inputs.length > 0)) {
+							const sourceRef = a.sourceDataset || (a.inputs[0].referenceName || a.inputs[0]);
+							activity.inputs = [{
+								referenceName: sourceRef,
+								type: 'DatasetReference'
+							}];
+							console.log('[Extension] Added inputs:', activity.inputs);
+						}
+						if (a.sinkDataset || (a.outputs && a.outputs.length > 0)) {
+							const sinkRef = a.sinkDataset || (a.outputs[0].referenceName || a.outputs[0]);
+							activity.outputs = [{
+								referenceName: sinkRef,
+								type: 'DatasetReference'
+							}];
+							console.log('[Extension] Added outputs:', activity.outputs);
+						}
+					}
 						
 						activity.typeProperties = typeProperties;
 						console.log('[Extension] Final activity object:', JSON.stringify(activity, null, 2));
@@ -2628,13 +2631,17 @@ class PipelineEditorProvider {
                             
                             // Handle incorrectly nested structure (typeProperties.typeProperties)
                             // This happens when the save created a double-nested structure
-                            let sourceObj = tp.source;
-                            let sinkObj = tp.sink;
+                            // Prioritize the nested structure if both exist (use the more deeply nested one as it's likely newer)
+                            let sourceObj = null;
+                            let sinkObj = null;
                             
-                            if (tp.typeProperties) {
+                            if (tp.typeProperties && (tp.typeProperties.source || tp.typeProperties.sink)) {
                                 console.log('[Load] Found nested typeProperties, using deeper level');
-                                if (tp.typeProperties.source) sourceObj = tp.typeProperties.source;
-                                if (tp.typeProperties.sink) sinkObj = tp.typeProperties.sink;
+                                sourceObj = tp.typeProperties.source || null;
+                                sinkObj = tp.typeProperties.sink || null;
+                            } else {
+                                sourceObj = tp.source || null;
+                                sinkObj = tp.sink || null;
                             }
                             
                             // Flatten source properties

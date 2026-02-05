@@ -13,9 +13,9 @@
       "secureInput": { "type": "boolean", "label": "Secure input", "default": false, "section": "policy" }
     },
     "typeProperties": {
-      "notebook": { "type": "reference", "label": "Notebook", "required": true, "placeholder": "Select notebook" },
+      "notebook": { "type": "text", "label": "Notebook", "required": true, "placeholder": "Enter notebook name" },
       "parameters": { "type": "keyvalue", "label": "Base parameters", "valueTypes": ["string", "int", "float", "bool"] },
-      "sparkPool": { "type": "reference", "label": "Spark pool", "placeholder": "Select Spark pool" },
+      "sparkPool": { "type": "text", "label": "Spark pool", "placeholder": "Enter Spark pool name" },
       "executorSize": { "type": "select", "label": "Executor size", "options": ["Small", "Medium", "Large", "XLarge", "XXLarge"], "default": "Small" },
       "driverSize": { "type": "select", "label": "Driver size", "options": ["Small", "Medium", "Large", "XLarge", "XXLarge"], "default": "Small" },
       "dynamicAllocation": { "type": "radio", "label": "Dynamically allocate executors", "options": ["Enabled", "Disabled"] },

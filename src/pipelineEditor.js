@@ -1905,6 +1905,17 @@ class PipelineEditorProvider {
                     value = value.referenceName || JSON.stringify(value);
                 }
                 
+                // Handle notebook/sparkPool reference objects that use text type
+                if (prop.type === 'text' && typeof value === 'object' && value !== null && value.referenceName) {
+                    // Handle Expression format: { referenceName: { value: "name", type: "Expression" } }
+                    if (typeof value.referenceName === 'object' && value.referenceName.value) {
+                        value = value.referenceName.value;
+                    } else if (typeof value.referenceName === 'string') {
+                        // Handle direct string format: { referenceName: "name" }
+                        value = value.referenceName;
+                    }
+                }
+                
                 const required = prop.required ? ' *' : '';
                 
                 let fieldHtml = \`<div class="property-group">\`;
@@ -2515,7 +2526,26 @@ class PipelineEditorProvider {
                     
                     for (const key in a) {
                         if (!commonProps.includes(key) && a.hasOwnProperty(key) && typeof a[key] !== 'function') {
-                            typeProperties[key] = a[key];
+							// Convert notebook and sparkPool strings to reference objects with Expression format
+							if (key === 'notebook' && typeof a[key] === 'string' && a[key]) {
+								typeProperties[key] = {
+									referenceName: {
+										value: a[key],
+										type: 'Expression'
+									},
+									type: 'NotebookReference'
+								};
+							} else if (key === 'sparkPool' && typeof a[key] === 'string' && a[key]) {
+								typeProperties[key] = {
+									referenceName: {
+										value: a[key],
+										type: 'Expression'
+									},
+									type: 'BigDataPoolReference'
+								};
+                            } else {
+                                typeProperties[key] = a[key];
+                            }
                         }
                     }
                     
@@ -2741,6 +2771,32 @@ class PipelineEditorProvider {
                             }
                             // Don't copy the raw conf object
                             delete activityData.typeProperties.conf;
+                        }
+                        
+                        // Convert notebook and sparkPool reference objects to strings for editing
+                        if (activityData.typeProperties.notebook && typeof activityData.typeProperties.notebook === 'object') {
+                            const notebookRef = activityData.typeProperties.notebook.referenceName;
+                            if (typeof notebookRef === 'object' && notebookRef.value) {
+                                // Expression format: { referenceName: { value: "name", type: "Expression" } }
+                                activity.notebook = notebookRef.value;
+                            } else if (typeof notebookRef === 'string') {
+                                // Direct string format: { referenceName: "name" }
+                                activity.notebook = notebookRef;
+                            } else {
+                                activity.notebook = '';
+                            }
+                        }
+                        if (activityData.typeProperties.sparkPool && typeof activityData.typeProperties.sparkPool === 'object') {
+                            const sparkPoolRef = activityData.typeProperties.sparkPool.referenceName;
+                            if (typeof sparkPoolRef === 'object' && sparkPoolRef.value) {
+                                // Expression format: { referenceName: { value: "name", type: "Expression" } }
+                                activity.sparkPool = sparkPoolRef.value;
+                            } else if (typeof sparkPoolRef === 'string') {
+                                // Direct string format: { referenceName: "name" }
+                                activity.sparkPool = sparkPoolRef;
+                            } else {
+                                activity.sparkPool = '';
+                            }
                         }
                         
                         // Handle Copy activity source/sink nested structures

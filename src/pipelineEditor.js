@@ -67,9 +67,13 @@ class PipelineEditorProvider {
 			const path = require('path');
 			let datasetList = [];
 			let datasetContents = {};
+			let pipelineList = [];
 			
 			if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
-				const datasetPath = path.join(vscode.workspace.workspaceFolders[0].uri.fsPath, 'dataset');
+				const workspaceRoot = vscode.workspace.workspaceFolders[0].uri.fsPath;
+				
+				// Load datasets
+				const datasetPath = path.join(workspaceRoot, 'dataset');
 				if (fs.existsSync(datasetPath)) {
 					const files = fs.readdirSync(datasetPath).filter(f => f.endsWith('.json'));
 					files.forEach(file => {
@@ -84,13 +88,24 @@ class PipelineEditorProvider {
 						}
 					});
 				}
+				
+				// Load pipelines
+				const pipelinePath = path.join(workspaceRoot, 'pipeline');
+				if (fs.existsSync(pipelinePath)) {
+					const files = fs.readdirSync(pipelinePath).filter(f => f.endsWith('.json'));
+					files.forEach(file => {
+						const name = file.replace('.json', '');
+						pipelineList.push(name);
+					});
+				}
 			}
 			
 			panel.webview.postMessage({
 				type: 'initSchemas',
 				datasetSchemas: datasetSchemas,
 				datasetList: datasetList,
-				datasetContents: datasetContents
+				datasetContents: datasetContents,
+				pipelineList: pipelineList
 			});
 		});
 
@@ -1282,6 +1297,9 @@ class PipelineEditorProvider {
         let datasetList = [];
         let datasetContents = {};
         
+        // Pipeline list will be sent via message
+        let pipelineList = [];
+        
         // Toggle properties panel
         function toggleProperties() {
             const panel = document.querySelector('.properties-panel');
@@ -1373,6 +1391,12 @@ class PipelineEditorProvider {
                                 invalidActivities.push(a.name + ' (' + a.type + ') - Start time must be before End time in Filter by last modified');
                             }
                         }
+                    }
+                }
+                if (a.type === 'ExecutePipeline') {
+                    // Validate pipeline is selected
+                    if (!a.pipeline) {
+                        invalidActivities.push(a.name + ' (' + a.type + ') - Invoked pipeline must be selected');
                     }
                 }
             });
@@ -1603,6 +1627,34 @@ class PipelineEditorProvider {
                             value: a.condition || '',
                             type: 'Expression'
                         };
+                    }
+                    
+                    // Handle ExecutePipeline activity - build pipeline reference
+                    if (a.type === 'ExecutePipeline') {
+                        if (a.pipeline) {
+                            typeProperties.pipeline = {
+                                referenceName: a.pipeline,
+                                type: 'PipelineReference'
+                            };
+                        }
+                        
+                        // Set waitOnCompletion, default to true if not specified
+                        if (a.waitOnCompletion !== undefined) {
+                            typeProperties.waitOnCompletion = a.waitOnCompletion;
+                        } else {
+                            typeProperties.waitOnCompletion = true;
+                        }
+                        
+                        // Remove the string pipeline property as it's been converted to object
+                        delete typeProperties.pipeline;
+                        
+                        // Re-add the proper pipeline reference
+                        if (a.pipeline) {
+                            typeProperties.pipeline = {
+                                referenceName: a.pipeline,
+                                type: 'PipelineReference'
+                            };
+                        }
                     }
                     
                     // Handle Delete activity - build complex storeSettings structure
@@ -2757,6 +2809,32 @@ class PipelineEditorProvider {
                         }
                         fieldHtml += \`</select>\`;
                         break;
+                    case 'pipeline':
+                        console.log('[GenerateField] Pipeline field -', 'key:', key, 'value:', value, 'type:', typeof value);
+                        fieldHtml += \`<select class="property-input pipeline-select" data-key="\${key}">\`;
+                        fieldHtml += \`<option value="">\${prop.placeholder || 'Select pipeline...'}</option>\`;
+                        if (pipelineList && pipelineList.length > 0) {
+                            // Get current pipeline name from file path to exclude it (prevent self-reference)
+                            let currentPipelineName = null;
+                            if (currentFilePath) {
+                                const parts = currentFilePath.replace(/\\\\/g, '/').split('/');
+                                const filename = parts[parts.length - 1];
+                                currentPipelineName = filename.replace('.json', '');
+                            }
+                            
+                            pipelineList.forEach(pl => {
+                                // Skip current pipeline to prevent self-reference
+                                if (pl === currentPipelineName) {
+                                    console.log('[GenerateField] Skipping current pipeline:', pl);
+                                    return;
+                                }
+                                const selected = pl === value ? 'selected' : '';
+                                if (selected) console.log('[GenerateField] Selected pipeline:', pl, 'matches value:', value);
+                                fieldHtml += \`<option value="\${pl}" \${selected}>\${pl}</option>\`;
+                            });
+                        }
+                        fieldHtml += \`</select>\`;
+                        break;
                     case 'reference':
                         fieldHtml += \`<div style="display: flex; gap: 8px; flex: 1;">\`;
                         fieldHtml += \`<input type="text" class="property-input" data-key="\${key}" value="\${value}" placeholder="Select \${prop.label}..." readonly>\`;
@@ -3578,9 +3656,11 @@ class PipelineEditorProvider {
                 datasetSchemas = message.datasetSchemas;
                 datasetList = message.datasetList || [];
                 datasetContents = message.datasetContents || {};
+                pipelineList = message.pipelineList || [];
                 console.log('Dataset schemas loaded:', Object.keys(datasetSchemas));
                 console.log('Dataset list loaded:', datasetList);
                 console.log('Dataset contents loaded:', Object.keys(datasetContents).length, 'datasets');
+                console.log('Pipeline list loaded:', pipelineList);
             } else if (message.type === 'addActivity') {
                 const canvasWrapper = document.getElementById('canvasWrapper');
                 const activity = new Activity(message.activityType, 100, 100, canvasWrapper);
@@ -3911,6 +3991,21 @@ class PipelineEditorProvider {
                                     // Format as YYYY-MM-DDTHH:mm:ss for datetime-local input
                                     activity.modifiedDatetimeEnd = endDate.toISOString().slice(0, 19);
                                 }
+                            }
+                        } else if (activityData.type === 'ExecutePipeline') {
+                            // Handle ExecutePipeline activity - parse pipeline reference
+                            const tp = activityData.typeProperties || {};
+                            
+                            // Extract pipeline reference
+                            if (tp.pipeline && tp.pipeline.referenceName) {
+                                activity.pipeline = tp.pipeline.referenceName;
+                            }
+                            
+                            // Extract waitOnCompletion (default to true if not specified)
+                            if (tp.waitOnCompletion !== undefined) {
+                                activity.waitOnCompletion = tp.waitOnCompletion;
+                            } else {
+                                activity.waitOnCompletion = true;
                             }
                         } else {
                             Object.assign(activity, activityData.typeProperties);

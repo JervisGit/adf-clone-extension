@@ -160,5 +160,19 @@
       "recursive": { "type": "boolean", "label": "Delete file recursively", "default": false },
       "maxConcurrentConnections": { "type": "number", "label": "Max concurrent connections", "min": 1 }
     }
+  },
+  "ExecutePipeline": {
+    "name": "Execute Pipeline",
+    "tabs": ["General", "Settings", "User Properties"],
+    "commonProperties": {
+      "name": { "type": "string", "label": "Name", "required": true },
+      "description": { "type": "string", "label": "Description", "multiline": true },
+      "state": { "type": "radio", "label": "Activity state", "options": ["Activated", "Deactivated"] },
+      "secureInput": { "type": "boolean", "label": "Secure input", "default": false, "section": "policy" }
+    },
+    "typeProperties": {
+      "pipeline": { "type": "pipeline", "label": "Invoked pipeline", "required": true, "placeholder": "Select pipeline..." },
+      "waitOnCompletion": { "type": "boolean", "label": "Wait on completion", "default": true }
+    }
   }
 }

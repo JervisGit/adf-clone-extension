@@ -513,6 +513,8 @@ class PipelineEditorProvider {
 						return activity;
 					}),
                     ...(pipelineData.variables && Object.keys(pipelineData.variables).length > 0 ? { variables: pipelineData.variables } : {}),
+                    ...(pipelineData.parameters && Object.keys(pipelineData.parameters).length > 0 ? { parameters: pipelineData.parameters } : {}),
+                    ...(pipelineData.concurrency && pipelineData.concurrency !== 1 ? { concurrency: parseInt(pipelineData.concurrency) } : {}),
 					annotations: [],
 					lastPublishTime: new Date().toISOString()
 				}
@@ -1226,17 +1228,23 @@ class PipelineEditorProvider {
             <!-- Pipeline-level tab panes -->
             <div class="config-tab-pane pipeline-pane active" id="tab-parameters">
                 <div style="margin-bottom: 12px; font-weight: 600; color: var(--vscode-foreground);">Pipeline Parameters</div>
-                <div class="empty-state">No parameters defined. Click + to add a parameter.</div>
+                <div style="margin-bottom: 12px;">
+                    <button id="addParameterBtn" style="padding: 6px 12px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; font-size: 12px;">+ Add Parameter</button>
+                </div>
+                <div id="parametersList"></div>
             </div>
             <div class="config-tab-pane pipeline-pane" id="tab-pipeline-variables">
                 <div style="margin-bottom: 12px; font-weight: 600; color: var(--vscode-foreground);">Pipeline Variables</div>
-                <div class="empty-state">No variables defined. Click + to add a variable.</div>
+                <div style="margin-bottom: 12px;">
+                    <button id="addVariableBtn" style="padding: 6px 12px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; font-size: 12px;">+ Add Variable</button>
+                </div>
+                <div id="variablesList"></div>
             </div>
             <div class="config-tab-pane pipeline-pane" id="tab-pipeline-settings">
                 <div style="margin-bottom: 12px; font-weight: 600; color: var(--vscode-foreground);">Pipeline Settings</div>
                 <div class="property-group">
-                    <div class="property-label">Annotations</div>
-                    <textarea class="property-input" rows="3" placeholder="Add annotations..."></textarea>
+                    <div class="property-label">Concurrency</div>
+                    <input type="number" id="concurrencyInput" class="property-input" min="1" placeholder="" style="width: 100px;">
                 </div>
             </div>
             <div class="config-tab-pane pipeline-pane" id="tab-output">
@@ -1309,6 +1317,13 @@ class PipelineEditorProvider {
         let currentFilePath = null; // Track the current file path
         let draggedActivity = null;
         
+        // Pipeline-level properties (when no activity selected)
+        let pipelineData = {
+            parameters: {},
+            variables: {},
+            concurrency: 1
+        };
+        
         // Dirty state tracking for unsaved changes
         let isDirty = false;
         let originalState = null;
@@ -1376,8 +1391,8 @@ class PipelineEditorProvider {
         
         // Shared function to build pipeline data for saving (used by both save button and cache)
         function buildPipelineDataForSave(pipelineName) {
-            // Collect variables from AppendVariable and SetVariable activities
-            const variables = {};
+            // Use pipeline-level variables from pipelineData, then merge with activity-derived variables
+            const variables = { ...pipelineData.variables };
             activities.forEach(a => {
                 if (a.type === 'AppendVariable' && a.variableName) {
                     if (!variables[a.variableName]) {
@@ -1399,9 +1414,8 @@ class PipelineEditorProvider {
                 }
             });
             
-            return {
+            const result = {
                 name: pipelineName,
-                variables: variables,
                 activities: activities.map(a => {
                     // Build the activity JSON with all properties
                     const activity = {
@@ -1675,6 +1689,71 @@ class PipelineEditorProvider {
                     return activity;
                 })
             };
+            
+            // Add variables if any exist
+            if (Object.keys(variables).length > 0) {
+                // Process variables to convert numeric types and filter temp keys
+                const processedVars = {};
+                for (const [key, varData] of Object.entries(variables)) {
+                    // Skip temporary keys that haven't been renamed
+                    if (key.startsWith('_temp_var_')) continue;
+                    
+                    processedVars[key] = {
+                        type: varData.type
+                    };
+                    
+                    // Convert Integer type to actual number, not string
+                    if (varData.type === 'Integer') {
+                        const numValue = parseInt(varData.defaultValue);
+                        processedVars[key].defaultValue = isNaN(numValue) ? 0 : numValue;
+                    } else if (varData.type === 'Boolean') {
+                        // Convert to boolean
+                        processedVars[key].defaultValue = varData.defaultValue === 'true' || varData.defaultValue === true;
+                    } else {
+                        // Keep as-is for String and Array types
+                        processedVars[key].defaultValue = varData.defaultValue || '';
+                    }
+                }
+                if (Object.keys(processedVars).length > 0) {
+                    result.variables = processedVars;
+                }
+            }
+            
+            // Add parameters if any exist
+            if (Object.keys(pipelineData.parameters).length > 0) {
+                // Process parameters to convert numeric types and filter temp keys
+                const processedParams = {};
+                for (const [key, param] of Object.entries(pipelineData.parameters)) {
+                    // Skip temporary keys that haven't been renamed
+                    if (key.startsWith('_temp_param_')) continue;
+                    
+                    processedParams[key] = {
+                        type: param.type
+                    };
+                    
+                    // Convert numeric types to actual numbers, not strings
+                    if (param.type === 'int' || param.type === 'float') {
+                        const numValue = parseFloat(param.defaultValue);
+                        processedParams[key].defaultValue = isNaN(numValue) ? 0 : numValue;
+                    } else if (param.type === 'bool') {
+                        // Convert to boolean
+                        processedParams[key].defaultValue = param.defaultValue === 'true' || param.defaultValue === true;
+                    } else {
+                        // Keep as string for string, array, object types
+                        processedParams[key].defaultValue = param.defaultValue || '';
+                    }
+                }
+                if (Object.keys(processedParams).length > 0) {
+                    result.parameters = processedParams;
+                }
+            }
+            
+            // Add concurrency if not default (1)
+            if (pipelineData.concurrency && pipelineData.concurrency !== 1) {
+                result.concurrency = parseInt(pipelineData.concurrency);
+            }
+            
+            return result;
         }
         
         // Send current pipeline state to extension for caching
@@ -2435,18 +2514,40 @@ class PipelineEditorProvider {
                 document.getElementById('activityPanesContainer').innerHTML = '';
                 pipelinePanes.forEach(pane => pane.style.display = '');
                 
-                // Activate first pipeline tab
+                // Activate first pipeline tab or the specified tab
                 document.querySelectorAll('.config-tab').forEach(t => {
                     t.classList.remove('active');
                     t.style.borderBottom = 'none';
+                    t.style.color = 'var(--vscode-tab-inactiveForeground)';
                 });
-                document.querySelectorAll('.config-tab-pane').forEach(p => p.classList.remove('active'));
-                const firstPipelineTab = document.querySelector('.pipeline-tab');
-                if (firstPipelineTab) {
-                    firstPipelineTab.classList.add('active');
-                    firstPipelineTab.style.borderBottom = '2px solid var(--vscode-focusBorder)';
-                    firstPipelineTab.style.color = 'var(--vscode-tab-activeForeground)';
-                    document.getElementById('tab-parameters').classList.add('active');
+                document.querySelectorAll('.config-tab-pane').forEach(p => {
+                    p.classList.remove('active');
+                    p.style.display = 'none';
+                });
+                
+                // Select the active tab
+                const tabToActivate = activeTabId || 'parameters';
+                const activeTab = document.querySelector(\`.pipeline-tab[data-tab="\${tabToActivate}"]\`);
+                const activePane = document.getElementById(\`tab-\${tabToActivate}\`);
+                
+                if (activeTab) {
+                    activeTab.classList.add('active');
+                    activeTab.style.borderBottom = '2px solid var(--vscode-focusBorder)';
+                    activeTab.style.color = 'var(--vscode-tab-activeForeground)';
+                }
+                if (activePane) {
+                    activePane.classList.add('active');
+                    activePane.style.display = 'block';
+                }
+                
+                // Render pipeline properties
+                renderPipelineParameters();
+                renderPipelineVariables();
+                
+                // Update concurrency input
+                const concurrencyInput = document.getElementById('concurrencyInput');
+                if (concurrencyInput) {
+                    concurrencyInput.value = pipelineData.concurrency || 1;
                 }
                 
                 rightPanel.innerHTML = '<div class="empty-state">Select an activity to view its properties</div>';
@@ -3394,14 +3495,28 @@ class PipelineEditorProvider {
                     t.style.color = 'var(--vscode-tab-inactiveForeground)';
                     t.style.borderBottom = 'none';
                 });
-                document.querySelectorAll('.config-tab-pane').forEach(p => p.classList.remove('active'));
+                document.querySelectorAll('.config-tab-pane').forEach(p => {
+                    p.classList.remove('active');
+                    p.style.display = 'none';
+                });
                 
                 // Add active class and styles to clicked tab
                 tab.classList.add('active');
                 tab.style.color = 'var(--vscode-tab-activeForeground)';
                 tab.style.borderBottom = '2px solid var(--vscode-focusBorder)';
                 const tabName = tab.getAttribute('data-tab');
-                document.getElementById(\`tab-\${tabName}\`).classList.add('active');
+                const pane = document.getElementById(\`tab-\${tabName}\`);
+                if (pane) {
+                    pane.classList.add('active');
+                    pane.style.display = 'block';
+                }
+                
+                // Re-render pipeline properties when switching to their tabs
+                if (tabName === 'parameters') {
+                    renderPipelineParameters();
+                } else if (tabName === 'pipeline-variables') {
+                    renderPipelineVariables();
+                }
             });
         });
 
@@ -3491,8 +3606,17 @@ class PipelineEditorProvider {
                 // Extract activities from Synapse format
                 const pipelineActivities = pipelineJson.properties?.activities || pipelineJson.activities || [];
                 const pipelineVariables = pipelineJson.properties?.variables || {};
+                const pipelineParameters = pipelineJson.properties?.parameters || {};
+                const pipelineConcurrency = pipelineJson.properties?.concurrency || 1;
                 console.log('[Webview] Loading', pipelineActivities.length, 'activities');
                 console.log('[Webview] Pipeline variables:', pipelineVariables);
+                console.log('[Webview] Pipeline parameters:', pipelineParameters);
+                console.log('[Webview] Pipeline concurrency:', pipelineConcurrency);
+                
+                // Load pipeline-level properties
+                pipelineData.variables = pipelineVariables;
+                pipelineData.parameters = pipelineParameters;
+                pipelineData.concurrency = pipelineConcurrency;
                 
                 // Create activities first
                 const canvasWrapper = document.getElementById('canvasWrapper');
@@ -3823,6 +3947,300 @@ class PipelineEditorProvider {
                 console.error('Error loading pipeline:', error);
             }
         }
+
+        // Pipeline-level properties functions
+        function renderPipelineParameters() {
+            const parametersList = document.getElementById('parametersList');
+            if (!parametersList) return;
+            
+            parametersList.innerHTML = '';
+            
+            for (const [paramName, paramData] of Object.entries(pipelineData.parameters)) {
+                const paramDiv = document.createElement('div');
+                paramDiv.className = 'property-group kv-pair-group';
+                paramDiv.style.cssText = 'margin-bottom: 8px; display: flex; gap: 8px; align-items: center;';
+                
+                // Key input
+                const keyInput = document.createElement('input');
+                keyInput.type = 'text';
+                keyInput.className = 'property-input param-key';
+                keyInput.value = paramData._displayName !== undefined ? paramData._displayName : paramName;
+                keyInput.placeholder = 'Name';
+                keyInput.style.flex = '1';
+                keyInput.setAttribute('data-original-name', paramName);
+                
+                // Default value input
+                const valueInput = document.createElement('input');
+                valueInput.type = 'text';
+                valueInput.className = 'property-input param-default';
+                valueInput.value = paramData.defaultValue || '';
+                valueInput.placeholder = 'Value';
+                valueInput.style.flex = '1';
+                valueInput.setAttribute('data-param', paramName);
+                
+                // Type select
+                const typeSelect = document.createElement('select');
+                typeSelect.className = 'property-input param-type';
+                typeSelect.style.cssText = 'flex: 0 0 100px;';
+                typeSelect.setAttribute('data-param', paramName);
+                
+                const types = ['string', 'int', 'float', 'bool', 'array', 'object'];
+                types.forEach(t => {
+                    const option = document.createElement('option');
+                    option.value = t;
+                    option.textContent = t.charAt(0).toUpperCase() + t.slice(1);
+                    if (t === paramData.type) option.selected = true;
+                    typeSelect.appendChild(option);
+                });
+                
+                // Remove button
+                const removeBtn = document.createElement('button');
+                removeBtn.className = 'remove-param-btn';
+                removeBtn.textContent = 'Remove';
+                removeBtn.style.cssText = 'padding: 6px 12px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; flex-shrink: 0;';
+                removeBtn.setAttribute('data-param', paramName);
+                
+                paramDiv.appendChild(keyInput);
+                paramDiv.appendChild(valueInput);
+                paramDiv.appendChild(typeSelect);
+                paramDiv.appendChild(removeBtn);
+                
+                parametersList.appendChild(paramDiv);
+            }
+            
+            // Add event listeners for remove buttons
+            document.querySelectorAll('.remove-param-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const paramName = e.target.getAttribute('data-param');
+                    delete pipelineData.parameters[paramName];
+                    renderPipelineParameters();
+                    markAsDirty();
+                });
+            });
+            
+            // Add event listeners for type changes
+            document.querySelectorAll('.param-type').forEach(select => {
+                select.addEventListener('change', (e) => {
+                    const paramName = e.target.getAttribute('data-param');
+                    pipelineData.parameters[paramName].type = e.target.value;
+                    markAsDirty();
+                });
+            });
+            
+            // Add event listeners for default value changes
+            document.querySelectorAll('.param-default').forEach(input => {
+                input.addEventListener('input', (e) => {
+                    const paramName = e.target.getAttribute('data-param');
+                    pipelineData.parameters[paramName].defaultValue = e.target.value;
+                    markAsDirty();
+                });
+            });
+            
+            // Add event listeners for key name changes (rename)
+            document.querySelectorAll('.param-key').forEach(input => {
+                input.addEventListener('blur', (e) => {
+                    const originalName = e.target.getAttribute('data-original-name');
+                    const newName = e.target.value.trim();
+                    
+                    if (newName && newName !== originalName) {
+                        // Check if it's a temp key or actual rename
+                        const isTempKey = originalName.startsWith('_temp_param_');
+                        
+                        if (pipelineData.parameters[newName] && !isTempKey) {
+                            alert('A parameter with this name already exists!');
+                            e.target.value = pipelineData.parameters[originalName]._displayName || originalName;
+                        } else {
+                            // Create entry with new name
+                            const paramData = { ...pipelineData.parameters[originalName] };
+                            delete paramData._isNew;
+                            delete paramData._displayName;
+                            
+                            pipelineData.parameters[newName] = paramData;
+                            delete pipelineData.parameters[originalName];
+                            markAsDirty();
+                            renderPipelineParameters();
+                        }
+                    } else if (!newName && originalName.startsWith('_temp_param_')) {
+                        // Update display name for temp keys
+                        pipelineData.parameters[originalName]._displayName = '';
+                    } else if (!newName) {
+                        e.target.value = pipelineData.parameters[originalName]._displayName || originalName;
+                    }
+                });
+            });
+        }
+        
+        function renderPipelineVariables() {
+            const variablesList = document.getElementById('variablesList');
+            if (!variablesList) return;
+            
+            variablesList.innerHTML = '';
+            
+            for (const [varName, varData] of Object.entries(pipelineData.variables)) {
+                const varDiv = document.createElement('div');
+                varDiv.className = 'property-group kv-pair-group';
+                varDiv.style.cssText = 'margin-bottom: 8px; display: flex; gap: 8px; align-items: center;';
+                
+                // Key input
+                const keyInput = document.createElement('input');
+                keyInput.type = 'text';
+                keyInput.className = 'property-input var-key';
+                keyInput.value = varData._displayName !== undefined ? varData._displayName : varName;
+                keyInput.placeholder = 'Name';
+                keyInput.style.flex = '1';
+                keyInput.setAttribute('data-original-name', varName);
+                
+                // Default value input
+                const valueInput = document.createElement('input');
+                valueInput.type = 'text';
+                valueInput.className = 'property-input var-default';
+                valueInput.value = varData.defaultValue || '';
+                valueInput.placeholder = 'Value';
+                valueInput.style.flex = '1';
+                valueInput.setAttribute('data-var', varName);
+                
+                // Type select
+                const typeSelect = document.createElement('select');
+                typeSelect.className = 'property-input var-type';
+                typeSelect.style.cssText = 'flex: 0 0 100px;';
+                typeSelect.setAttribute('data-var', varName);
+                
+                const types = ['String', 'Boolean', 'Array', 'Integer'];
+                types.forEach(t => {
+                    const option = document.createElement('option');
+                    option.value = t;
+                    option.textContent = t;
+                    if (t === varData.type) option.selected = true;
+                    typeSelect.appendChild(option);
+                });
+                
+                // Remove button
+                const removeBtn = document.createElement('button');
+                removeBtn.className = 'remove-var-btn';
+                removeBtn.textContent = 'Remove';
+                removeBtn.style.cssText = 'padding: 6px 12px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; flex-shrink: 0;';
+                removeBtn.setAttribute('data-var', varName);
+                
+                varDiv.appendChild(keyInput);
+                varDiv.appendChild(valueInput);
+                varDiv.appendChild(typeSelect);
+                varDiv.appendChild(removeBtn);
+                
+                variablesList.appendChild(varDiv);
+            }
+            
+            // Add event listeners for remove buttons
+            document.querySelectorAll('.remove-var-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const varName = e.target.getAttribute('data-var');
+                    delete pipelineData.variables[varName];
+                    renderPipelineVariables();
+                    markAsDirty();
+                });
+            });
+            
+            // Add event listeners for type changes
+            document.querySelectorAll('.var-type').forEach(select => {
+                select.addEventListener('change', (e) => {
+                    const varName = e.target.getAttribute('data-var');
+                    pipelineData.variables[varName].type = e.target.value;
+                    markAsDirty();
+                });
+            });
+            
+            // Add event listeners for default value changes
+            document.querySelectorAll('.var-default').forEach(input => {
+                input.addEventListener('input', (e) => {
+                    const varName = e.target.getAttribute('data-var');
+                    pipelineData.variables[varName].defaultValue = e.target.value;
+                    markAsDirty();
+                });
+            });
+            
+            // Add event listeners for key name changes (rename)
+            document.querySelectorAll('.var-key').forEach(input => {
+                input.addEventListener('blur', (e) => {
+                    const originalName = e.target.getAttribute('data-original-name');
+                    const newName = e.target.value.trim();
+                    
+                    if (newName && newName !== originalName) {
+                        // Check if it's a temp key or actual rename
+                        const isTempKey = originalName.startsWith('_temp_var_');
+                        
+                        if (pipelineData.variables[newName] && !isTempKey) {
+                            alert('A variable with this name already exists!');
+                            e.target.value = pipelineData.variables[originalName]._displayName || originalName;
+                        } else {
+                            // Create entry with new name
+                            const varData = { ...pipelineData.variables[originalName] };
+                            delete varData._isNew;
+                            delete varData._displayName;
+                            
+                            pipelineData.variables[newName] = varData;
+                            delete pipelineData.variables[originalName];
+                            markAsDirty();
+                            renderPipelineVariables();
+                        }
+                    } else if (!newName && originalName.startsWith('_temp_var_')) {
+                        // Update display name for temp keys
+                        pipelineData.variables[originalName]._displayName = '';
+                    } else if (!newName) {
+                        e.target.value = pipelineData.variables[originalName]._displayName || originalName;
+                    }
+                });
+            });
+        }
+        
+        // Add parameter button handler
+        const addParameterBtn = document.getElementById('addParameterBtn');
+        if (addParameterBtn) {
+            addParameterBtn.addEventListener('click', () => {
+                // Generate temporary unique internal key
+                const tempKey = '_temp_param_' + Date.now();
+                
+                pipelineData.parameters[tempKey] = {
+                    type: 'string',
+                    defaultValue: '',
+                    _isNew: true,
+                    _displayName: ''
+                };
+                renderPipelineParameters();
+                markAsDirty();
+            });
+        }
+        
+        // Add variable button handler
+        const addVariableBtn = document.getElementById('addVariableBtn');
+        if (addVariableBtn) {
+            addVariableBtn.addEventListener('click', () => {
+                // Generate temporary unique internal key
+                const tempKey = '_temp_var_' + Date.now();
+                
+                pipelineData.variables[tempKey] = {
+                    type: 'String',
+                    defaultValue: '',
+                    _isNew: true,
+                    _displayName: ''
+                };
+                renderPipelineVariables();
+                markAsDirty();
+            });
+        }
+        
+        // Concurrency input handler
+        const concurrencyInput = document.getElementById('concurrencyInput');
+        if (concurrencyInput) {
+            concurrencyInput.value = pipelineData.concurrency || 1;
+            concurrencyInput.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value) || 1;
+                pipelineData.concurrency = Math.max(1, value);
+                markAsDirty();
+            });
+        }
+        
+        // Initialize pipeline properties display
+        renderPipelineParameters();
+        renderPipelineVariables();
 
         // Initial draw
         draw();

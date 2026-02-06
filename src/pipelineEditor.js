@@ -101,6 +101,9 @@ class PipelineEditorProvider {
 					case 'alert':
 						vscode.window.showInformationMessage(message.text);
 						break;
+					case 'error':
+						vscode.window.showErrorMessage(message.text);
+						break;
 					case 'save':
 						console.log('[Extension] Received save message:', message);
 						// Use filePath from message if available, otherwise use closure filePath
@@ -153,6 +156,23 @@ class PipelineEditorProvider {
 						// Get cached state and save it
 						const cachedData = PipelineEditorProvider.stateCache.get(filePath);
 						if (cachedData) {
+							// Validate activities before saving
+							const invalidActivities = [];
+							if (cachedData.activities) {
+								cachedData.activities.forEach(a => {
+									if ((a.type === 'SetVariable' || a.type === 'AppendVariable') && !a.typeProperties?.variableName) {
+										invalidActivities.push(a.name);
+									}
+								});
+							}
+							
+							if (invalidActivities.length > 0) {
+								vscode.window.showErrorMessage(
+									`Cannot save ${basename}: The following activities are missing variable names: ${invalidActivities.join(', ')}. Please set variable names before saving.`
+								);
+								return;
+							}
+							
 							await this.savePipelineToWorkspace(cachedData, filePath);
 							vscode.window.showInformationMessage(`Saved ${basename}`);
 						}
@@ -288,25 +308,21 @@ class PipelineEditorProvider {
 						if (a.dependsOn) activity.dependsOn = a.dependsOn;
 						if (a.userProperties) activity.userProperties = a.userProperties;
 						
-						// Add policy
-						const policy = {};
-						if (a.timeout !== undefined) policy.timeout = a.timeout;
-						if (a.retry !== undefined) policy.retry = a.retry;
-						if (a.retryIntervalInSeconds !== undefined) policy.retryIntervalInSeconds = a.retryIntervalInSeconds;
-						if (a.secureOutput !== undefined) policy.secureOutput = a.secureOutput;
-						if (a.secureInput !== undefined) policy.secureInput = a.secureInput;
-						if (Object.keys(policy).length > 0) activity.policy = policy;
-						
-						// Collect typeProperties
-						const typeProperties = {};
-						const commonProps = ['id', 'type', 'x', 'y', 'width', 'height', 'name', 'description', 'color', 'container', 'element', 
-											 'timeout', 'retry', 'retryIntervalInSeconds', 'secureOutput', 'secureInput', 'userProperties', 'state', 'onInactiveMarkAs',
-											 'dynamicAllocation', 'minExecutors', 'maxExecutors', 'numExecutors', 'dependsOn', 'policy',
-											 'sourceDataset', 'sinkDataset', 'recursive', 'modifiedDatetimeStart', 'modifiedDatetimeEnd',
-											 'wildcardFolderPath', 'wildcardFileName', 'enablePartitionDiscovery',
-											 'writeBatchSize', 'writeBatchTimeout', 'preCopyScript', 'maxConcurrentConnections', 'writeBehavior', 
-											 'sqlWriterUseTableLock', 'disableMetricsCollection', '_sourceObject', '_sinkObject',
-											 '_sourceDatasetType', '_sinkDatasetType', 'inputs', 'outputs', 'source', 'sink', 'typeProperties'];
+                        // Preserve policy object from webview if it exists
+                        if (a.policy && typeof a.policy === 'object') {
+                            activity.policy = a.policy;
+                        }
+                        
+                        // Collect typeProperties
+                        const typeProperties = {};
+                        const commonProps = ['id', 'type', 'x', 'y', 'width', 'height', 'name', 'description', 'color', 'container', 'element', 
+                                             'timeout', 'retry', 'retryIntervalInSeconds', 'secureOutput', 'secureInput', 'userProperties', 'state', 'onInactiveMarkAs',
+                                             'dynamicAllocation', 'minExecutors', 'maxExecutors', 'numExecutors', 'dependsOn', 'policy',
+                                             'sourceDataset', 'sinkDataset', 'recursive', 'modifiedDatetimeStart', 'modifiedDatetimeEnd',
+                                             'wildcardFolderPath', 'wildcardFileName', 'enablePartitionDiscovery',
+                                             'writeBatchSize', 'writeBatchTimeout', 'preCopyScript', 'maxConcurrentConnections', 'writeBehavior', 
+                                             'sqlWriterUseTableLock', 'disableMetricsCollection', '_sourceObject', '_sinkObject',
+                                             '_sourceDatasetType', '_sinkDatasetType', 'inputs', 'outputs', 'source', 'sink', 'typeProperties'];
 						
 						for (const key in a) {
 							if (!commonProps.includes(key) && a.hasOwnProperty(key) && typeof a[key] !== 'function') {
@@ -357,7 +373,55 @@ class PipelineEditorProvider {
 									typeProperties.numExecutors = numExec;
 								}
 							}
+						}
+					}
+					
+					// Handle SetVariable specific fields
+						if (a.type === 'SetVariable') {
+							// Remove UI-specific fields
+							delete typeProperties.variableType;
+							delete typeProperties.pipelineVariableType;
+							delete typeProperties.returnValues;
+							
+							// If it's a pipeline return value
+							if (a.variableType === 'Pipeline return value' && a.returnValues) {
+								typeProperties.variableName = 'pipelineReturnValue';
+								typeProperties.setSystemVariable = true;
+								
+								// Convert returnValues to Azure format
+								const valueArray = [];
+								for (const key in a.returnValues) {
+									if (a.returnValues.hasOwnProperty(key)) {
+										const item = a.returnValues[key];
+										const valueObj = {
+											key: key,
+											value: { type: item.type }
+										};
+										
+										// Handle different types
+										if (item.type === 'Null') {
+											// Null has no content field
+										} else if (item.type === 'Array') {
+											// Array needs nested content structure
+											valueObj.value.content = item.content || [];
+										} else if (item.type === 'Int' || item.type === 'Float') {
+											// Numbers without quotes
+											valueObj.value.content = parseFloat(item.value) || 0;
+										} else if (item.type === 'Boolean') {
+											// Boolean value
+											valueObj.value.content = item.value === 'true' || item.value === true;
+										} else {
+											// String, Expression, Object
+											valueObj.value.content = item.value || '';
+										}
+										
+										valueArray.push(valueObj);
+									}
+								}
+								
+								typeProperties.value = valueArray;
 							}
+							// Else: Pipeline variable - variableName and value are already in typeProperties
 						}
 						
 						// For Copy activity, reconstruct nested source/sink structures and inputs/outputs
@@ -1259,14 +1323,48 @@ class PipelineEditorProvider {
             sendCurrentStateToExtension();
         }
         
+        // Validate activities before saving
+        function validateActivities() {
+            const invalidActivities = [];
+            activities.forEach(a => {
+                if ((a.type === 'SetVariable' || a.type === 'AppendVariable') && !a.variableName) {
+                    invalidActivities.push(a.name + ' (' + a.type + ')');
+                }
+            });
+            
+            if (invalidActivities.length > 0) {
+                return {
+                    valid: false,
+                    message: 'The following activities are missing required variable name:\\n\\n' + 
+                             invalidActivities.join('\\n') + 
+                             '\\n\\nPlease set the variable name in the Settings tab before saving.'
+                };
+            }
+            
+            return { valid: true };
+        }
+        
         // Shared function to build pipeline data for saving (used by both save button and cache)
         function buildPipelineDataForSave(pipelineName) {
-            // Collect variables from AppendVariable activities
+            // Collect variables from AppendVariable and SetVariable activities
             const variables = {};
             activities.forEach(a => {
                 if (a.type === 'AppendVariable' && a.variableName) {
                     if (!variables[a.variableName]) {
                         variables[a.variableName] = { type: 'Array' };
+                    }
+                } else if (a.type === 'SetVariable' && a.variableName && a.variableType === 'Pipeline variable') {
+                    // Only create pipeline variable entry for non-return-value types
+                    if (!variables[a.variableName]) {
+                        // Map UI type names to Azure format
+                        const typeMap = {
+                            'String': 'String',
+                            'Boolean': 'Boolean',
+                            'Array': 'Array',
+                            'Integer': 'Integer'
+                        };
+                        const varType = typeMap[a.pipelineVariableType] || 'String';
+                        variables[a.variableName] = { type: varType };
                     }
                 }
             });
@@ -1285,15 +1383,34 @@ class PipelineEditorProvider {
                                 activity: c.from.name,
                                 dependencyConditions: [c.condition || 'Succeeded']
                             })),
-                        policy: {
-                            timeout: a.timeout || "0.12:00:00",
-                            retry: a.retry || 0,
-                            retryIntervalInSeconds: a.retryIntervalInSeconds || 30,
-                            secureOutput: a.secureOutput || false,
-                            secureInput: a.secureInput || false
-                        },
                         userProperties: a.userProperties || []
                     };
+                    
+                    // For SetVariable, always include policy section with secureOutput and secureInput
+                    if (a.type === 'SetVariable') {
+                        activity.policy = {
+                            secureOutput: a.secureOutput || false,
+                            secureInput: a.secureInput || false
+                        };
+                    } else {
+                        // For other activities, only add policy if any non-default values are set
+                        const hasNonDefaultPolicy = 
+                            (a.timeout && a.timeout !== "0.12:00:00") ||
+                            (a.retry && a.retry !== 0) ||
+                            (a.retryIntervalInSeconds && a.retryIntervalInSeconds !== 30) ||
+                            a.secureOutput === true ||
+                            a.secureInput === true;
+                        
+                        if (hasNonDefaultPolicy) {
+                            activity.policy = {
+                                timeout: a.timeout || "0.12:00:00",
+                                retry: a.retry || 0,
+                                retryIntervalInSeconds: a.retryIntervalInSeconds || 30,
+                                secureOutput: a.secureOutput || false,
+                                secureInput: a.secureInput || false
+                            };
+                        }
+                    }
                     
                     if (a.description) activity.description = a.description;
                     if (a.state) activity.state = a.state;
@@ -1368,6 +1485,58 @@ class PipelineEditorProvider {
                                 typeProperties.conf['spark.dynamicAllocation.minExecutors'] = numExec;
                                 typeProperties.conf['spark.dynamicAllocation.maxExecutors'] = numExec;
                                 typeProperties.numExecutors = numExec;
+                            }
+                        }
+                    }
+                    
+                    // Handle SetVariable specific fields
+                    if (a.type === 'SetVariable') {
+                        // Remove UI-specific fields that shouldn't be in the JSON
+                        delete typeProperties.variableType;
+                        delete typeProperties.pipelineVariableType;
+                        delete typeProperties.returnValues;
+                        
+                        // If it's a pipeline return value
+                        if (a.variableType === 'Pipeline return value' && a.returnValues) {
+                            typeProperties.variableName = 'pipelineReturnValue';
+                            typeProperties.setSystemVariable = true;
+                            
+                            // Convert returnValues key-value object to Azure format
+                            const valueArray = [];
+                            for (const key in a.returnValues) {
+                                if (a.returnValues.hasOwnProperty(key)) {
+                                    const item = a.returnValues[key];
+                                    const valueObj = {
+                                        key: key,
+                                        value: { type: item.type }
+                                    };
+                                    
+                                    // Handle different types
+                                    if (item.type === 'Null') {
+                                        // Null type has no content
+                                    } else if (item.type === 'Array') {
+                                        // Array needs nested content structure
+                                        valueObj.value.content = item.content || [];
+                                    } else if (item.type === 'Int' || item.type === 'Float') {
+                                        // Numbers without quotes
+                                        valueObj.value.content = parseFloat(item.value) || 0;
+                                    } else if (item.type === 'Boolean') {
+                                        // Boolean value
+                                        valueObj.value.content = item.value === 'true' || item.value === true;
+                                    } else {
+                                        // String, Expression, Object
+                                        valueObj.value.content = item.value || '';
+                                    }
+                                    
+                                    valueArray.push(valueObj);
+                                }
+                            }
+                            
+                            typeProperties.value = valueArray;
+                        } else {
+                            // Pipeline variable mode - parse numeric types
+                            if (a.pipelineVariableType === 'Integer' && typeProperties.value) {
+                                typeProperties.value = parseInt(typeProperties.value, 10) || 0;
                             }
                         }
                     }
@@ -1459,6 +1628,15 @@ class PipelineEditorProvider {
                 this.color = this.getColorForType(type);
                 this.container = container;
                 this.element = null;
+                
+                // Set default values for SetVariable
+                if (type === 'SetVariable') {
+                    this.variableType = 'Pipeline variable';
+                    this.pipelineVariableType = 'String';
+                    this.secureOutput = false;
+                    this.secureInput = false;
+                }
+                
                 this.createDOMElement();
             }
 
@@ -2203,7 +2381,7 @@ class PipelineEditorProvider {
                         break;
                     case 'boolean':
                         const checked = value ? 'checked' : '';
-                        fieldHtml += \`<input type="checkbox" data-key="\${key}" \${checked} style="width: auto;">\`;
+                        fieldHtml += \`<div style="flex: 1;"><input type="checkbox" class="property-input" data-key="\${key}" \${checked} style="width: auto; margin: 0;"></div>\`;
                         break;
                     case 'select':
                         fieldHtml += \`<select class="property-input" data-key="\${key}">\`;
@@ -2244,14 +2422,46 @@ class PipelineEditorProvider {
                                     \`<option value="\${t}" \${t === paramType ? 'selected' : ''}>\${t}</option>\`
                                 ).join('');
                                 
+                                // For Boolean type, use dropdown instead of text input
+                                // For Array type, show nested array items with type/content
+                                let valueField;
+                                if (paramType === 'Boolean') {
+                                    valueField = \`<select class="property-input kv-value" style="flex: 1;">
+                                        <option value="true" \${paramVal === 'true' || paramVal === true ? 'selected' : ''}>true</option>
+                                        <option value="false" \${paramVal === 'false' || paramVal === false || !paramVal ? 'selected' : ''}>false</option>
+                                    </select>\`;
+                                } else if (paramType === 'Array') {
+                                    // For Array type, render nested array editor
+                                    const arrayContent = paramValue?.content || [];
+                                    valueField = \`<div class="array-items-container" style="flex: 1; border: 1px solid var(--vscode-input-border); border-radius: 3px; padding: 8px; background: var(--vscode-input-background);"></div>\`;
+                                } else {
+                                    valueField = \`<input type="text" class="property-input kv-value" value="\${paramVal}" placeholder="Value" style="flex: 1;">\`;
+                                }
+                                
                                 fieldHtml += \`
-                                    <div class="property-group" style="margin-bottom: 8px; display: flex; gap: 8px; align-items: center;">
+                                    <div class="property-group kv-pair-group" style="margin-bottom: 8px; display: flex; gap: 8px; align-items: \${paramType === 'Array' ? 'flex-start' : 'center'};" data-array-content='\${paramType === 'Array' ? JSON.stringify(paramValue?.content || []) : ''}'>\`;
+                                
+                                if (paramType === 'Array') {
+                                    fieldHtml += \`
+                                        <div style="flex: 1; display: flex; flex-direction: column; gap: 8px;">
+                                            <div style="display: flex; gap: 8px; align-items: center;">
+                                                <input type="text" class="property-input kv-key" value="\${paramKey}" placeholder="Key" style="flex: 1;">
+                                                <select class="property-input kv-type" style="flex: 0 0 100px;">\${typeOptions}</select>
+                                                <button class="remove-kv-btn" style="padding: 6px 12px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; flex-shrink: 0;">Remove</button>
+                                            </div>
+                                            \${valueField}
+                                        </div>
+                                    \`;
+                                } else {
+                                    fieldHtml += \`
                                         <input type="text" class="property-input kv-key" value="\${paramKey}" placeholder="Key" style="flex: 1;">
-                                        <input type="text" class="property-input kv-value" value="\${paramVal}" placeholder="Value" style="flex: 1;">
-                                        <select class="property-input kv-type" style="flex: 0 0 80px;">\${typeOptions}</select>
+                                        \${valueField}
+                                        <select class="property-input kv-type" style="flex: 0 0 100px;">\${typeOptions}</select>
                                         <button class="remove-kv-btn" style="padding: 6px 12px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; flex-shrink: 0;">Remove</button>
-                                    </div>
-                                \`;
+                                    \`;
+                                }
+                                
+                                fieldHtml += \`</div>\`;
                             }
                         }
                         
@@ -2557,8 +2767,8 @@ class PipelineEditorProvider {
                         markAsDirty();
                         console.log('Updated ' + key + ':', activity[key]);
                         
-                        // If dynamicAllocation changed, re-render the Settings tab to show/hide conditional fields
-                        if (key === 'dynamicAllocation') {
+                        // If dynamicAllocation or variableType changed, re-render the Settings tab to show/hide conditional fields
+                        if (key === 'dynamicAllocation' || key === 'variableType') {
                             const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
                             if (activeTab === 'settings') {
                                 showProperties(activity, 'settings');
@@ -2568,14 +2778,91 @@ class PipelineEditorProvider {
                 });
             });
             
+            // Initialize array items containers for existing Array type parameters
+            document.querySelectorAll('.array-items-container').forEach(container => {
+                const kvPairGroup = container.closest('.kv-pair-group');
+                if (kvPairGroup) {
+                    const arrayContentStr = kvPairGroup.getAttribute('data-array-content');
+                    if (arrayContentStr) {
+                        try {
+                            const arrayContent = JSON.parse(arrayContentStr);
+                            renderArrayItems(container, arrayContent);
+                        } catch (e) {
+                            console.error('Failed to parse array content:', e);
+                        }
+                    }
+                }
+            });
+            
+            // Helper function to render array items
+            function renderArrayItems(container, items) {
+                container.innerHTML = \`
+                    <div style="font-size: 11px; color: var(--vscode-descriptionForeground); margin-bottom: 6px;">Array Items</div>
+                    <button class="add-array-item-btn" style="padding: 3px 6px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; font-size: 10px; margin-bottom: 6px;">+ Add Item</button>
+                    <div class="array-items-list" style="display: flex; flex-direction: column; gap: 6px;"></div>
+                \`;
+                
+                const itemsList = container.querySelector('.array-items-list');
+                items.forEach((item, index) => {
+                    addArrayItemToList(itemsList, item, index);
+                });
+                
+                // Add button listener
+                container.querySelector('.add-array-item-btn').addEventListener('click', () => {
+                    addArrayItemToList(itemsList, { type: 'String', content: '' }, items.length);
+                    items.push({ type: 'String', content: '' });
+                    updateArrayItemsInActivity();
+                });
+                
+                function updateArrayItemsInActivity() {
+                    const kvPairGroup = container.closest('.kv-pair-group');
+                    const kvList = container.closest('.kv-list');
+                    const fieldKey = kvList?.getAttribute('data-key');
+                    if (fieldKey) {
+                        updateActivityParameters(fieldKey);
+                    }
+                }
+                
+                function addArrayItemToList(list, item, index) {
+                    const itemDiv = document.createElement('div');
+                    itemDiv.style.cssText = 'display: flex; gap: 4px; align-items: center; padding: 4px; background: var(--vscode-editor-background); border-radius: 2px;';
+                    itemDiv.innerHTML = \`
+                        <input type="text" class="array-item-content" value="\${item.content || ''}" placeholder="Value" style="flex: 1; font-size: 11px; padding: 2px 4px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border);">
+                        <button class="remove-array-item-btn" style="padding: 2px 6px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; font-size: 10px;">×</button>
+                    \`;
+                    list.appendChild(itemDiv);
+                    
+                    // Add event listeners
+                    itemDiv.querySelector('.array-item-content').addEventListener('input', (e) => {
+                        // All array items are String type
+                        items[index].type = 'String';
+                        items[index].content = e.target.value;
+                        updateArrayItemsInActivity();
+                    });
+                    itemDiv.querySelector('.remove-array-item-btn').addEventListener('click', () => {
+                        items.splice(index, 1);
+                        itemDiv.remove();
+                        updateArrayItemsInActivity();
+                        // Re-render to fix indices
+                        renderArrayItems(container, items);
+                    });
+                }
+            }
+            
             // Add event listeners for keyvalue add buttons
             document.querySelectorAll('.add-kv-btn').forEach(btn => {
                 btn.addEventListener('click', (e) => {
                     const key = e.target.getAttribute('data-key');
                     const kvList = document.querySelector(\`.kv-list[data-key="\${key}"]\`);
                     if (kvList) {
+                        // Get the valueTypes from the schema for this field
+                        const schema = ${JSON.stringify(activitySchemas)}[activity.type];
+                        const prop = schema?.typeProperties?.[key];
+                        const types = prop?.valueTypes || ['string', 'int', 'float', 'bool'];
+                        const typeOptions = types.map(t => \`<option value="\${t}">\${t}</option>\`).join('');
+                        
                         const kvPair = document.createElement('div');
-                        kvPair.className = 'property-group';
+                        kvPair.className = 'property-group kv-pair-group';
                         kvPair.style.marginBottom = '8px';
                         kvPair.style.display = 'flex';
                         kvPair.style.gap = '8px';
@@ -2583,12 +2870,7 @@ class PipelineEditorProvider {
                         kvPair.innerHTML = \`
                             <input type="text" class="property-input kv-key" placeholder="Key" style="flex: 1;">
                             <input type="text" class="property-input kv-value" placeholder="Value" style="flex: 1;">
-                            <select class="property-input kv-type" style="flex: 0 0 80px;">
-                                <option value="string">string</option>
-                                <option value="int">int</option>
-                                <option value="float">float</option>
-                                <option value="bool">bool</option>
-                            </select>
+                            <select class="property-input kv-type" style="flex: 0 0 100px;">\${typeOptions}</select>
                             <button class="remove-kv-btn" style="padding: 6px 12px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; flex-shrink: 0;">Remove</button>
                         \`;
                         kvList.appendChild(kvPair);
@@ -2601,7 +2883,86 @@ class PipelineEditorProvider {
                         });
                         
                         // Add change listeners to update activity
-                        kvPair.querySelectorAll('.kv-key, .kv-value, .kv-type').forEach(input => {
+                        const typeSelect = kvPair.querySelector('.kv-type');
+                        typeSelect.addEventListener('change', () => {
+                            const valueCell = kvPair.querySelector('.kv-value')?.parentElement || kvPair.children[1];
+                            
+                            // If Boolean is selected, replace value input with dropdown
+                            if (typeSelect.value === 'Boolean') {
+                                const valueInput = kvPair.querySelector('.kv-value');
+                                if (valueInput && valueInput.tagName === 'INPUT') {
+                                    const select = document.createElement('select');
+                                    select.className = 'property-input kv-value';
+                                    select.style.flex = '1';
+                                    select.innerHTML = \`
+                                        <option value="true">true</option>
+                                        <option value="false" selected>false</option>
+                                    \`;
+                                    valueInput.replaceWith(select);
+                                    select.addEventListener('change', () => updateActivityParameters(key));
+                                }
+                            }
+                            // If Array is selected, replace value input with array editor
+                            else if (typeSelect.value === 'Array') {
+                                const valueInput = kvPair.querySelector('.kv-value');
+                                if (valueInput && !valueInput.classList.contains('array-items-container')) {
+                                    // Restructure the kvPair for Array layout
+                                    kvPair.style.alignItems = 'flex-start';
+                                    kvPair.setAttribute('data-array-content', JSON.stringify([]));
+                                    
+                                    const arrayContainer = document.createElement('div');
+                                    arrayContainer.className = 'array-items-container';
+                                    arrayContainer.style.cssText = 'flex: 1; border: 1px solid var(--vscode-input-border); border-radius: 3px; padding: 8px; background: var(--vscode-input-background);';
+                                    
+                                    // Move key input, type selector, and remove button to a new row
+                                    const keyInput = kvPair.querySelector('.kv-key');
+                                    const removeBtn = kvPair.querySelector('.remove-kv-btn');
+                                    
+                                    kvPair.innerHTML = '';
+                                    const topRow = document.createElement('div');
+                                    topRow.style.cssText = 'display: flex; gap: 8px; align-items: center; width: 100%; margin-bottom: 8px;';
+                                    topRow.appendChild(keyInput);
+                                    topRow.appendChild(typeSelect);
+                                    topRow.appendChild(removeBtn);
+                                    
+                                    kvPair.style.flexDirection = 'column';
+                                    kvPair.appendChild(topRow);
+                                    kvPair.appendChild(arrayContainer);
+                                    
+                                    renderArrayItems(arrayContainer, []);
+                                }
+                            }
+                            // If switched from Boolean/Array to other type, replace with text input
+                            else {
+                                const valueInput = kvPair.querySelector('.kv-value');
+                                if (valueInput && (valueInput.tagName === 'SELECT' || valueInput.classList.contains('array-items-container'))) {
+                                    // Reset to normal layout
+                                    kvPair.style.alignItems = 'center';
+                                    kvPair.style.flexDirection = 'row';
+                                    
+                                    const keyInput = kvPair.querySelector('.kv-key');
+                                    const removeBtn = kvPair.querySelector('.remove-kv-btn');
+                                    
+                                    const textInput = document.createElement('input');
+                                    textInput.type = 'text';
+                                    textInput.className = 'property-input kv-value';
+                                    textInput.placeholder = 'Value';
+                                    textInput.style.flex = '1';
+                                    textInput.value = valueInput.tagName === 'SELECT' ? valueInput.value : '';
+                                    
+                                    kvPair.innerHTML = '';
+                                    kvPair.appendChild(keyInput);
+                                    kvPair.appendChild(textInput);
+                                    kvPair.appendChild(typeSelect);
+                                    kvPair.appendChild(removeBtn);
+                                    
+                                    textInput.addEventListener('input', () => updateActivityParameters(key));
+                                }
+                            }
+                            updateActivityParameters(key);
+                        });
+                        
+                        kvPair.querySelectorAll('.kv-key, .kv-value').forEach(input => {
                             input.addEventListener('change', () => updateActivityParameters(key));
                             input.addEventListener('input', () => updateActivityParameters(key));
                         });
@@ -2615,21 +2976,46 @@ class PipelineEditorProvider {
                 if (!kvList) return;
                 
                 const parameters = {};
-                kvList.querySelectorAll('.property-group').forEach(pair => {
+                kvList.querySelectorAll('.kv-pair-group, .property-group').forEach(pair => {
                     const keyInput = pair.querySelector('.kv-key');
-                    const valueInput = pair.querySelector('.kv-value');
                     const typeSelect = pair.querySelector('.kv-type');
                     
-                    if (keyInput && valueInput && typeSelect) {
+                    if (keyInput && typeSelect) {
                         const key = keyInput.value.trim();
-                        const value = valueInput.value.trim();
                         const type = typeSelect.value;
                         
                         if (key) {
-                            parameters[key] = {
-                                value: value,
-                                type: type
-                            };
+                            // Handle Array type differently
+                            if (type === 'Array') {
+                                const arrayContainer = pair.querySelector('.array-items-container');
+                                if (arrayContainer) {
+                                    const arrayItems = [];
+                                    arrayContainer.querySelectorAll('.array-items-list > div').forEach(itemDiv => {
+                                        const itemContent = itemDiv.querySelector('.array-item-content')?.value;
+                                        if (itemContent !== undefined) {
+                                            // All array items are String type
+                                            arrayItems.push({
+                                                type: 'String',
+                                                content: itemContent || ''
+                                            });
+                                        }
+                                    });
+                                    parameters[key] = {
+                                        type: type,
+                                        content: arrayItems
+                                    };
+                                }
+                            } else {
+                                // Handle non-Array types
+                                const valueInput = pair.querySelector('.kv-value');
+                                if (valueInput) {
+                                    const value = valueInput.value.trim();
+                                    parameters[key] = {
+                                        value: value,
+                                        type: type
+                                    };
+                                }
+                            }
                         }
                     }
                 });
@@ -2643,9 +3029,87 @@ class PipelineEditorProvider {
             // Add change listeners to existing parameter inputs
             document.querySelectorAll('.kv-list').forEach(kvList => {
                 const fieldKey = kvList.getAttribute('data-key');
-                kvList.querySelectorAll('.property-group').forEach(pair => {
+                kvList.querySelectorAll('.kv-pair-group, .property-group').forEach(pair => {
                     pair.querySelectorAll('.kv-key, .kv-value, .kv-type').forEach(input => {
-                        input.addEventListener('change', () => updateActivityParameters(fieldKey));
+                        input.addEventListener('change', () => {
+                            // If type changed to Boolean, replace value input with dropdown
+                            if (input.classList.contains('kv-type') && input.value === 'Boolean') {
+                                const valueInput = pair.querySelector('.kv-value');
+                                if (valueInput && valueInput.tagName === 'INPUT' && !valueInput.classList.contains('array-items-container')) {
+                                    const currentValue = valueInput.value;
+                                    const select = document.createElement('select');
+                                    select.className = 'property-input kv-value';
+                                    select.style.flex = '1';
+                                    select.innerHTML = \`
+                                        <option value="true" \${currentValue === 'true' ? 'selected' : ''}>true</option>
+                                        <option value="false" \${currentValue === 'false' || !currentValue ? 'selected' : ''}>false</option>
+                                    \`;
+                                    valueInput.replaceWith(select);
+                                    select.addEventListener('change', () => updateActivityParameters(fieldKey));
+                                }
+                            }
+                            // If type changed to Array, replace value input with array editor
+                            else if (input.classList.contains('kv-type') && input.value === 'Array') {
+                                const valueInput = pair.querySelector('.kv-value');
+                                if (valueInput && !valueInput.classList.contains('array-items-container')) {
+                                    // Restructure the kvPair for Array layout
+                                    pair.style.alignItems = 'flex-start';
+                                    pair.style.flexDirection = 'column';
+                                    pair.setAttribute('data-array-content', JSON.stringify([]));
+                                    
+                                    const arrayContainer = document.createElement('div');
+                                    arrayContainer.className = 'array-items-container';
+                                    arrayContainer.style.cssText = 'flex: 1; border: 1px solid var(--vscode-input-border); border-radius: 3px; padding: 8px; background: var(--vscode-input-background); width: 100%;';
+                                    
+                                    // Move key input, type selector, and remove button to a new row
+                                    const keyInput = pair.querySelector('.kv-key');
+                                    const typeSelect = pair.querySelector('.kv-type');
+                                    const removeBtn = pair.querySelector('.remove-kv-btn');
+                                    
+                                    pair.innerHTML = '';
+                                    const topRow = document.createElement('div');
+                                    topRow.style.cssText = 'display: flex; gap: 8px; align-items: center; width: 100%;';
+                                    topRow.appendChild(keyInput);
+                                    topRow.appendChild(typeSelect);
+                                    topRow.appendChild(removeBtn);
+                                    
+                                    pair.appendChild(topRow);
+                                    pair.appendChild(arrayContainer);
+                                    
+                                    renderArrayItems(arrayContainer, []);
+                                }
+                            }
+                            // If type changed from Boolean/Array to something else, replace with text input
+                            else if (input.classList.contains('kv-type') && input.value !== 'Boolean' && input.value !== 'Array') {
+                                const valueInput = pair.querySelector('.kv-value');
+                                const arrayContainer = pair.querySelector('.array-items-container');
+                                if ((valueInput && valueInput.tagName === 'SELECT') || arrayContainer) {
+                                    // Reset to normal layout
+                                    pair.style.alignItems = 'center';
+                                    pair.style.flexDirection = 'row';
+                                    
+                                    const keyInput = pair.querySelector('.kv-key');
+                                    const typeSelect = pair.querySelector('.kv-type');
+                                    const removeBtn = pair.querySelector('.remove-kv-btn');
+                                    
+                                    const textInput = document.createElement('input');
+                                    textInput.type = 'text';
+                                    textInput.className = 'property-input kv-value';
+                                    textInput.placeholder = 'Value';
+                                    textInput.style.flex = '1';
+                                    textInput.value = valueInput && valueInput.tagName === 'SELECT' ? valueInput.value : '';
+                                    
+                                    pair.innerHTML = '';
+                                    pair.appendChild(keyInput);
+                                    pair.appendChild(textInput);
+                                    pair.appendChild(typeSelect);
+                                    pair.appendChild(removeBtn);
+                                    
+                                    textInput.addEventListener('input', () => updateActivityParameters(fieldKey));
+                                }
+                            }
+                            updateActivityParameters(fieldKey);
+                        });
                         input.addEventListener('input', () => updateActivityParameters(fieldKey));
                     });
                     
@@ -2752,6 +3216,13 @@ class PipelineEditorProvider {
 
         // Toolbar buttons
         document.getElementById('saveBtn').addEventListener('click', () => {
+            // Validate activities
+            const validation = validateActivities();
+            if (!validation.valid) {
+                vscode.postMessage({ type: 'error', text: validation.message });
+                return;
+            }
+            
             const data = buildPipelineDataForSave("pipeline1");
             
             console.log('[Webview] Sending save message with filePath:', currentFilePath);
@@ -3020,6 +3491,55 @@ class PipelineEditorProvider {
                             activity.logSettings = tp.logSettings;
                             activity.dataIntegrationUnits = tp.dataIntegrationUnits;
                             activity.translator = tp.translator;
+                        } else if (activityData.type === 'SetVariable') {
+                            // Handle SetVariable specific loading
+                            const tp = activityData.typeProperties;
+                            
+                            // Check if this is a pipeline return value
+                            if (tp.setSystemVariable && tp.variableName === 'pipelineReturnValue' && Array.isArray(tp.value)) {
+                                activity.variableType = 'Pipeline return value';
+                                activity.returnValues = {};
+                                
+                                // Parse the return values array
+                                tp.value.forEach(item => {
+                                    if (item.key && item.value) {
+                                        const returnValue = {
+                                            type: item.value.type
+                                        };
+                                        
+                                        // Handle different content types
+                                        if (item.value.type === 'Null') {
+                                            returnValue.value = '';
+                                        } else if (item.value.type === 'Array') {
+                                            returnValue.content = item.value.content || [];
+                                        } else {
+                                            returnValue.value = item.value.content !== undefined ? String(item.value.content) : '';
+                                        }
+                                        
+                                        activity.returnValues[item.key] = returnValue;
+                                    }
+                                });
+                            } else {
+                                // Pipeline variable
+                                activity.variableType = 'Pipeline variable';
+                                activity.variableName = tp.variableName;
+                                activity.value = tp.value;
+                                
+                                // Try to determine the variable type from the variables section
+                                if (pipelineVariables && pipelineVariables[tp.variableName]) {
+                                    const varType = pipelineVariables[tp.variableName].type;
+                                    // Map Azure type to UI type
+                                    const typeMap = {
+                                        'String': 'String',
+                                        'Boolean': 'Boolean',
+                                        'Array': 'Array',
+                                        'Integer': 'Integer'
+                                    };
+                                    activity.pipelineVariableType = typeMap[varType] || 'String';
+                                } else {
+                                    activity.pipelineVariableType = 'String';
+                                }
+                            }
                         } else {
                             Object.assign(activity, activityData.typeProperties);
                         }

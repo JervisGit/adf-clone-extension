@@ -1328,16 +1328,22 @@ class PipelineEditorProvider {
             const invalidActivities = [];
             activities.forEach(a => {
                 if ((a.type === 'SetVariable' || a.type === 'AppendVariable') && !a.variableName) {
-                    invalidActivities.push(a.name + ' (' + a.type + ')');
+                    invalidActivities.push(a.name + ' (' + a.type + ') - missing variable name');
+                }
+                if (a.type === 'Fail' && (!a.message || !a.errorCode)) {
+                    const missing = [];
+                    if (!a.message) missing.push('Fail message');
+                    if (!a.errorCode) missing.push('Error code');
+                    invalidActivities.push(a.name + ' (' + a.type + ') - missing ' + missing.join(' and '));
                 }
             });
             
             if (invalidActivities.length > 0) {
                 return {
                     valid: false,
-                    message: 'The following activities are missing required variable name:\\n\\n' + 
+                    message: 'The following activities have required fields missing:\\n\\n' + 
                              invalidActivities.join('\\n') + 
-                             '\\n\\nPlease set the variable name in the Settings tab before saving.'
+                             '\\n\\nPlease fill in all required fields in the Settings tab before saving.'
                 };
             }
             
@@ -1539,6 +1545,14 @@ class PipelineEditorProvider {
                                 typeProperties.value = parseInt(typeProperties.value, 10) || 0;
                             }
                         }
+                    }
+                    
+                    // Handle Fail activity - ensure message and errorCode are in typeProperties
+                    if (a.type === 'Fail') {
+                        // Message and errorCode are already in typeProperties from the common loop above
+                        // Just ensure they're present with proper defaults if missing
+                        if (!typeProperties.message) typeProperties.message = '';
+                        if (!typeProperties.errorCode) typeProperties.errorCode = '';
                     }
                     
                     activity.typeProperties = typeProperties;

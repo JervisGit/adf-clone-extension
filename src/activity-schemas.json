@@ -98,5 +98,18 @@
       "pipelineVariableType": { "type": "select", "label": "Type", "options": ["String", "Boolean", "Array", "Integer"], "default": "String", "conditional": { "field": "variableType", "value": "Pipeline variable" } },
       "returnValues": { "type": "keyvalue", "label": "Return values", "valueTypes": ["String", "Expression", "Object", "Array", "Int", "Float", "Boolean", "Null"], "conditional": { "field": "variableType", "value": "Pipeline return value" } }
     }
+  },
+  "Fail": {
+    "name": "Fail",
+    "tabs": ["General", "Settings", "User Properties"],
+    "commonProperties": {
+      "name": { "type": "string", "label": "Name", "required": true },
+      "description": { "type": "string", "label": "Description", "multiline": true },
+      "state": { "type": "radio", "label": "Activity state", "options": ["Activated", "Deactivated"] }
+    },
+    "typeProperties": {
+      "message": { "type": "text", "label": "Fail message", "required": true, "placeholder": "Enter fail message" },
+      "errorCode": { "type": "text", "label": "Error code", "required": true, "placeholder": "Enter error code" }
+    }
   }
 }

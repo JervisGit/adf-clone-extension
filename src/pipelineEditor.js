@@ -448,6 +448,7 @@ class PipelineEditorProvider {
 						
 						return activity;
 					}),
+                    ...(pipelineData.variables && Object.keys(pipelineData.variables).length > 0 ? { variables: pipelineData.variables } : {}),
 					annotations: [],
 					lastPublishTime: new Date().toISOString()
 				}
@@ -1260,8 +1261,19 @@ class PipelineEditorProvider {
         
         // Shared function to build pipeline data for saving (used by both save button and cache)
         function buildPipelineDataForSave(pipelineName) {
+            // Collect variables from AppendVariable activities
+            const variables = {};
+            activities.forEach(a => {
+                if (a.type === 'AppendVariable' && a.variableName) {
+                    if (!variables[a.variableName]) {
+                        variables[a.variableName] = { type: 'Array' };
+                    }
+                }
+            });
+            
             return {
                 name: pipelineName,
+                variables: variables,
                 activities: activities.map(a => {
                     // Build the activity JSON with all properties
                     const activity = {
@@ -2816,6 +2828,9 @@ class PipelineEditorProvider {
                 
                 // Extract activities from Synapse format
                 const pipelineActivities = pipelineJson.properties?.activities || pipelineJson.activities || [];
+                const pipelineVariables = pipelineJson.properties?.variables || {};
+                console.log('[Webview] Loading', pipelineActivities.length, 'activities');
+                console.log('[Webview] Pipeline variables:', pipelineVariables);
                 
                 // Create activities first
                 const canvasWrapper = document.getElementById('canvasWrapper');

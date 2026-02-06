@@ -67,5 +67,18 @@
       "driverSize": { "type": "select", "label": "Driver size", "options": ["Small", "Medium", "Large"], "default": "Small" },
       "numExecutors": { "type": "number", "label": "Number of executors", "default": 2, "min": 1 }
     }
+  },
+  "AppendVariable": {
+    "name": "Append Variable",
+    "tabs": ["General", "Settings", "User Properties"],
+    "commonProperties": {
+      "name": { "type": "string", "label": "Name", "required": true },
+      "description": { "type": "string", "label": "Description", "multiline": true },
+      "state": { "type": "radio", "label": "Activity state", "options": ["Activated", "Deactivated"] }
+    },
+    "typeProperties": {
+      "variableName": { "type": "text", "label": "Name", "required": true, "placeholder": "Enter variable name" },
+      "value": { "type": "text", "label": "Value", "required": true, "placeholder": "Enter value" }
+    }
   }
 }

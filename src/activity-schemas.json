@@ -174,5 +174,20 @@
       "pipeline": { "type": "pipeline", "label": "Invoked pipeline", "required": true, "placeholder": "Select pipeline..." },
       "waitOnCompletion": { "type": "boolean", "label": "Wait on completion", "default": true }
     }
+  },
+  "Validation": {
+    "name": "Validation",
+    "tabs": ["General", "Settings", "User Properties"],
+    "commonProperties": {
+      "name": { "type": "string", "label": "Name", "required": true },
+      "description": { "type": "string", "label": "Description", "multiline": true },
+      "state": { "type": "radio", "label": "Activity state", "options": ["Activated", "Deactivated"], "default": "Activated" }
+    },
+    "typeProperties": {
+      "dataset": { "type": "validation-dataset", "label": "Dataset", "required": true, "placeholder": "Select dataset..." },
+      "timeout": { "type": "text", "label": "Timeout", "default": "0.12:00:00", "placeholder": "0.12:00:00", "required": true },
+      "sleep": { "type": "number", "label": "Sleep", "default": 10, "placeholder": "10", "min": 1, "required": true },
+      "childItems": { "type": "radio-with-info", "label": "Child items", "options": ["ignore", "true", "false"], "default": "ignore", "conditional": { "field": "_datasetLocationType", "value": ["AzureBlobStorageLocation", "AzureBlobFSLocation"] } }
+    }
   }
 }

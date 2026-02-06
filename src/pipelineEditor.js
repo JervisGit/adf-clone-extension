@@ -337,7 +337,7 @@ class PipelineEditorProvider {
                                              'wildcardFolderPath', 'wildcardFileName', 'enablePartitionDiscovery',
                                              'writeBatchSize', 'writeBatchTimeout', 'preCopyScript', 'maxConcurrentConnections', 'writeBehavior', 
                                              'sqlWriterUseTableLock', 'disableMetricsCollection', '_sourceObject', '_sinkObject',
-                                             '_sourceDatasetType', '_sinkDatasetType', 'inputs', 'outputs', 'source', 'sink', 'typeProperties'];
+                                             '_sourceDatasetType', '_sinkDatasetType', '_datasetLocationType', 'inputs', 'outputs', 'source', 'sink', 'typeProperties'];
 						
 						for (const key in a) {
 							if (!commonProps.includes(key) && a.hasOwnProperty(key) && typeof a[key] !== 'function') {
@@ -521,6 +521,42 @@ class PipelineEditorProvider {
 							console.log('[Extension] Added outputs:', activity.outputs);
 						}
 					}
+						
+						// Handle Validation specific fields
+						if (a.type === 'Validation') {
+							console.log('[Extension] Validation activity - processing fields');
+							
+							// Dataset is already stored as reference object, so it's in typeProperties
+							// Just ensure it's properly formatted
+							if (typeProperties.dataset && typeof typeProperties.dataset === 'object') {
+								console.log('[Extension] Validation dataset:', typeProperties.dataset);
+							}
+							
+							// Ensure timeout has default value if not set
+							if (!typeProperties.timeout || typeProperties.timeout === '') {
+								typeProperties.timeout = '0.12:00:00';
+							}
+							
+							// Ensure sleep has default value if not set
+							if (typeProperties.sleep === undefined || typeProperties.sleep === null || typeProperties.sleep === '') {
+								typeProperties.sleep = 10;
+							}
+							
+							// Handle childItems: only include if dataset is Blob/ADLS AND not "ignore"
+							const isStorageDataset = a._datasetLocationType === 'AzureBlobStorageLocation' || a._datasetLocationType === 'AzureBlobFSLocation';
+							if (isStorageDataset && typeProperties.childItems !== undefined && typeProperties.childItems !== 'ignore') {
+								// Convert string "true"/"false" to boolean
+								typeProperties.childItems = typeProperties.childItems === 'true' || typeProperties.childItems === true;
+								console.log('[Extension] Validation childItems:', typeProperties.childItems);
+							} else {
+								// Remove childItems if not storage dataset, "ignore", or undefined
+								delete typeProperties.childItems;
+								console.log('[Extension] Validation childItems removed (not applicable or ignore)');
+							}
+							
+							// Remove internal tracking fields
+							delete typeProperties._datasetLocationType;
+						}
 						
 						activity.typeProperties = typeProperties;
 						console.log('[Extension] Final activity object:', JSON.stringify(activity, null, 2));
@@ -1137,6 +1173,30 @@ class PipelineEditorProvider {
             border-color: var(--vscode-focusBorder);
         }
 
+        .info-icon {
+            position: relative;
+            cursor: help;
+            user-select: none;
+        }
+        
+        .info-icon:hover::after {
+            content: attr(title);
+            position: absolute;
+            left: 20px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: var(--vscode-editorHoverWidget-background);
+            border: 1px solid var(--vscode-editorHoverWidget-border);
+            color: var(--vscode-editorHoverWidget-foreground);
+            padding: 6px 10px;
+            border-radius: 4px;
+            white-space: nowrap;
+            z-index: 1000;
+            font-size: 12px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            pointer-events: none;
+        }
+
         .empty-state {
             padding: 24px;
             text-align: center;
@@ -1397,6 +1457,12 @@ class PipelineEditorProvider {
                     // Validate pipeline is selected
                     if (!a.pipeline) {
                         invalidActivities.push(a.name + ' (' + a.type + ') - Invoked pipeline must be selected');
+                    }
+                }
+                if (a.type === 'Validation') {
+                    // Validate dataset is selected
+                    if (!a.dataset || (typeof a.dataset === 'object' && !a.dataset.referenceName)) {
+                        invalidActivities.push(a.name + ' (' + a.type + ') - Dataset must be selected');
                     }
                 }
             });
@@ -2156,7 +2222,8 @@ class PipelineEditorProvider {
                     'IfCondition': '❓',
                     'Wait': '⏱️',
                     'WebActivity': '🌐',
-                    'StoredProcedure': '💾'
+                    'StoredProcedure': '💾',
+                    'Validation': '✅'
                 };
                 return icons[this.type] || '📦';
             }
@@ -2809,6 +2876,70 @@ class PipelineEditorProvider {
                         }
                         fieldHtml += \`</select>\`;
                         break;
+                    case 'validation-dataset':
+                        console.log('[GenerateField] Validation-dataset field -', 'key:', key, 'value:', value, 'type:', typeof value);
+                        // Extract referenceName if value is an object
+                        let datasetRefName = '';
+                        if (typeof value === 'object' && value !== null && value.referenceName) {
+                            datasetRefName = value.referenceName;
+                        } else if (typeof value === 'string') {
+                            datasetRefName = value;
+                        }
+                        fieldHtml += \`<select class="property-input validation-dataset-select" data-key="\${key}">\`;
+                        fieldHtml += \`<option value="">\${prop.placeholder || 'Select dataset...'}</option>\`;
+                        // Filter datasets to only show specific types for Validation activity
+                        let validationDatasets = datasetList || [];
+                        const allowedTypes = [
+                            'AzureBlobStorage',
+                            'AzureBlobFSLocation',  // ADLS Gen2
+                            'AzureSqlTable',
+                            'AzureSynapseAnalytics',
+                            'AzureSqlDWTable'  // Synapse dedicated SQL pool
+                        ];
+                        validationDatasets = validationDatasets.filter(dsName => {
+                            const dsContent = datasetContents[dsName];
+                            if (!dsContent || !dsContent.properties) return false;
+                            const dsType = dsContent.properties.type;
+                            const locationType = dsContent.properties.typeProperties?.location?.type;
+                            // Check either dataset type or location type
+                            return allowedTypes.includes(dsType) || allowedTypes.includes(locationType);
+                        });
+                        if (validationDatasets.length > 0) {
+                            validationDatasets.forEach(ds => {
+                                const selected = ds === datasetRefName ? 'selected' : '';
+                                if (selected) console.log('[GenerateField] Selected validation dataset:', ds, 'matches value:', datasetRefName);
+                                fieldHtml += \`<option value="\${ds}" \${selected}>\${ds}</option>\`;
+                            });
+                        }
+                        fieldHtml += \`</select>\`;
+                        break;
+                    case 'radio-with-info':
+                        fieldHtml += \`<div style="flex: 1;">\`;
+                        fieldHtml += \`<div style="display: flex; flex-direction: column; gap: 12px;">\`;
+                        prop.options.forEach(opt => {
+                            const checked = opt === value ? 'checked' : '';
+                            const isDefault = opt === (prop.default || 'ignore');
+                            const actualChecked = value === undefined && isDefault ? 'checked' : checked;
+                            
+                            // Info text for each option
+                            let infoText = '';
+                            if (opt === 'ignore') {
+                                infoText = 'Check if the folder exists only';
+                            } else if (opt === 'true') {
+                                infoText = 'Check if the folder exists and has items in it';
+                            } else if (opt === 'false') {
+                                infoText = 'Check if the folder exists and that it is empty';
+                            }
+                            
+                            fieldHtml += \`<label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">\`;
+                            fieldHtml += \`<input type="radio" name="\${key}" data-key="\${key}" value="\${opt}" \${actualChecked} style="margin: 0;">\`;
+                            fieldHtml += \`<span style="text-transform: capitalize;">\${opt}</span>\`;
+                            // Add info icon with hover tooltip
+                            fieldHtml += \`<span class="info-icon" title="\${infoText}" style="display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; border: 1px solid var(--vscode-foreground); font-size: 11px; cursor: help; color: var(--vscode-foreground);">i</span>\`;
+                            fieldHtml += \`</label>\`;
+                        });
+                        fieldHtml += \`</div></div>\`;
+                        break;
                     case 'pipeline':
                         console.log('[GenerateField] Pipeline field -', 'key:', key, 'value:', value, 'type:', typeof value);
                         fieldHtml += \`<select class="property-input pipeline-select" data-key="\${key}">\`;
@@ -3120,6 +3251,46 @@ class PipelineEditorProvider {
                         const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
                         showProperties(activity, activeTab);
                     }
+                });
+            });
+            
+            // Add event listeners for validation-dataset dropdowns
+            document.querySelectorAll('#configContent .validation-dataset-select').forEach(select => {
+                select.addEventListener('change', (e) => {
+                    const key = select.getAttribute('data-key');
+                    const datasetName = e.target.value;
+                    
+                    if (datasetName) {
+                        // Store as reference object for Validation activity
+                        activity[key] = {
+                            referenceName: datasetName,
+                            type: 'DatasetReference'
+                        };
+                        
+                        // Store location type for conditional rendering of childItems
+                        if (datasetContents[datasetName]) {
+                            const locationType = datasetContents[datasetName].properties?.typeProperties?.location?.type;
+                            activity._datasetLocationType = locationType;
+                            console.log('Validation dataset selected:', datasetName, 'Location type:', locationType);
+                            
+                            // If the new dataset is NOT Blob/ADLS, remove childItems field
+                            if (locationType !== 'AzureBlobStorageLocation' && locationType !== 'AzureBlobFSLocation') {
+                                delete activity.childItems;
+                                console.log('Validation dataset changed to non-storage type, removed childItems');
+                            }
+                        }
+                    } else {
+                        delete activity[key];
+                        delete activity._datasetLocationType;
+                        delete activity.childItems;
+                    }
+                    
+                    markAsDirty();
+                    console.log('Updated ' + key + ':', activity[key]);
+                    
+                    // Re-render the current tab to show/hide childItems field
+                    const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                    showProperties(activity, activeTab);
                 });
             });
             
@@ -4006,6 +4177,38 @@ class PipelineEditorProvider {
                                 activity.waitOnCompletion = tp.waitOnCompletion;
                             } else {
                                 activity.waitOnCompletion = true;
+                            }
+                        } else if (activityData.type === 'Validation') {
+                            // Handle Validation activity - parse dataset reference and childItems
+                            const tp = activityData.typeProperties || {};
+                            
+                            // Extract dataset reference (keep as object for proper saving)
+                            if (tp.dataset) {
+                                activity.dataset = tp.dataset;
+                                
+                                // Store location type for conditional rendering
+                                if (tp.dataset.referenceName && datasetContents[tp.dataset.referenceName]) {
+                                    const locationType = datasetContents[tp.dataset.referenceName].properties?.typeProperties?.location?.type;
+                                    activity._datasetLocationType = locationType;
+                                    console.log('[Load] Validation dataset location type:', locationType);
+                                }
+                            }
+                            
+                            // Extract timeout
+                            if (tp.timeout !== undefined) {
+                                activity.timeout = tp.timeout;
+                            }
+                            
+                            // Extract sleep
+                            if (tp.sleep !== undefined) {
+                                activity.sleep = tp.sleep;
+                            }
+                            
+                            // Extract childItems - convert boolean to string, or set to "ignore" if not present
+                            if (tp.childItems !== undefined) {
+                                activity.childItems = String(tp.childItems); // Convert true/false to "true"/"false"
+                            } else {
+                                activity.childItems = 'ignore'; // Default to ignore if not present
                             }
                         } else {
                             Object.assign(activity, activityData.typeProperties);

@@ -5,9 +5,21 @@ const datasetSchemas = require('./dataset-schemas.json');
 
 class PipelineEditorProvider {
 	static panels = new Map(); // Map<filePath, panel>
+	static dirtyStates = new Map(); // Map<filePath, isDirty>
+	static stateCache = new Map(); // Map<filePath, pipelineData>
 
 	constructor(context) {
 		this.context = context;
+	}
+
+	markPanelAsDirty(filePath, isDirty) {
+		const panel = PipelineEditorProvider.panels.get(filePath);
+		if (panel) {
+			const path = require('path');
+			const basename = path.basename(filePath, '.json');
+			panel.title = isDirty ? `● ${basename}` : basename;
+			PipelineEditorProvider.dirtyStates.set(filePath, isDirty);
+		}
 	}
 
 	createOrShow(filePath = null) {
@@ -94,6 +106,24 @@ class PipelineEditorProvider {
 						// Use filePath from message if available, otherwise use closure filePath
 						const saveFilePath = message.filePath || filePath;
 						await this.savePipelineToWorkspace(message.data, saveFilePath);
+						// Clear dirty state after successful save
+						if (saveFilePath) {
+							this.markPanelAsDirty(saveFilePath, false);
+							// Notify webview that save completed
+							panel.webview.postMessage({ type: 'saveCompleted' });
+						}
+						break;
+					case 'contentChanged':
+						// Mark panel as dirty when content changes
+						if (filePath) {
+							this.markPanelAsDirty(filePath, message.isDirty);
+						}
+						break;
+					case 'cacheState':
+						// Cache the current pipeline state for potential save on close
+						if (filePath && message.data) {
+							PipelineEditorProvider.stateCache.set(filePath, message.data);
+						}
 						break;
 					case 'log':
 						console.log('Webview:', message.text);
@@ -106,10 +136,53 @@ class PipelineEditorProvider {
 
 		// Reset when the current panel is closed
 		panel.onDidDispose(
-			() => {
+			async () => {
+				// Check if there are unsaved changes before closing
+				if (filePath && PipelineEditorProvider.dirtyStates.get(filePath)) {
+					const path = require('path');
+					const basename = path.basename(filePath, '.json');
+					const answer = await vscode.window.showWarningMessage(
+						`Do you want to save the changes you made to ${basename}?`,
+						{ modal: true },
+						'Save',
+						"Don't Save",
+						'Cancel'
+					);
+					
+					if (answer === 'Save') {
+						// Get cached state and save it
+						const cachedData = PipelineEditorProvider.stateCache.get(filePath);
+						if (cachedData) {
+							await this.savePipelineToWorkspace(cachedData, filePath);
+							vscode.window.showInformationMessage(`Saved ${basename}`);
+						}
+					} else if (answer === 'Cancel') {
+						// User wants to cancel the close, but we can't prevent dispose
+						// Reopen the panel with the cached state
+						const cachedData = PipelineEditorProvider.stateCache.get(filePath);
+						if (cachedData) {
+							setImmediate(() => {
+								const newPanel = this.createOrShow(filePath);
+								setImmediate(() => {
+									newPanel.webview.postMessage({
+										type: 'loadPipeline',
+										data: cachedData,
+										filePath: filePath
+									});
+									// Restore dirty state
+									this.markPanelAsDirty(filePath, true);
+								});
+							});
+						}
+						return;
+					}
+				}
+				
 				// Remove panel from map
 				if (filePath) {
 					PipelineEditorProvider.panels.delete(filePath);
+					PipelineEditorProvider.dirtyStates.delete(filePath);
+					PipelineEditorProvider.stateCache.delete(filePath);
 				}
 				this.pendingPipelineFile = null;
 			},
@@ -246,33 +319,44 @@ class PipelineEditorProvider {
 							// Always add snapshot: true
 							typeProperties.snapshot = true;
 							
-							if (a.dynamicAllocation !== undefined || a.minExecutors !== undefined || a.maxExecutors !== undefined || a.numExecutors !== undefined) {
+						// If conf already exists (from webview), preserve it
+						// Otherwise, rebuild it from individual fields
+						if (typeProperties.conf && typeProperties.conf['spark.dynamicAllocation.enabled'] !== undefined) {
+							// Conf object already exists with enabled property - keep it as is
+							// Just ensure numExecutors is set if provided
+							if (a.numExecutors !== undefined && a.numExecutors !== '') {
+								typeProperties.numExecutors = parseInt(a.numExecutors);
+							}
+						} else if (a.dynamicAllocation !== undefined || a.minExecutors !== undefined || a.maxExecutors !== undefined || a.numExecutors !== undefined) {
+							// Need to build/rebuild conf object from individual fields
+							if (!typeProperties.conf) {
 								typeProperties.conf = {};
-								
-								// Convert 'Enabled'/'Disabled' to boolean
-								const isDynamicEnabled = a.dynamicAllocation === 'Enabled';
-								
-								if (a.dynamicAllocation !== undefined) {
-									typeProperties.conf['spark.dynamicAllocation.enabled'] = isDynamicEnabled;
+							}
+							
+							// Convert 'Enabled'/'Disabled' to boolean
+							const isDynamicEnabled = a.dynamicAllocation === 'Enabled';
+							
+							if (a.dynamicAllocation !== undefined) {
+								typeProperties.conf['spark.dynamicAllocation.enabled'] = isDynamicEnabled;
+							}
+							
+							// Only add min/max executors if dynamicAllocation is Enabled and values are provided
+							if (isDynamicEnabled) {
+								if (a.minExecutors !== undefined && a.minExecutors !== '') {
+									typeProperties.conf['spark.dynamicAllocation.minExecutors'] = parseInt(a.minExecutors);
 								}
-								
-								// Only add min/max executors if dynamicAllocation is Enabled and values are provided
-								if (isDynamicEnabled) {
-									if (a.minExecutors !== undefined && a.minExecutors !== '') {
-										typeProperties.conf['spark.dynamicAllocation.minExecutors'] = parseInt(a.minExecutors);
-									}
-									if (a.maxExecutors !== undefined && a.maxExecutors !== '') {
-										typeProperties.conf['spark.dynamicAllocation.maxExecutors'] = parseInt(a.maxExecutors);
-									}
-								} else {
-									// When disabled, set min/max to numExecutors value
-									if (a.numExecutors !== undefined && a.numExecutors !== '') {
-										const numExec = parseInt(a.numExecutors);
-										typeProperties.conf['spark.dynamicAllocation.minExecutors'] = numExec;
-										typeProperties.conf['spark.dynamicAllocation.maxExecutors'] = numExec;
-										typeProperties.numExecutors = numExec;
-									}
+								if (a.maxExecutors !== undefined && a.maxExecutors !== '') {
+									typeProperties.conf['spark.dynamicAllocation.maxExecutors'] = parseInt(a.maxExecutors);
 								}
+							} else {
+								// When disabled, set min/max to numExecutors value
+								if (a.numExecutors !== undefined && a.numExecutors !== '') {
+									const numExec = parseInt(a.numExecutors);
+									typeProperties.conf['spark.dynamicAllocation.minExecutors'] = numExec;
+									typeProperties.conf['spark.dynamicAllocation.maxExecutors'] = numExec;
+									typeProperties.numExecutors = numExec;
+								}
+							}
 							}
 						}
 						
@@ -1159,6 +1243,169 @@ class PipelineEditorProvider {
         let selectedActivity = null;
         let currentFilePath = null; // Track the current file path
         let draggedActivity = null;
+        
+        // Dirty state tracking for unsaved changes
+        let isDirty = false;
+        let originalState = null;
+        
+        // Mark editor as having unsaved changes
+        function markAsDirty() {
+            if (!isDirty) {
+                isDirty = true;
+                vscode.postMessage({ type: 'contentChanged', isDirty: true });
+            }
+            // Always send current state for caching
+            sendCurrentStateToExtension();
+        }
+        
+        // Shared function to build pipeline data for saving (used by both save button and cache)
+        function buildPipelineDataForSave(pipelineName) {
+            return {
+                name: pipelineName,
+                activities: activities.map(a => {
+                    // Build the activity JSON with all properties
+                    const activity = {
+                        name: a.name,
+                        type: a.type,
+                        dependsOn: connections
+                            .filter(c => c.to === a)
+                            .map(c => ({
+                                activity: c.from.name,
+                                dependencyConditions: [c.condition || 'Succeeded']
+                            })),
+                        policy: {
+                            timeout: a.timeout || "0.12:00:00",
+                            retry: a.retry || 0,
+                            retryIntervalInSeconds: a.retryIntervalInSeconds || 30,
+                            secureOutput: a.secureOutput || false,
+                            secureInput: a.secureInput || false
+                        },
+                        userProperties: a.userProperties || []
+                    };
+                    
+                    if (a.description) activity.description = a.description;
+                    if (a.state) activity.state = a.state;
+                    if (a.onInactiveMarkAs) activity.onInactiveMarkAs = a.onInactiveMarkAs;
+                    
+                    // For Copy activities, preserve dataset references
+                    if (a.type === 'Copy') {
+                        if (a.sourceDataset) activity.sourceDataset = a.sourceDataset;
+                        if (a.sinkDataset) activity.sinkDataset = a.sinkDataset;
+                        if (a._sourceDatasetType) activity._sourceDatasetType = a._sourceDatasetType;
+                        if (a._sinkDatasetType) activity._sinkDatasetType = a._sinkDatasetType;
+                        if (a._sourceObject) activity._sourceObject = a._sourceObject;
+                        if (a._sinkObject) activity._sinkObject = a._sinkObject;
+                    }
+                    
+                    // Collect typeProperties
+                    const typeProperties = {};
+                    const commonProps = ['id', 'type', 'x', 'y', 'width', 'height', 'name', 'description', 'color', 'container', 'element', 
+                                         'timeout', 'retry', 'retryIntervalInSeconds', 'secureOutput', 'secureInput', 'userProperties', 'state', 'onInactiveMarkAs',
+                                         'dynamicAllocation', 'minExecutors', 'maxExecutors', 'numExecutors', 'dependsOn', 'policy',
+                                         'sourceDataset', 'sinkDataset', 'recursive', 'modifiedDatetimeStart', 'modifiedDatetimeEnd',
+                                         'wildcardFolderPath', 'wildcardFileName', 'enablePartitionDiscovery',
+                                         'writeBatchSize', 'writeBatchTimeout', 'preCopyScript', 'maxConcurrentConnections', 'writeBehavior', 
+                                         'sqlWriterUseTableLock', 'disableMetricsCollection', '_sourceObject', '_sinkObject', '_sourceDatasetType', '_sinkDatasetType',
+                                         'typeProperties', 'inputs', 'outputs', 'source', 'sink'];
+                    
+                    for (const key in a) {
+                        if (!commonProps.includes(key) && a.hasOwnProperty(key) && typeof a[key] !== 'function') {
+                            // Convert notebook and sparkPool strings to reference objects with Expression format
+                            if (key === 'notebook' && typeof a[key] === 'string' && a[key]) {
+                                typeProperties[key] = {
+                                    referenceName: {
+                                        value: a[key],
+                                        type: 'Expression'
+                                    },
+                                    type: 'NotebookReference'
+                                };
+                            } else if (key === 'sparkPool' && typeof a[key] === 'string' && a[key]) {
+                                typeProperties[key] = {
+                                    referenceName: {
+                                        value: a[key],
+                                        type: 'Expression'
+                                    },
+                                    type: 'BigDataPoolReference'
+                                };
+                            } else {
+                                typeProperties[key] = a[key];
+                            }
+                        }
+                    }
+                    
+                    // Handle SynapseNotebook specific fields
+                    if (a.type === 'SynapseNotebook') {
+                        typeProperties.snapshot = true;
+                        if (typeProperties.executorSize) {
+                            typeProperties.driverSize = typeProperties.executorSize;
+                        }
+                        
+                        if (a.dynamicAllocation || a.minExecutors || a.maxExecutors || a.numExecutors) {
+                            typeProperties.conf = {};
+                            const isDynamicEnabled = a.dynamicAllocation === 'Enabled';
+                            
+                            if (a.dynamicAllocation !== undefined) {
+                                typeProperties.conf['spark.dynamicAllocation.enabled'] = isDynamicEnabled;
+                            }
+                            
+                            if (isDynamicEnabled) {
+                                if (a.minExecutors) typeProperties.conf['spark.dynamicAllocation.minExecutors'] = parseInt(a.minExecutors);
+                                if (a.maxExecutors) typeProperties.conf['spark.dynamicAllocation.maxExecutors'] = parseInt(a.maxExecutors);
+                            } else if (a.numExecutors) {
+                                const numExec = parseInt(a.numExecutors);
+                                typeProperties.conf['spark.dynamicAllocation.minExecutors'] = numExec;
+                                typeProperties.conf['spark.dynamicAllocation.maxExecutors'] = numExec;
+                                typeProperties.numExecutors = numExec;
+                            }
+                        }
+                    }
+                    
+                    activity.typeProperties = typeProperties;
+                    return activity;
+                })
+            };
+        }
+        
+        // Send current pipeline state to extension for caching
+        function sendCurrentStateToExtension() {
+            // Extract filename from path without using Node.js path module
+            let pipelineName = 'pipeline1';
+            if (currentFilePath) {
+                const parts = currentFilePath.replace(/\\\\/g, '/').split('/');
+                const filename = parts[parts.length - 1];
+                pipelineName = filename.replace('.json', '');
+            }
+            
+            // Use shared function to build pipeline data
+            const data = buildPipelineDataForSave(pipelineName);
+            vscode.postMessage({ type: 'cacheState', data: data, filePath: currentFilePath });
+        }
+        
+        // Clear dirty state
+        function clearDirty() {
+            isDirty = false;
+            originalState = captureCurrentState();
+            vscode.postMessage({ type: 'contentChanged', isDirty: false });
+        }
+        
+        // Capture current state for comparison
+        function captureCurrentState() {
+            return JSON.stringify({
+                activities: activities.map(a => ({
+                    id: a.id,
+                    type: a.type,
+                    name: a.name,
+                    x: a.x,
+                    y: a.y,
+                    description: a.description
+                })),
+                connections: connections.map(c => ({
+                    from: c.from,
+                    to: c.to,
+                    type: c.type
+                }))
+            });
+        }
         let connectionStart = null;
         let isDragging = false;
         let dragOffset = { x: 0, y: 0 };
@@ -1639,6 +1886,7 @@ class PipelineEditorProvider {
                 const centerY = canvas.height / 2;
                 const activity = new Activity(activityType, centerX - 60, centerY - 40 + activities.length * 20, canvasWrapper);
                 activities.push(activity);
+                markAsDirty();
                 console.log('Activities count:', activities.length);
                 draw();
             });
@@ -1660,6 +1908,7 @@ class PipelineEditorProvider {
             console.log('Dropping activity:', activityType, 'at', x, y);
             const activity = new Activity(activityType, x - 90, y - 28, canvasWrapper);
             activities.push(activity);
+            markAsDirty();
             console.log('Activities count:', activities.length);
             draw();
         });
@@ -1770,6 +2019,7 @@ class PipelineEditorProvider {
                         c.from !== selectedActivity && c.to !== selectedActivity
                     );
                     selectedActivity = null;
+                    markAsDirty();
                     showProperties(null);
                     draw();
                 }
@@ -1818,6 +2068,7 @@ class PipelineEditorProvider {
                     const condition = btn.getAttribute('data-condition');
                     const conn = new Connection(fromActivity, toActivity, condition);
                     connections.push(conn);
+                    markAsDirty();
                     document.body.removeChild(dialog);
                     draw();
                 });
@@ -2230,6 +2481,7 @@ class PipelineEditorProvider {
                 if (input.type === 'checkbox') {
                     input.addEventListener('change', (e) => {
                         activity[key] = e.target.checked;
+                        markAsDirty();
                         console.log('Updated ' + key + ':', activity[key]);
                     });
                 } else {
@@ -2241,6 +2493,7 @@ class PipelineEditorProvider {
                         } else {
                             activity[key] = value;
                         }
+                        markAsDirty();
                         console.log('Updated ' + key + ':', activity[key]);
                         
                         // Mirror executorSize to driverSize for SynapseNotebook activities
@@ -2261,6 +2514,7 @@ class PipelineEditorProvider {
                     const key = select.getAttribute('data-key');
                     const datasetName = e.target.value;
                     activity[key] = datasetName;
+                    markAsDirty();
                     console.log('Updated ' + key + ':', activity[key]);
                     
                     // Get dataset type and store it
@@ -2288,6 +2542,7 @@ class PipelineEditorProvider {
                     if (e.target.checked) {
                         const key = e.target.getAttribute('data-key');
                         activity[key] = e.target.value;
+                        markAsDirty();
                         console.log('Updated ' + key + ':', activity[key]);
                         
                         // If dynamicAllocation changed, re-render the Settings tab to show/hide conditional fields
@@ -2370,6 +2625,7 @@ class PipelineEditorProvider {
                 // Store in activity object
                 activity[fieldKey] = Object.keys(parameters).length > 0 ? parameters : undefined;
                 console.log('Updated', fieldKey + ':', activity[fieldKey]);
+                markAsDirty();
             }
             
             // Add change listeners to existing parameter inputs
@@ -2438,22 +2694,26 @@ class PipelineEditorProvider {
 
             document.getElementById('propName').addEventListener('input', (e) => {
                 activity.updateName(e.target.value);
+                markAsDirty();
                 draw();
             });
 
             document.getElementById('propDescription').addEventListener('input', (e) => {
                 activity.description = e.target.value;
+                markAsDirty();
             });
             
             document.getElementById('propX').addEventListener('input', (e) => {
                 const x = parseInt(e.target.value) || 0;
                 activity.updatePosition(x, activity.y);
+                markAsDirty();
                 draw();
             });
             
             document.getElementById('propY').addEventListener('input', (e) => {
                 const y = parseInt(e.target.value) || 0;
                 activity.updatePosition(activity.x, y);
+                markAsDirty();
                 draw();
             });
         }
@@ -2480,188 +2740,7 @@ class PipelineEditorProvider {
 
         // Toolbar buttons
         document.getElementById('saveBtn').addEventListener('click', () => {
-            const data = {
-                name: "pipeline1", // TODO: Get from pipeline name input
-                activities: activities.map(a => {
-                    // Build the activity JSON with all properties
-                    const activity = {
-                        name: a.name,
-                        type: a.type,
-                        dependsOn: connections
-                            .filter(c => c.to === a)
-                            .map(c => ({
-                                activity: c.from.name,
-                                dependencyConditions: [c.condition || 'Succeeded']
-                            })),
-                        policy: {
-                            timeout: a.timeout || "0.12:00:00",
-                            retry: a.retry || 0,
-                            retryIntervalInSeconds: a.retryIntervalInSeconds || 30,
-                            secureOutput: a.secureOutput || false,
-                            secureInput: a.secureInput || false
-                        },
-                        userProperties: a.userProperties || []
-                    };
-                    
-                    // Add optional description
-                    if (a.description) {
-                        activity.description = a.description;
-                    }
-                    
-                    // Add optional state (for Copy activity)
-                    if (a.state) {
-                        activity.state = a.state;
-                    }
-                    if (a.onInactiveMarkAs) {
-                        activity.onInactiveMarkAs = a.onInactiveMarkAs;
-                    }
-                    
-                    // Preserve sourceDataset and sinkDataset for Copy activities
-                    if (a.type === 'Copy') {
-                        if (a.sourceDataset) activity.sourceDataset = a.sourceDataset;
-                        if (a.sinkDataset) activity.sinkDataset = a.sinkDataset;
-                        if (a._sourceDatasetType) activity._sourceDatasetType = a._sourceDatasetType;
-                        if (a._sinkDatasetType) activity._sinkDatasetType = a._sinkDatasetType;
-                        if (a._sourceObject) activity._sourceObject = a._sourceObject;
-                        if (a._sinkObject) activity._sinkObject = a._sinkObject;
-                    }
-                    
-                    // Collect all typeProperties from the activity object
-                    const typeProperties = {};
-                    const commonProps = ['id', 'type', 'x', 'y', 'width', 'height', 'name', 'description', 'color', 'container', 'element', 
-                                         'timeout', 'retry', 'retryIntervalInSeconds', 'secureOutput', 'secureInput', 'userProperties', 'state', 'onInactiveMarkAs',
-                                         'dynamicAllocation', 'minExecutors', 'maxExecutors', 'numExecutors', 'dependsOn', 'policy',
-                                         'sourceDataset', 'sinkDataset', 'recursive', 'modifiedDatetimeStart', 'modifiedDatetimeEnd',
-                                         'wildcardFolderPath', 'wildcardFileName', 'enablePartitionDiscovery',
-                                         'writeBatchSize', 'writeBatchTimeout', 'preCopyScript', 'maxConcurrentConnections', 'writeBehavior', 
-                                         'sqlWriterUseTableLock', 'disableMetricsCollection', '_sourceObject', '_sinkObject', '_sourceDatasetType', '_sinkDatasetType',
-                                         'typeProperties', 'inputs', 'outputs', 'source', 'sink']; // Exclude nested objects that will be reconstructed
-                    
-                    for (const key in a) {
-                        if (!commonProps.includes(key) && a.hasOwnProperty(key) && typeof a[key] !== 'function') {
-							// Convert notebook and sparkPool strings to reference objects with Expression format
-							if (key === 'notebook' && typeof a[key] === 'string' && a[key]) {
-								typeProperties[key] = {
-									referenceName: {
-										value: a[key],
-										type: 'Expression'
-									},
-									type: 'NotebookReference'
-								};
-							} else if (key === 'sparkPool' && typeof a[key] === 'string' && a[key]) {
-								typeProperties[key] = {
-									referenceName: {
-										value: a[key],
-										type: 'Expression'
-									},
-									type: 'BigDataPoolReference'
-								};
-                            } else {
-                                typeProperties[key] = a[key];
-                            }
-                        }
-                    }
-                    
-                    // For SynapseNotebook, convert dynamicAllocation fields back to conf object
-                    if (a.type === 'SynapseNotebook') {
-                        // Always add snapshot: true
-                        typeProperties.snapshot = true;
-                        
-                        // Set driverSize equal to executorSize if executorSize is provided
-                        if (typeProperties.executorSize) {
-                            typeProperties.driverSize = typeProperties.executorSize;
-                        }
-                        
-                        if (a.dynamicAllocation !== undefined || a.minExecutors !== undefined || a.maxExecutors !== undefined || a.numExecutors !== undefined) {
-                            typeProperties.conf = {};
-                            
-                            // Convert 'Enabled'/'Disabled' to boolean
-                            const isDynamicEnabled = a.dynamicAllocation === 'Enabled';
-                            
-                            if (a.dynamicAllocation !== undefined) {
-                                typeProperties.conf['spark.dynamicAllocation.enabled'] = isDynamicEnabled;
-                            }
-                            
-                            // Only add min/max executors if dynamicAllocation is Enabled and values are provided
-                            if (isDynamicEnabled) {
-                                if (a.minExecutors !== undefined && a.minExecutors !== '') {
-                                    typeProperties.conf['spark.dynamicAllocation.minExecutors'] = parseInt(a.minExecutors);
-                                }
-                                if (a.maxExecutors !== undefined && a.maxExecutors !== '') {
-                                    typeProperties.conf['spark.dynamicAllocation.maxExecutors'] = parseInt(a.maxExecutors);
-                                }
-                            } else {
-                                // When disabled, set min/max to numExecutors value
-                                if (a.numExecutors !== undefined && a.numExecutors !== '') {
-                                    const numExec = parseInt(a.numExecutors);
-                                    typeProperties.conf['spark.dynamicAllocation.minExecutors'] = numExec;
-                                    typeProperties.conf['spark.dynamicAllocation.maxExecutors'] = numExec;
-                                    typeProperties.numExecutors = numExec;
-                                }
-                            }
-                        }
-                    }
-                    
-                    // For Copy activity, reconstruct nested source/sink structures and inputs/outputs
-                    if (a.type === 'Copy') {
-                        console.log('[Extension] Copy activity - reconstructing source/sink');
-                        console.log('[Extension] Source dataset:', a.sourceDataset);
-                        console.log('[Extension] Sink dataset:', a.sinkDataset);
-                        
-                        // Reconstruct source object
-                        if (a._sourceObject) {
-                            typeProperties.source = JSON.parse(JSON.stringify(a._sourceObject));
-                            console.log('[Extension] Restored _sourceObject:', typeProperties.source);
-                            // Update with any changed values
-                            if (a.sourceType) typeProperties.source.type = a.sourceType;
-                            if (typeProperties.source.storeSettings) {
-                                if (a.recursive !== undefined) typeProperties.source.storeSettings.recursive = a.recursive;
-                                if (a.modifiedDatetimeStart !== undefined) typeProperties.source.storeSettings.modifiedDatetimeStart = a.modifiedDatetimeStart;
-                                if (a.modifiedDatetimeEnd !== undefined) typeProperties.source.storeSettings.modifiedDatetimeEnd = a.modifiedDatetimeEnd;
-                                if (a.wildcardFolderPath !== undefined) typeProperties.source.storeSettings.wildcardFolderPath = a.wildcardFolderPath;
-                                if (a.wildcardFileName !== undefined) typeProperties.source.storeSettings.wildcardFileName = a.wildcardFileName;
-                                if (a.enablePartitionDiscovery !== undefined) typeProperties.source.storeSettings.enablePartitionDiscovery = a.enablePartitionDiscovery;
-                            }
-                        }
-                        
-                        // Reconstruct sink object
-                        if (a._sinkObject) {
-                            typeProperties.sink = JSON.parse(JSON.stringify(a._sinkObject));
-                            // Update with any changed values
-                            if (a.sinkType) typeProperties.sink.type = a.sinkType;
-                            if (a.writeBatchSize !== undefined) typeProperties.sink.writeBatchSize = a.writeBatchSize;
-                            if (a.writeBatchTimeout !== undefined) typeProperties.sink.writeBatchTimeout = a.writeBatchTimeout;
-                            if (a.preCopyScript !== undefined) typeProperties.sink.preCopyScript = a.preCopyScript;
-                            if (a.maxConcurrentConnections !== undefined) typeProperties.sink.maxConcurrentConnections = a.maxConcurrentConnections;
-                            if (a.writeBehavior !== undefined) typeProperties.sink.writeBehavior = a.writeBehavior;
-                            if (a.sqlWriterUseTableLock !== undefined) typeProperties.sink.sqlWriterUseTableLock = a.sqlWriterUseTableLock;
-                            if (a.disableMetricsCollection !== undefined) typeProperties.sink.disableMetricsCollection = a.disableMetricsCollection;
-                            console.log('[Extension] Reconstructed sink:', typeProperties.sink);
-                        }
-                        
-                        // Add inputs/outputs for Copy activity
-                        if (a.sourceDataset) {
-                            activity.inputs = [{
-                                referenceName: a.sourceDataset,
-                                type: 'DatasetReference'
-                            }];
-                            console.log('[Extension] Added inputs:', activity.inputs);
-                        }
-                        if (a.sinkDataset) {
-                            activity.outputs = [{
-                                referenceName: a.sinkDataset,
-                                type: 'DatasetReference'
-                            }];
-                            console.log('[Extension] Added outputs:', activity.outputs);
-                        }
-                    }
-                    
-                    activity.typeProperties = typeProperties;
-                    console.log('[Extension] Final activity object:', JSON.stringify(activity, null, 2));
-                    
-                    return activity;
-                })
-            };
+            const data = buildPipelineDataForSave("pipeline1");
             
             console.log('[Webview] Sending save message with filePath:', currentFilePath);
             vscode.postMessage({ 
@@ -2678,6 +2757,7 @@ class PipelineEditorProvider {
                 activities = [];
                 connections = [];
                 selectedActivity = null;
+                markAsDirty();
                 showProperties(null);
                 draw();
             }
@@ -2716,10 +2796,14 @@ class PipelineEditorProvider {
                 const canvasWrapper = document.getElementById('canvasWrapper');
                 const activity = new Activity(message.activityType, 100, 100, canvasWrapper);
                 activities.push(activity);
+                markAsDirty();
                 draw();
             } else if (message.type === 'loadPipeline') {
                 currentFilePath = message.filePath || null; // Store the file path
                 loadPipelineFromJson(message.data);
+            } else if (message.type === 'saveCompleted') {
+                // Clear dirty state after successful save
+                clearDirty();
             }
         });
 
@@ -2950,6 +3034,8 @@ class PipelineEditorProvider {
                 draw();
                 showProperties(null);
                 console.log(\`Loaded \${activities.length} activities from pipeline JSON\`);
+                // Clear dirty state after loading
+                clearDirty();
             } catch (error) {
                 console.error('Error loading pipeline:', error);
             }

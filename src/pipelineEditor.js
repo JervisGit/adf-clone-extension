@@ -1336,6 +1336,12 @@ class PipelineEditorProvider {
                     if (!a.errorCode) missing.push('Error code');
                     invalidActivities.push(a.name + ' (' + a.type + ') - missing ' + missing.join(' and '));
                 }
+                if (a.type === 'Filter' && (!a.items || !a.condition)) {
+                    const missing = [];
+                    if (!a.items) missing.push('Items');
+                    if (!a.condition) missing.push('Condition');
+                    invalidActivities.push(a.name + ' (' + a.type + ') - missing ' + missing.join(' and '));
+                }
             });
             
             if (invalidActivities.length > 0) {
@@ -1553,6 +1559,18 @@ class PipelineEditorProvider {
                         // Just ensure they're present with proper defaults if missing
                         if (!typeProperties.message) typeProperties.message = '';
                         if (!typeProperties.errorCode) typeProperties.errorCode = '';
+                    }
+                    
+                    // Handle Filter activity - ensure items/condition are expression objects
+                    if (a.type === 'Filter') {
+                        typeProperties.items = {
+                            value: a.items || '',
+                            type: 'Expression'
+                        };
+                        typeProperties.condition = {
+                            value: a.condition || '',
+                            type: 'Expression'
+                        };
                     }
                     
                     activity.typeProperties = typeProperties;
@@ -2506,10 +2524,7 @@ class PipelineEditorProvider {
                         fieldHtml += \`</div>\`;
                         break;
                     case 'expression':
-                        fieldHtml += \`<div style="display: flex; gap: 8px; flex: 1;">\`;
-                        fieldHtml += \`<input type="text" class="property-input" data-key="\${key}" value="\${value}" placeholder="Enter expression...">\`;
-                        fieldHtml += \`<button style="padding: 6px 12px; background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; cursor: pointer; border-radius: 2px; flex-shrink: 0;">fx</button>\`;
-                        fieldHtml += \`</div>\`;
+                        fieldHtml += \`<input type="text" class="property-input" data-key="\${key}" value="\${value}" placeholder="\${prop.placeholder || 'Enter expression...'}">\`;
                         break;
                     case 'object':
                     case 'array':
@@ -3558,6 +3573,20 @@ class PipelineEditorProvider {
                                 } else {
                                     activity.pipelineVariableType = 'String';
                                 }
+                            }
+                        } else if (activityData.type === 'Filter') {
+                            const tp = activityData.typeProperties || {};
+                            const { items, condition, ...rest } = tp;
+                            Object.assign(activity, rest);
+                            if (items && typeof items === 'object' && items.value !== undefined) {
+                                activity.items = items.value;
+                            } else if (items !== undefined) {
+                                activity.items = items;
+                            }
+                            if (condition && typeof condition === 'object' && condition.value !== undefined) {
+                                activity.condition = condition.value;
+                            } else if (condition !== undefined) {
+                                activity.condition = condition;
                             }
                         } else {
                             Object.assign(activity, activityData.typeProperties);

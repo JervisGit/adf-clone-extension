@@ -123,5 +123,18 @@
     "typeProperties": {
       "waitTimeInSeconds": { "type": "number", "label": "Wait time in seconds", "required": true, "default": 1, "min": 1, "placeholder": "Enter wait time in seconds" }
     }
+  },
+  "Filter": {
+    "name": "Filter",
+    "tabs": ["General", "Settings", "User Properties"],
+    "commonProperties": {
+      "name": { "type": "string", "label": "Name", "required": true },
+      "description": { "type": "string", "label": "Description", "multiline": true },
+      "state": { "type": "radio", "label": "Activity state", "options": ["Activated", "Deactivated"] }
+    },
+    "typeProperties": {
+      "items": { "type": "expression", "label": "Items", "required": true, "placeholder": "This property should be parameterized." },
+      "condition": { "type": "expression", "label": "Condition", "required": true, "placeholder": "This property should be parameterized." }
+    }
   }
 }

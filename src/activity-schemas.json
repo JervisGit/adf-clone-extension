@@ -111,5 +111,17 @@
       "message": { "type": "text", "label": "Fail message", "required": true, "placeholder": "Enter fail message" },
       "errorCode": { "type": "text", "label": "Error code", "required": true, "placeholder": "Enter error code" }
     }
+  },
+  "Wait": {
+    "name": "Wait",
+    "tabs": ["General", "Settings", "User Properties"],
+    "commonProperties": {
+      "name": { "type": "string", "label": "Name", "required": true },
+      "description": { "type": "string", "label": "Description", "multiline": true },
+      "state": { "type": "radio", "label": "Activity state", "options": ["Activated", "Deactivated"] }
+    },
+    "typeProperties": {
+      "waitTimeInSeconds": { "type": "number", "label": "Wait time in seconds", "required": true, "default": 1, "min": 1, "placeholder": "Enter wait time in seconds" }
+    }
   }
 }

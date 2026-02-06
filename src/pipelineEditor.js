@@ -1651,6 +1651,11 @@ class PipelineEditorProvider {
                     this.secureInput = false;
                 }
                 
+                // Set default values for Wait
+                if (type === 'Wait') {
+                    this.waitTimeInSeconds = 1;
+                }
+                
                 this.createDOMElement();
             }
 

@@ -1342,6 +1342,24 @@ class PipelineEditorProvider {
                     if (!a.condition) missing.push('Condition');
                     invalidActivities.push(a.name + ' (' + a.type + ') - missing ' + missing.join(' and '));
                 }
+                if (a.type === 'Delete') {
+                    // Validate dataset is selected
+                    if (!a.dataset) {
+                        invalidActivities.push(a.name + ' (' + a.type + ') - Dataset must be selected');
+                    }
+                    
+                    // Only validate datetime filters if they're applicable (not for listOfFiles mode)
+                    if (a.filePathType !== 'listOfFiles') {
+                        // Validate that start is before end if both are specified
+                        if (a.modifiedDatetimeStart && a.modifiedDatetimeEnd) {
+                            const startDate = new Date(a.modifiedDatetimeStart);
+                            const endDate = new Date(a.modifiedDatetimeEnd);
+                            if (startDate >= endDate) {
+                                invalidActivities.push(a.name + ' (' + a.type + ') - Start time must be before End time in Filter by last modified');
+                            }
+                        }
+                    }
+                }
             });
             
             if (invalidActivities.length > 0) {
@@ -1349,7 +1367,7 @@ class PipelineEditorProvider {
                     valid: false,
                     message: 'The following activities have required fields missing:\\n\\n' + 
                              invalidActivities.join('\\n') + 
-                             '\\n\\nPlease fill in all required fields in the Settings tab before saving.'
+                             '\\n\\nPlease fill in all required fields in the Source tab before saving.'
                 };
             }
             
@@ -1573,6 +1591,86 @@ class PipelineEditorProvider {
                         };
                     }
                     
+                    // Handle Delete activity - build complex storeSettings structure
+                    if (a.type === 'Delete') {
+                        // Build dataset reference
+                        if (a.dataset) {
+                            typeProperties.dataset = {
+                                referenceName: a.dataset,
+                                type: 'DatasetReference'
+                            };
+                        }
+                        
+                        typeProperties.enableLogging = false;
+                        
+                        // Determine storeSettings type based on dataset
+                        let storeType = 'AzureBlobFSReadSettings'; // Default
+                        if (a.dataset && datasetContents[a.dataset]) {
+                            const dsLocation = datasetContents[a.dataset].properties?.typeProperties?.location;
+                            if (dsLocation) {
+                                if (dsLocation.type === 'AzureBlobFSLocation') {
+                                    storeType = 'AzureBlobFSReadSettings';
+                                } else if (dsLocation.type === 'AzureBlobStorageLocation') {
+                                    storeType = 'AzureBlobStorageReadSettings';
+                                }
+                            }
+                        }
+                        
+                        const storeSettings = {
+                            type: storeType,
+                            enablePartitionDiscovery: false
+                        };
+                        
+                        // Add conditional fields based on filePathType
+                        if (a.filePathType === 'listOfFiles' && a.fileListPath) {
+                            storeSettings.fileListPath = a.fileListPath;
+                        } else if (a.filePathType === 'wildcardFilePath' && a.wildcardFileName) {
+                            storeSettings.wildcardFileName = a.wildcardFileName;
+                        }
+                        
+                        // Add optional fields if set
+                        if (a.maxConcurrentConnections) {
+                            storeSettings.maxConcurrentConnections = parseInt(a.maxConcurrentConnections);
+                        }
+                        if (a.recursive !== undefined) {
+                            storeSettings.recursive = a.recursive;
+                        }
+                        
+                        // Add modified datetime filters (only for filePathInDataset or wildcardFilePath)
+                        if (a.filePathType !== 'listOfFiles') {
+                            if (a.modifiedDatetimeStart) {
+                                // Convert datetime-local format to ISO format
+                                const startDate = new Date(a.modifiedDatetimeStart);
+                                storeSettings.modifiedDatetimeStart = startDate.toISOString();
+                            }
+                            if (a.modifiedDatetimeEnd) {
+                                // Convert datetime-local format to ISO format
+                                const endDate = new Date(a.modifiedDatetimeEnd);
+                                storeSettings.modifiedDatetimeEnd = endDate.toISOString();
+                            }
+                        }
+                        
+                        typeProperties.storeSettings = storeSettings;
+                        
+                        // Remove UI-only fields from typeProperties
+                        delete typeProperties.dataset;
+                        delete typeProperties.recursive;
+                        delete typeProperties.maxConcurrentConnections;
+                        delete typeProperties.filePathType;
+                        delete typeProperties.wildcardFileName;
+                        delete typeProperties.fileListPath;
+                        delete typeProperties.modifiedDatetimeStart;
+                        delete typeProperties.modifiedDatetimeEnd;
+                        
+                        // Re-add dataset at root level of typeProperties
+                        if (a.dataset) {
+                            typeProperties.dataset = {
+                                referenceName: a.dataset,
+                                type: 'DatasetReference'
+                            };
+                        }
+                    }
+                    
                     activity.typeProperties = typeProperties;
                     return activity;
                 })
@@ -1672,6 +1770,12 @@ class PipelineEditorProvider {
                 // Set default values for Wait
                 if (type === 'Wait') {
                     this.waitTimeInSeconds = 1;
+                }
+                
+                // Set default values for Delete
+                if (type === 'Delete') {
+                    this.filePathType = 'filePathInDataset';
+                    this.recursive = false;
                 }
                 
                 this.createDOMElement();
@@ -2371,8 +2475,15 @@ class PipelineEditorProvider {
                         : actualValue;
                     
                     // Skip this field if condition is not met
-                    if (effectiveValue !== conditionValue) {
-                        return '';
+                    // Support both single value and array of values
+                    if (Array.isArray(conditionValue)) {
+                        if (!conditionValue.includes(effectiveValue)) {
+                            return '';
+                        }
+                    } else {
+                        if (effectiveValue !== conditionValue) {
+                            return '';
+                        }
                     }
                 }
                 
@@ -2436,7 +2547,13 @@ class PipelineEditorProvider {
                         fieldHtml += \`<div style="display: flex; gap: 16px; flex: 1; align-items: center;">\`;
                         prop.options.forEach(opt => {
                             const checked = opt === value ? 'checked' : '';
-                            const displayName = opt === 'storedProcedure' ? 'Stored procedure' : opt.charAt(0).toUpperCase() + opt.slice(1);
+                            // Custom display names
+                            let displayName;
+                            if (opt === 'storedProcedure') displayName = 'Stored procedure';
+                            else if (opt === 'filePathInDataset') displayName = 'File path in dataset';
+                            else if (opt === 'wildcardFilePath') displayName = 'Wildcard file path';
+                            else if (opt === 'listOfFiles') displayName = 'List of files';
+                            else displayName = opt.charAt(0).toUpperCase() + opt.slice(1);
                             fieldHtml += \`<label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">\`;
                             fieldHtml += \`<input type="radio" name="\${key}" data-key="\${key}" value="\${opt}" \${checked} style="margin: 0;">\`;
                             fieldHtml += \`<span>\${displayName}</span>\`;
@@ -2504,12 +2621,34 @@ class PipelineEditorProvider {
                         
                         fieldHtml += \`</div></div>\`;
                         break;
+                    case 'datetime':
+                        fieldHtml += \`<input type="datetime-local" class="property-input" data-key="\${key}" value="\${value}" placeholder="\${prop.placeholder || ''}" step="1">\`;
+                        break;
                     case 'dataset':
                         console.log('[GenerateField] Dataset field -', 'key:', key, 'value:', value, 'type:', typeof value);
                         fieldHtml += \`<select class="property-input dataset-select" data-key="\${key}">\`;
                         fieldHtml += \`<option value="">Select dataset...</option>\`;
-                        if (datasetList && datasetList.length > 0) {
-                            datasetList.forEach(ds => {
+                        // Filter datasets if datasetFilter is specified
+                        let filteredDatasets = datasetList || [];
+                        if (prop.datasetFilter === 'storageOnly') {
+                            // For Delete activity: only show Blob Storage and ADLS Gen2 datasets
+                            filteredDatasets = filteredDatasets.filter(dsName => {
+                                const dsContent = datasetContents[dsName];
+                                if (!dsContent || !dsContent.properties) return false;
+                                const locationType = dsContent.properties.typeProperties?.location?.type;
+                                return locationType === 'AzureBlobFSLocation' || locationType === 'AzureBlobStorageLocation';
+                            });
+                        } else if (prop.datasetFilter && Array.isArray(prop.datasetFilter)) {
+                            // Legacy: filter by dataset type
+                            filteredDatasets = filteredDatasets.filter(dsName => {
+                                const dsContent = datasetContents[dsName];
+                                if (!dsContent || !dsContent.properties) return false;
+                                const dsType = dsContent.properties.type;
+                                return prop.datasetFilter.includes(dsType);
+                            });
+                        }
+                        if (filteredDatasets.length > 0) {
+                            filteredDatasets.forEach(ds => {
                                 const selected = ds === value ? 'selected' : '';
                                 if (selected) console.log('[GenerateField] Selected dataset:', ds, 'matches value:', value);
                                 fieldHtml += \`<option value="\${ds}" \${selected}>\${ds}</option>\`;
@@ -2571,8 +2710,21 @@ class PipelineEditorProvider {
             // Build Source tab content
             let sourceContent = '';
             if (schema && schema.sourceProperties) {
-                for (const [key, prop] of Object.entries(schema.sourceProperties)) {
-                    sourceContent += generateFormField(key, prop, activity);
+                // For Delete activity, add section headers
+                if (activity.type === 'Delete') {
+                    for (const [key, prop] of Object.entries(schema.sourceProperties)) {
+                        // Add "Filter by last modified" header before datetime fields
+                        if ((key === 'modifiedDatetimeStart' || key === 'modifiedDatetimeEnd') && 
+                            (activity.filePathType === 'filePathInDataset' || activity.filePathType === 'wildcardFilePath') &&
+                            !sourceContent.includes('Filter by last modified')) {
+                            sourceContent += '<div style="margin-top: 16px; margin-bottom: 12px; font-weight: 600; font-size: 13px; color: var(--vscode-foreground);">Filter by last modified</div>';
+                        }
+                        sourceContent += generateFormField(key, prop, activity);
+                    }
+                } else {
+                    for (const [key, prop] of Object.entries(schema.sourceProperties)) {
+                        sourceContent += generateFormField(key, prop, activity);
+                    }
                 }
                 
                 // Ensure _sourceDatasetType is set if we have a sourceDataset
@@ -2801,11 +2953,16 @@ class PipelineEditorProvider {
                         markAsDirty();
                         console.log('Updated ' + key + ':', activity[key]);
                         
-                        // If dynamicAllocation or variableType changed, re-render the Settings tab to show/hide conditional fields
+                        // If dynamicAllocation, variableType, or filePathType changed, re-render to show/hide conditional fields
                         if (key === 'dynamicAllocation' || key === 'variableType') {
                             const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
                             if (activeTab === 'settings') {
                                 showProperties(activity, 'settings');
+                            }
+                        } else if (key === 'filePathType') {
+                            const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                            if (activeTab === 'source') {
+                                showProperties(activity, 'source');
                             }
                         }
                     }
@@ -3587,6 +3744,49 @@ class PipelineEditorProvider {
                                 activity.condition = condition.value;
                             } else if (condition !== undefined) {
                                 activity.condition = condition;
+                            }
+                        } else if (activityData.type === 'Delete') {
+                            // Handle Delete activity - parse storeSettings structure
+                            const tp = activityData.typeProperties || {};
+                            
+                            // Extract dataset reference
+                            if (tp.dataset && tp.dataset.referenceName) {
+                                activity.dataset = tp.dataset.referenceName;
+                            }
+                            
+                            // Parse storeSettings
+                            if (tp.storeSettings) {
+                                const ss = tp.storeSettings;
+                                
+                                // Determine file path type based on what fields are present
+                                if (ss.fileListPath) {
+                                    activity.filePathType = 'listOfFiles';
+                                    activity.fileListPath = ss.fileListPath;
+                                } else if (ss.wildcardFileName) {
+                                    activity.filePathType = 'wildcardFilePath';
+                                    activity.wildcardFileName = ss.wildcardFileName;
+                                } else {
+                                    activity.filePathType = 'filePathInDataset';
+                                }
+                                
+                                // Extract other settings
+                                if (ss.maxConcurrentConnections !== undefined) {
+                                    activity.maxConcurrentConnections = ss.maxConcurrentConnections;
+                                }
+                                if (ss.recursive !== undefined) {
+                                    activity.recursive = ss.recursive;
+                                }
+                                // Convert ISO datetime to datetime-local format
+                                if (ss.modifiedDatetimeStart) {
+                                    const startDate = new Date(ss.modifiedDatetimeStart);
+                                    // Format as YYYY-MM-DDTHH:mm:ss for datetime-local input
+                                    activity.modifiedDatetimeStart = startDate.toISOString().slice(0, 19);
+                                }
+                                if (ss.modifiedDatetimeEnd) {
+                                    const endDate = new Date(ss.modifiedDatetimeEnd);
+                                    // Format as YYYY-MM-DDTHH:mm:ss for datetime-local input
+                                    activity.modifiedDatetimeEnd = endDate.toISOString().slice(0, 19);
+                                }
                             }
                         } else {
                             Object.assign(activity, activityData.typeProperties);

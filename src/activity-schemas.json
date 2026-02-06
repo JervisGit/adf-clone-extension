@@ -136,5 +136,29 @@
       "items": { "type": "expression", "label": "Items", "required": true, "placeholder": "This property should be parameterized." },
       "condition": { "type": "expression", "label": "Condition", "required": true, "placeholder": "This property should be parameterized." }
     }
+  },
+  "Delete": {
+    "name": "Delete",
+    "tabs": ["General", "Source", "User Properties"],
+    "commonProperties": {
+      "name": { "type": "string", "label": "Name", "required": true },
+      "description": { "type": "string", "label": "Description", "multiline": true },
+      "state": { "type": "radio", "label": "Activity state", "options": ["Activated", "Deactivated"] },
+      "timeout": { "type": "string", "label": "Timeout", "default": "0.12:00:00", "section": "policy" },
+      "retry": { "type": "number", "label": "Retry", "default": 0, "section": "policy" },
+      "retryIntervalInSeconds": { "type": "number", "label": "Retry interval (sec)", "default": 30, "section": "policy" },
+      "secureOutput": { "type": "boolean", "label": "Secure output", "default": false, "section": "policy" },
+      "secureInput": { "type": "boolean", "label": "Secure input", "default": false, "section": "policy" }
+    },
+    "sourceProperties": {
+      "dataset": { "type": "dataset", "label": "Dataset", "required": true, "datasetFilter": "storageOnly" },
+      "filePathType": { "type": "radio", "label": "File path type", "options": ["filePathInDataset", "wildcardFilePath", "listOfFiles"], "default": "filePathInDataset" },
+      "wildcardFileName": { "type": "text", "label": "Wildcard file name", "placeholder": "Enter wildcard file name", "conditional": { "field": "filePathType", "value": "wildcardFilePath" } },
+      "fileListPath": { "type": "text", "label": "Path to file list", "placeholder": "Enter path to file list", "conditional": { "field": "filePathType", "value": "listOfFiles" } },
+      "modifiedDatetimeStart": { "type": "datetime", "label": "Start time (UTC)", "placeholder": "2/18/2026, 12:00:00 AM", "conditional": { "field": "filePathType", "value": ["filePathInDataset", "wildcardFilePath"] } },
+      "modifiedDatetimeEnd": { "type": "datetime", "label": "End time (UTC)", "placeholder": "2/18/2026, 12:00:00 AM", "conditional": { "field": "filePathType", "value": ["filePathInDataset", "wildcardFilePath"] } },
+      "recursive": { "type": "boolean", "label": "Delete file recursively", "default": false },
+      "maxConcurrentConnections": { "type": "number", "label": "Max concurrent connections", "min": 1 }
+    }
   }
 }

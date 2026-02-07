@@ -1475,6 +1475,14 @@ class PipelineEditorProvider {
                     if (!hasValidFields) {
                         invalidActivities.push(a.name + ' (' + a.type + ') - Field list must have at least one valid field');
                     }
+                    // Validate that start is before end if both are specified
+                    if (a.modifiedDatetimeStart && a.modifiedDatetimeEnd) {
+                        const startDate = new Date(a.modifiedDatetimeStart);
+                        const endDate = new Date(a.modifiedDatetimeEnd);
+                        if (startDate >= endDate) {
+                            invalidActivities.push(a.name + ' (' + a.type + ') - Start time must be before End time in Filter by last modified');
+                        }
+                    }
                 }
             });
             
@@ -1801,12 +1809,14 @@ class PipelineEditorProvider {
                             storeSettings.enablePartitionDiscovery = false;
                             typeProperties.storeSettings = storeSettings;
                             
-                            // Add formatSettings if skipLineCount is set
+                            // Always add formatSettings for storage datasets
+                            typeProperties.formatSettings = {
+                                type: 'DelimitedTextReadSettings'
+                            };
+                            
+                            // Add skipLineCount if set
                             if (a.skipLineCount && a.skipLineCount > 0) {
-                                typeProperties.formatSettings = {
-                                    type: 'DelimitedTextReadSettings',
-                                    skipLineCount: parseInt(a.skipLineCount)
-                                };
+                                typeProperties.formatSettings.skipLineCount = parseInt(a.skipLineCount);
                             }
                         }
                         
@@ -2099,8 +2109,6 @@ class PipelineEditorProvider {
                 // Set default values for GetMetadata
                 if (type === 'GetMetadata') {
                     this.fieldList = [];
-                    this.timeoutSettings = '0.12:00:00';
-                    this.sleepSettings = 10;
                 }
                 
                 this.createDOMElement();
@@ -3217,8 +3225,21 @@ class PipelineEditorProvider {
             
             let settingsContent = '';
             if (schema && schema.typeProperties) {
-                for (const [key, prop] of Object.entries(schema.typeProperties)) {
-                    settingsContent += generateFormField(key, prop, activity);
+                // For GetMetadata activity, add section headers
+                if (activity.type === 'GetMetadata') {
+                    for (const [key, prop] of Object.entries(schema.typeProperties)) {
+                        // Add "Filter by last modified" header before datetime fields
+                        if ((key === 'modifiedDatetimeStart' || key === 'modifiedDatetimeEnd') && 
+                            (activity._datasetLocationType === 'AzureBlobStorageLocation' || activity._datasetLocationType === 'AzureBlobFSLocation') &&
+                            !settingsContent.includes('Filter by last modified')) {
+                            settingsContent += '<div style="margin-top: 16px; margin-bottom: 12px; font-weight: 600; font-size: 13px; color: var(--vscode-foreground);">Filter by last modified</div>';
+                        }
+                        settingsContent += generateFormField(key, prop, activity);
+                    }
+                } else {
+                    for (const [key, prop] of Object.entries(schema.typeProperties)) {
+                        settingsContent += generateFormField(key, prop, activity);
+                    }
                 }
             }
             if (!settingsContent) {

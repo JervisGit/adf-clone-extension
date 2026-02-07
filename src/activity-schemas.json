@@ -206,8 +206,6 @@
     "typeProperties": {
       "dataset": { "type": "getmetadata-dataset", "label": "Dataset", "required": true, "placeholder": "Select dataset..." },
       "fieldList": { "type": "getmetadata-fieldlist", "label": "Field list" },
-      "timeoutSettings": { "type": "text", "label": "Timeout", "default": "0.12:00:00", "placeholder": "0.12:00:00" },
-      "sleepSettings": { "type": "number", "label": "Sleep", "default": 10, "placeholder": "10", "min": 1 },
       "modifiedDatetimeStart": { "type": "datetime", "label": "Start time (UTC)", "placeholder": "2/6/2026, 12:00:00 AM", "conditional": { "field": "_datasetLocationType", "value": ["AzureBlobStorageLocation", "AzureBlobFSLocation"] } },
       "modifiedDatetimeEnd": { "type": "datetime", "label": "End time (UTC)", "placeholder": "2/6/2026, 12:00:00 AM", "conditional": { "field": "_datasetLocationType", "value": ["AzureBlobStorageLocation", "AzureBlobFSLocation"] } },
       "skipLineCount": { "type": "number", "label": "Skip line count", "min": 0, "conditional": { "field": "_datasetLocationType", "value": ["AzureBlobStorageLocation", "AzureBlobFSLocation"] } }

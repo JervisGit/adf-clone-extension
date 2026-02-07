@@ -229,5 +229,25 @@
       "scripts": { "type": "script-array", "label": "Scripts", "required": true },
       "scriptBlockExecutionTimeout": { "type": "string", "label": "Script block execution timeout (minutes)", "default": "02:00:00", "placeholder": "02:00:00" }
     }
+  },
+  "SqlServerStoredProcedure": {
+    "name": "Stored Procedure",
+    "tabs": ["General", "Settings", "User Properties"],
+    "commonProperties": {
+      "name": { "type": "string", "label": "Name", "required": true },
+      "description": { "type": "string", "label": "Description", "multiline": true },
+      "state": { "type": "radio", "label": "Activity state", "options": ["Activated", "Deactivated"], "default": "Activated" },
+      "timeout": { "type": "string", "label": "Timeout", "default": "0.12:00:00", "placeholder": "0.12:00:00", "section": "policy" },
+      "retry": { "type": "number", "label": "Retry", "default": 0, "section": "policy" },
+      "retryIntervalInSeconds": { "type": "number", "label": "Retry interval (sec)", "default": 30, "section": "policy" },
+      "secureOutput": { "type": "boolean", "label": "Secure output", "default": false, "section": "policy" },
+      "secureInput": { "type": "boolean", "label": "Secure input", "default": false, "section": "policy" }
+    },
+    "typeProperties": {
+      "linkedServiceName": { "type": "storedprocedure-linkedservice", "label": "Linked service", "required": true, "placeholder": "Select linked service..." },
+      "linkedServiceProperties": { "type": "storedprocedure-linkedservice-properties", "label": "Linked service properties", "conditional": { "field": "_selectedLinkedServiceType", "value": "AzureSynapse" } },
+      "storedProcedureName": { "type": "text", "label": "Stored procedure name", "required": true, "placeholder": "Enter stored procedure name" },
+      "storedProcedureParameters": { "type": "storedprocedure-parameters", "label": "Stored procedure parameters" }
+    }
   }
 }

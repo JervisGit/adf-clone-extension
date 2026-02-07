@@ -136,7 +136,7 @@ class PipelineEditorProvider {
 								const lsType = linkedService.properties?.type;
 								console.log(`[Extension] Linked service ${file}: name=${lsName}, type=${lsType}`);
 								
-								// Filter for Script activity: only Azure SQL Database and Azure Synapse Analytics
+								// Filter for Script and Stored Procedure activities: only Azure SQL Database and Azure Synapse Analytics
 								if (lsType === 'AzureSqlDatabase' || lsType === 'AzureSqlDW') {
 									// Avoid duplicates
 									if (!linkedServicesList.find(ls => ls.name === lsName)) {
@@ -406,6 +406,18 @@ class PipelineEditorProvider {
                             activity.linkedServiceName = a.linkedServiceName;
                         }
                         
+                        // For SqlServerStoredProcedure activity, linkedServiceName should be at activity level
+                        if (a.type === 'SqlServerStoredProcedure' && a.linkedServiceName) {
+                            activity.linkedServiceName = a.linkedServiceName;
+                            // Add Synapse parameters if present
+                            if (a._selectedLinkedServiceType === 'AzureSynapse' && a.linkedServiceProperties && a.linkedServiceProperties.DBName) {
+                                if (!activity.linkedServiceName.parameters) {
+                                    activity.linkedServiceName.parameters = {};
+                                }
+                                activity.linkedServiceName.parameters.DBName = a.linkedServiceProperties.DBName;
+                            }
+                        }
+                        
                         // Collect typeProperties
                         const typeProperties = {};
                         const commonProps = ['id', 'type', 'x', 'y', 'width', 'height', 'name', 'description', 'color', 'container', 'element', 
@@ -415,7 +427,8 @@ class PipelineEditorProvider {
                                              'wildcardFolderPath', 'wildcardFileName', 'enablePartitionDiscovery',
                                              'writeBatchSize', 'writeBatchTimeout', 'preCopyScript', 'maxConcurrentConnections', 'writeBehavior', 
                                              'sqlWriterUseTableLock', 'disableMetricsCollection', '_sourceObject', '_sinkObject',
-                                             '_sourceDatasetType', '_sinkDatasetType', '_datasetLocationType', 'inputs', 'outputs', 'source', 'sink', 'typeProperties'];
+                                             '_sourceDatasetType', '_sinkDatasetType', '_datasetLocationType', 'inputs', 'outputs', 'source', 'sink', 'typeProperties',
+                                             'linkedServiceName', '_selectedLinkedServiceType', 'linkedServiceProperties'];
 						
 						for (const key in a) {
 							if (!commonProps.includes(key) && a.hasOwnProperty(key) && typeof a[key] !== 'function') {
@@ -1582,6 +1595,30 @@ class PipelineEditorProvider {
                         }
                     }
                 }
+                if (a.type === 'SqlServerStoredProcedure') {
+                    // Validate linked service is selected
+                    if (!a.linkedServiceName || (typeof a.linkedServiceName === 'object' && !a.linkedServiceName.referenceName)) {
+                        invalidActivities.push(a.name + ' (' + a.type + ') - Linked service must be selected');
+                    }
+                    // Validate stored procedure name is entered
+                    if (!a.storedProcedureName || a.storedProcedureName.trim() === '') {
+                        invalidActivities.push(a.name + ' (' + a.type + ') - Stored procedure name must be entered');
+                    }
+                    // Validate that if parameters exist, their names are not empty
+                    if (a.storedProcedureParameters && typeof a.storedProcedureParameters === 'object') {
+                        const emptyParamNames = [];
+                        let paramIndex = 1;
+                        for (const [paramName, paramData] of Object.entries(a.storedProcedureParameters)) {
+                            if (!paramName || paramName.trim() === '') {
+                                emptyParamNames.push('Parameter ' + paramIndex);
+                            }
+                            paramIndex++;
+                        }
+                        if (emptyParamNames.length > 0) {
+                            invalidActivities.push(a.name + ' (' + a.type + ') - ' + emptyParamNames.join(', ') + ' must have a name');
+                        }
+                    }
+                }
             });
             
             if (invalidActivities.length > 0) {
@@ -1589,7 +1626,7 @@ class PipelineEditorProvider {
                     valid: false,
                     message: 'The following activities have required fields missing:\\n\\n' + 
                              invalidActivities.join('\\n') + 
-                             '\\n\\nPlease fill in all required fields in the Source tab before saving.'
+                             '\\n\\nPlease fill in all required fields in the Settings tab before saving.'
                 };
             }
             
@@ -1643,8 +1680,8 @@ class PipelineEditorProvider {
                             secureOutput: a.secureOutput || false,
                             secureInput: a.secureInput || false
                         };
-                    } else if (a.type === 'GetMetadata' || a.type === 'Script') {
-                        // For GetMetadata and Script, always include full policy section with defaults
+                    } else if (a.type === 'GetMetadata' || a.type === 'Script' || a.type === 'SqlServerStoredProcedure') {
+                        // For GetMetadata, Script, and SqlServerStoredProcedure, always include full policy section with defaults
                         activity.policy = {
                             timeout: a.timeout || "0.12:00:00",
                             retry: a.retry !== undefined ? a.retry : 0,
@@ -1676,6 +1713,13 @@ class PipelineEditorProvider {
                     if (a.state) activity.state = a.state;
                     if (a.onInactiveMarkAs) activity.onInactiveMarkAs = a.onInactiveMarkAs;
                     
+                    // For SqlServerStoredProcedure, preserve linked service metadata for extension processing
+                    if (a.type === 'SqlServerStoredProcedure') {
+                        if (a.linkedServiceName) activity.linkedServiceName = a.linkedServiceName;
+                        if (a._selectedLinkedServiceType) activity._selectedLinkedServiceType = a._selectedLinkedServiceType;
+                        if (a.linkedServiceProperties) activity.linkedServiceProperties = a.linkedServiceProperties;
+                    }
+                    
                     // For Copy activities, preserve dataset references
                     if (a.type === 'Copy') {
                         if (a.sourceDataset) activity.sourceDataset = a.sourceDataset;
@@ -1695,7 +1739,8 @@ class PipelineEditorProvider {
                                          'wildcardFolderPath', 'wildcardFileName', 'enablePartitionDiscovery',
                                          'writeBatchSize', 'writeBatchTimeout', 'preCopyScript', 'maxConcurrentConnections', 'writeBehavior', 
                                          'sqlWriterUseTableLock', 'disableMetricsCollection', '_sourceObject', '_sinkObject', '_sourceDatasetType', '_sinkDatasetType',
-                                         'typeProperties', 'inputs', 'outputs', 'source', 'sink'];
+                                         'typeProperties', 'inputs', 'outputs', 'source', 'sink', 'linkedServiceName', '_selectedLinkedServiceType', 'linkedServiceProperties',
+                                         'storedProcedureName', 'storedProcedureParameters'];
                     
                     for (const key in a) {
                         if (!commonProps.includes(key) && a.hasOwnProperty(key) && typeof a[key] !== 'function') {
@@ -2088,6 +2133,49 @@ class PipelineEditorProvider {
                         delete typeProperties.linkedServiceName;
                     }
                     
+                    // Handle SqlServerStoredProcedure activity - build linkedServiceName and storedProcedureParameters
+                    if (a.type === 'SqlServerStoredProcedure') {
+                        // Build linkedServiceName reference (at activity level, not in typeProperties)
+                        if (a.linkedServiceName) {
+                            const linkedServiceRef = {
+                                referenceName: typeof a.linkedServiceName === 'object' ? a.linkedServiceName.referenceName : a.linkedServiceName,
+                                type: 'LinkedServiceReference'
+                            };
+                            
+                            // Add parameters if it's Azure Synapse Analytics and has linked service properties
+                            if (a._selectedLinkedServiceType === 'AzureSynapse' && a.linkedServiceProperties && a.linkedServiceProperties.DBName) {
+                                linkedServiceRef.parameters = {
+                                    DBName: a.linkedServiceProperties.DBName
+                                };
+                            }
+                            
+                            activity.linkedServiceName = linkedServiceRef;
+                        }
+                        
+                        // Build storedProcedureName
+                        if (a.storedProcedureName) {
+                            typeProperties.storedProcedureName = a.storedProcedureName;
+                        }
+                        
+                        // Build storedProcedureParameters only if present and not empty
+                        if (a.storedProcedureParameters && typeof a.storedProcedureParameters === 'object' && Object.keys(a.storedProcedureParameters).length > 0) {
+                            // Filter out parameters with empty names
+                            const validParams = {};
+                            for (const [paramName, paramData] of Object.entries(a.storedProcedureParameters)) {
+                                if (paramName && paramName.trim() !== '') {
+                                    validParams[paramName] = {
+                                        value: paramData.value,
+                                        type: paramData.type
+                                    };
+                                }
+                            }
+                            // Only add if there are valid parameters
+                            if (Object.keys(validParams).length > 0) {
+                                typeProperties.storedProcedureParameters = validParams;
+                            }
+                        }
+                    }
+                    
                     activity.typeProperties = typeProperties;
                     return activity;
                 })
@@ -2235,7 +2323,7 @@ class PipelineEditorProvider {
                 this.y = y;
                 this.width = 180;
                 this.height = 56;
-                this.name = type;
+                this.name = type === 'SqlServerStoredProcedure' ? 'Stored procedure1' : type;
                 this.description = '';
                 this.color = this.getColorForType(type);
                 this.container = container;
@@ -2274,6 +2362,16 @@ class PipelineEditorProvider {
                     this.retryIntervalInSeconds = 30;
                     this.secureOutput = false;
                     this.secureInput = false;
+                }
+                
+                // Set default values for SqlServerStoredProcedure
+                if (type === 'SqlServerStoredProcedure') {
+                    this.timeout = '0.12:00:00';
+                    this.retry = 0;
+                    this.retryIntervalInSeconds = 30;
+                    this.secureOutput = false;
+                    this.secureInput = false;
+                    this.storedProcedureParameters = {};
                 }
                 
                 this.createDOMElement();
@@ -2508,7 +2606,8 @@ class PipelineEditorProvider {
                     'IfCondition': 'If Condition',
                     'Wait': 'Wait',
                     'WebActivity': 'Web Activity',
-                    'StoredProcedure': 'Stored Procedure'
+                    'StoredProcedure': 'Stored Procedure',
+                    'SqlServerStoredProcedure': 'Stored procedure'
                 };
                 return labels[this.type] || this.type;
             }
@@ -3484,6 +3583,96 @@ class PipelineEditorProvider {
                         
                         fieldHtml += \`</div></div>\`;
                         break;
+                    case 'storedprocedure-linkedservice':
+                        console.log('[GenerateField] Storedprocedure-linkedservice field -', 'key:', key, 'value:', value, 'type:', typeof value);
+                        // Extract referenceName if value is an object
+                        let spLinkedServiceRefName = '';
+                        if (typeof value === 'object' && value !== null && value.referenceName) {
+                            spLinkedServiceRefName = value.referenceName;
+                        } else if (typeof value === 'string') {
+                            spLinkedServiceRefName = value;
+                        }
+                        fieldHtml += \`<select class="property-input storedprocedure-linkedservice-select" data-key="\${key}">\`;
+                        fieldHtml += \`<option value="">\${prop.placeholder || 'Select linked service...'}</option>\`;
+                        
+                        // Get linked services list from extension (we'll receive this via message)
+                        if (window.linkedServicesList && window.linkedServicesList.length > 0) {
+                            window.linkedServicesList.forEach(ls => {
+                                const selected = ls.name === spLinkedServiceRefName ? 'selected' : '';
+                                if (selected) console.log('[GenerateField] Selected linked service:', ls.name, 'matches value:', spLinkedServiceRefName);
+                                fieldHtml += \`<option value="\${ls.name}" \${selected}>\${ls.name}</option>\`;
+                            });
+                        }
+                        fieldHtml += \`</select>\`;
+                        break;
+                    case 'storedprocedure-linkedservice-properties':
+                        // This field only appears when Azure Synapse Analytics linked service is selected
+                        fieldHtml += \`<div style="flex: 1;">\`;
+                        fieldHtml += \`<div style="font-size: 11px; color: var(--vscode-descriptionForeground); margin-bottom: 8px;">Configure linked service properties</div>\`;
+                        fieldHtml += \`<div class="storedprocedure-linkedservice-properties-container" data-key="\${key}">\`;
+                        
+                        const lsPropsValue = (value && value.DBName) || '';
+                        fieldHtml += \`
+                            <div style="display: flex; gap: 8px; margin-bottom: 4px;">
+                                <div style="flex: 1; font-size: 11px; font-weight: 600; color: var(--vscode-descriptionForeground);">Name</div>
+                                <div style="flex: 1; font-size: 11px; font-weight: 600; color: var(--vscode-descriptionForeground);">Value</div>
+                                <div style="flex: 1; font-size: 11px; font-weight: 600; color: var(--vscode-descriptionForeground);">Type</div>
+                            </div>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <input type="text" class="property-input" value="DBName" readonly style="flex: 1; opacity: 0.7; cursor: not-allowed;">
+                                <input type="text" class="property-input storedprocedure-lsprop-value" data-key="\${key}" value="\${lsPropsValue}" placeholder="Enter value" style="flex: 1;">
+                                <input type="text" class="property-input" value="String" readonly style="flex: 1; opacity: 0.7; cursor: not-allowed;">
+                            </div>
+                        \`;
+                        
+                        fieldHtml += \`</div></div>\`;
+                        break;
+                    case 'storedprocedure-parameters':
+                        // Render the stored procedure parameters UI
+                        const spParamsData = value || {};
+                        fieldHtml += \`<div style="flex: 1;">\`;
+                        fieldHtml += \`<div style="font-size: 11px; color: var(--vscode-descriptionForeground); margin-bottom: 8px;">Configure stored procedure parameters</div>\`;
+                        fieldHtml += \`<button class="add-storedprocedure-param-btn" data-key="\${key}" style="padding: 4px 8px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; font-size: 11px; margin-bottom: 8px;">+ Add Parameter</button>\`;
+                        fieldHtml += \`<div class="storedprocedure-params-container" data-key="\${key}">\`;
+                        
+                        // Render existing parameters
+                        let paramIdx = 0;
+                        for (const [paramName, paramData] of Object.entries(spParamsData)) {
+                            const paramValue = paramData.value !== undefined && paramData.value !== null ? paramData.value : '';
+                            const paramType = paramData.type || 'String';
+                            const isTreatAsNull = paramData.value === null;
+                            
+                            fieldHtml += \`
+                                <div class="storedprocedure-param-row" data-param-index="\${paramIdx}" style="display: grid; grid-template-columns: 40px 1fr 120px 1fr 100px 30px; gap: 8px; margin-bottom: 8px; align-items: center; padding: 8px; background: var(--vscode-sideBar-background); border-radius: 3px;">
+                                    <div style="font-size: 11px; color: var(--vscode-descriptionForeground);">\${paramIdx + 1}</div>
+                                    <input type="text" class="property-input storedprocedure-param-name" value="\${paramName}" placeholder="Name" style="font-size: 11px; padding: 4px 6px;">
+                                    <select class="property-input storedprocedure-param-type" style="font-size: 11px; padding: 4px 6px;">
+                                        <option value="Boolean" \${paramType === 'Boolean' ? 'selected' : ''}>Boolean</option>
+                                        <option value="Datetime" \${paramType === 'Datetime' ? 'selected' : ''}>Datetime</option>
+                                        <option value="Datetimeoffset" \${paramType === 'Datetimeoffset' ? 'selected' : ''}>Datetimeoffset</option>
+                                        <option value="Decimal" \${paramType === 'Decimal' ? 'selected' : ''}>Decimal</option>
+                                        <option value="Double" \${paramType === 'Double' ? 'selected' : ''}>Double</option>
+                                        <option value="Guid" \${paramType === 'Guid' ? 'selected' : ''}>Guid</option>
+                                        <option value="Int16" \${paramType === 'Int16' ? 'selected' : ''}>Int16</option>
+                                        <option value="Int32" \${paramType === 'Int32' ? 'selected' : ''}>Int32</option>
+                                        <option value="Int64" \${paramType === 'Int64' ? 'selected' : ''}>Int64</option>
+                                        <option value="Single" \${paramType === 'Single' ? 'selected' : ''}>Single</option>
+                                        <option value="String" \${paramType === 'String' ? 'selected' : ''}>String</option>
+                                        <option value="Timespan" \${paramType === 'Timespan' ? 'selected' : ''}>Timespan</option>
+                                    </select>
+                                    <input type="text" class="property-input storedprocedure-param-value" value="\${isTreatAsNull ? '' : paramValue}" placeholder="Value" \${isTreatAsNull ? 'disabled' : ''} style="font-size: 11px; padding: 4px 6px;\${isTreatAsNull ? ' opacity: 0.5; cursor: not-allowed;' : ''}">
+                                    <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; cursor: pointer;">
+                                        <input type="checkbox" class="storedprocedure-param-null" \${isTreatAsNull ? 'checked' : ''} style="margin: 0;">
+                                        <span>Null</span>
+                                    </label>
+                                    <button class="remove-storedprocedure-param-btn" style="padding: 2px 6px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; font-size: 10px;">×</button>
+                                </div>
+                            \`;
+                            paramIdx++;
+                        }
+                        
+                        fieldHtml += \`</div></div>\`;
+                        break;
                     case 'object':
                     case 'array':
                         fieldHtml += \`<div style="padding: 8px; background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border); border-radius: 2px; font-family: monospace; font-size: 12px; color: var(--vscode-descriptionForeground); flex: 1; cursor: pointer;">\`;
@@ -3717,6 +3906,9 @@ class PipelineEditorProvider {
             document.querySelectorAll('#configContent .property-input').forEach(input => {
                 const key = input.getAttribute('data-key');
                 if (!key) return;
+                
+                // Skip inputs that have their own specific handlers
+                if (input.classList.contains('storedprocedure-lsprop-value')) return;
                 
                 if (input.type === 'checkbox') {
                     input.addEventListener('change', (e) => {
@@ -4134,6 +4326,208 @@ class PipelineEditorProvider {
                             }
                         }
                         markAsDirty();
+                    }
+                });
+            });
+            
+            // Add event listeners for Stored Procedure activity linked service dropdown
+            document.querySelectorAll('#configContent .storedprocedure-linkedservice-select').forEach(select => {
+                select.addEventListener('change', (e) => {
+                    const key = select.getAttribute('data-key');
+                    const linkedServiceName = e.target.value;
+                    
+                    if (linkedServiceName) {
+                        // Store as reference object for Stored Procedure activity
+                        activity[key] = {
+                            referenceName: linkedServiceName,
+                            type: 'LinkedServiceReference'
+                        };
+                        
+                        // Determine linked service type
+                        const linkedService = window.linkedServicesList?.find(ls => ls.name === linkedServiceName);
+                        if (linkedService) {
+                            activity._selectedLinkedServiceType = linkedService.type === 'AzureSqlDatabase' ? 'AzureSqlDatabase' : 'AzureSynapse';
+                            console.log('Selected linked service type:', activity._selectedLinkedServiceType);
+                        }
+                    } else {
+                        delete activity[key];
+                        delete activity._selectedLinkedServiceType;
+                        delete activity.linkedServiceProperties;
+                    }
+                    
+                    markAsDirty();
+                    console.log('Updated ' + key + ':', activity[key]);
+                    
+                    // Re-render to show/hide linked service properties field
+                    const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                    showProperties(activity, activeTab);
+                });
+            });
+            
+            // Add event listener for Stored Procedure linked service properties value field
+            document.querySelectorAll('.storedprocedure-lsprop-value').forEach(input => {
+                input.addEventListener('input', (e) => {
+                    const key = e.target.getAttribute('data-key');
+                    const value = e.target.value;
+                    
+                    if (!activity.linkedServiceProperties) {
+                        activity.linkedServiceProperties = {};
+                    }
+                    activity.linkedServiceProperties.DBName = value;
+                    
+                    markAsDirty();
+                    console.log('Updated linked service property DBName:', value);
+                });
+            });
+            
+            // Add event listeners for Stored Procedure activity - Add Parameter button
+            document.querySelectorAll('.add-storedprocedure-param-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    if (!activity.storedProcedureParameters) activity.storedProcedureParameters = {};
+                    
+                    // Use empty string as parameter name (will show placeholder)
+                    let paramName = '';
+                    let counter = 1;
+                    // If empty name already exists, generate Name1, Name2, etc.
+                    if (activity.storedProcedureParameters[''] !== undefined) {
+                        paramName = 'Name' + counter;
+                        while (activity.storedProcedureParameters[paramName] !== undefined) {
+                            counter++;
+                            paramName = 'Name' + counter;
+                        }
+                    }
+                    
+                    activity.storedProcedureParameters[paramName] = {
+                        type: 'String',
+                        value: ''
+                    };
+                    markAsDirty();
+                    
+                    // Re-render to show new parameter
+                    const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                    showProperties(activity, activeTab);
+                });
+            });
+            
+            // Add event listeners for Stored Procedure activity - Remove Parameter button
+            document.querySelectorAll('.remove-storedprocedure-param-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const paramRow = e.target.closest('.storedprocedure-param-row');
+                    const paramIndex = parseInt(paramRow.getAttribute('data-param-index'));
+                    
+                    if (activity.storedProcedureParameters) {
+                        // Get the parameter name by index
+                        const paramNames = Object.keys(activity.storedProcedureParameters);
+                        if (paramNames[paramIndex]) {
+                            delete activity.storedProcedureParameters[paramNames[paramIndex]];
+                            markAsDirty();
+                            
+                            // Re-render to update indices
+                            const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                            showProperties(activity, activeTab);
+                        }
+                    }
+                });
+            });
+            
+            // Add event listeners for Stored Procedure parameter name field
+            document.querySelectorAll('.storedprocedure-param-name').forEach(input => {
+                input.addEventListener('change', (e) => {
+                    const paramRow = e.target.closest('.storedprocedure-param-row');
+                    const paramIndex = parseInt(paramRow.getAttribute('data-param-index'));
+                    const newName = e.target.value.trim();
+                    
+                    if (activity.storedProcedureParameters) {
+                        const paramNames = Object.keys(activity.storedProcedureParameters);
+                        const oldName = paramNames[paramIndex];
+                        
+                        // Only update if name changed
+                        if (oldName !== undefined && newName !== oldName) {
+                            // Check for duplicate name (only if new name is not empty)
+                            if (newName && activity.storedProcedureParameters[newName]) {
+                                // Duplicate name - show error and revert
+                                alert('Parameter name already exists: ' + newName);
+                                e.target.value = oldName;
+                                return;
+                            }
+                            
+                            // Rename parameter (preserve value and type)
+                            const paramData = activity.storedProcedureParameters[oldName];
+                            delete activity.storedProcedureParameters[oldName];
+                            activity.storedProcedureParameters[newName] = paramData;
+                            
+                            markAsDirty();
+                            console.log(\`Renamed parameter from "\${oldName}" to "\${newName}"\`);
+                            
+                            // Re-render to update parameter list
+                            const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                            showProperties(activity, activeTab);
+                        }
+                    }
+                });
+            });
+            
+            // Add event listeners for Stored Procedure parameter type and value fields
+            document.querySelectorAll('.storedprocedure-param-type, .storedprocedure-param-value').forEach(input => {
+                input.addEventListener('input', (e) => {
+                    const paramRow = e.target.closest('.storedprocedure-param-row');
+                    const paramIndex = parseInt(paramRow.getAttribute('data-param-index'));
+                    
+                    if (activity.storedProcedureParameters) {
+                        const paramNames = Object.keys(activity.storedProcedureParameters);
+                        const paramName = paramNames[paramIndex];
+                        
+                        if (paramName && activity.storedProcedureParameters[paramName]) {
+                            const param = activity.storedProcedureParameters[paramName];
+                            
+                            if (e.target.classList.contains('storedprocedure-param-type')) {
+                                param.type = e.target.value;
+                            } else if (e.target.classList.contains('storedprocedure-param-value')) {
+                                param.value = e.target.value;
+                            }
+                            
+                            markAsDirty();
+                        }
+                    }
+                });
+            });
+            
+            // Add event listeners for Stored Procedure parameter "Treat as null" checkbox
+            document.querySelectorAll('.storedprocedure-param-null').forEach(checkbox => {
+                checkbox.addEventListener('change', (e) => {
+                    const paramRow = e.target.closest('.storedprocedure-param-row');
+                    const paramIndex = parseInt(paramRow.getAttribute('data-param-index'));
+                    
+                    if (activity.storedProcedureParameters) {
+                        const paramNames = Object.keys(activity.storedProcedureParameters);
+                        const paramName = paramNames[paramIndex];
+                        
+                        if (paramName && activity.storedProcedureParameters[paramName]) {
+                            const param = activity.storedProcedureParameters[paramName];
+                            
+                            if (e.target.checked) {
+                                param.value = null;
+                                // Disable value input
+                                const valueInput = paramRow.querySelector('.storedprocedure-param-value');
+                                if (valueInput) {
+                                    valueInput.value = '';
+                                    valueInput.disabled = true;
+                                    valueInput.style.opacity = '0.5';
+                                    valueInput.style.cursor = 'not-allowed';
+                                }
+                            } else {
+                                param.value = '';
+                                // Enable value input
+                                const valueInput = paramRow.querySelector('.storedprocedure-param-value');
+                                if (valueInput) {
+                                    valueInput.disabled = false;
+                                    valueInput.style.opacity = '1';
+                                    valueInput.style.cursor = 'auto';
+                                }
+                            }
+                            
+                            markAsDirty();
+                        }
                     }
                 });
             });
@@ -5136,6 +5530,47 @@ class PipelineEditorProvider {
                             // Parse scriptBlockExecutionTimeout
                             if (tp.scriptBlockExecutionTimeout) {
                                 activity.scriptBlockExecutionTimeout = tp.scriptBlockExecutionTimeout;
+                            }
+                        } else if (activityData.type === 'SqlServerStoredProcedure') {
+                            // Handle SqlServerStoredProcedure activity - parse linkedServiceName, storedProcedureName, and storedProcedureParameters
+                            const tp = activityData.typeProperties || {};
+                            
+                            // Parse linkedServiceName
+                            if (activityData.linkedServiceName) {
+                                activity.linkedServiceName = activityData.linkedServiceName;
+                                
+                                // Determine linked service type from the reference name
+                                const linkedServiceRefName = activityData.linkedServiceName.referenceName;
+                                const linkedService = window.linkedServicesList?.find(ls => ls.name === linkedServiceRefName);
+                                if (linkedService) {
+                                    activity._selectedLinkedServiceType = linkedService.type === 'AzureSqlDatabase' ? 'AzureSqlDatabase' : 'AzureSynapse';
+                                } else {
+                                    // Fallback: check if it has parameters (indicates Synapse)
+                                    activity._selectedLinkedServiceType = activityData.linkedServiceName.parameters ? 'AzureSynapse' : 'AzureSqlDatabase';
+                                }
+                                
+                                // Parse linked service properties (for Azure Synapse Analytics)
+                                if (activityData.linkedServiceName.parameters && activityData.linkedServiceName.parameters.DBName) {
+                                    activity.linkedServiceProperties = {
+                                        DBName: activityData.linkedServiceName.parameters.DBName
+                                    };
+                                }
+                            }
+                            
+                            // Parse storedProcedureName
+                            if (tp.storedProcedureName) {
+                                activity.storedProcedureName = tp.storedProcedureName;
+                            }
+                            
+                            // Parse storedProcedureParameters
+                            if (tp.storedProcedureParameters && typeof tp.storedProcedureParameters === 'object') {
+                                activity.storedProcedureParameters = {};
+                                for (const [paramName, paramData] of Object.entries(tp.storedProcedureParameters)) {
+                                    activity.storedProcedureParameters[paramName] = {
+                                        type: paramData.type || 'String',
+                                        value: paramData.value
+                                    };
+                                }
                             }
                         } else {
                             Object.assign(activity, activityData.typeProperties);

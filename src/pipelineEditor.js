@@ -1465,6 +1465,17 @@ class PipelineEditorProvider {
                         invalidActivities.push(a.name + ' (' + a.type + ') - Dataset must be selected');
                     }
                 }
+                if (a.type === 'GetMetadata') {
+                    // Validate dataset is selected
+                    if (!a.dataset || (typeof a.dataset === 'object' && !a.dataset.referenceName)) {
+                        invalidActivities.push(a.name + ' (' + a.type + ') - Dataset must be selected');
+                    }
+                    // Validate field list has at least one valid field
+                    const hasValidFields = a.fieldList && a.fieldList.length > 0 && a.fieldList.some(f => f.value && f.value.trim() !== '');
+                    if (!hasValidFields) {
+                        invalidActivities.push(a.name + ' (' + a.type + ') - Field list must have at least one valid field');
+                    }
+                }
             });
             
             if (invalidActivities.length > 0) {
@@ -1523,6 +1534,15 @@ class PipelineEditorProvider {
                     // For SetVariable, always include policy section with secureOutput and secureInput
                     if (a.type === 'SetVariable') {
                         activity.policy = {
+                            secureOutput: a.secureOutput || false,
+                            secureInput: a.secureInput || false
+                        };
+                    } else if (a.type === 'GetMetadata') {
+                        // For GetMetadata, always include full policy section with defaults
+                        activity.policy = {
+                            timeout: a.timeout || "0.12:00:00",
+                            retry: a.retry || 0,
+                            retryIntervalInSeconds: a.retryIntervalInSeconds || 30,
                             secureOutput: a.secureOutput || false,
                             secureInput: a.secureInput || false
                         };
@@ -1720,6 +1740,107 @@ class PipelineEditorProvider {
                                 referenceName: a.pipeline,
                                 type: 'PipelineReference'
                             };
+                        }
+                    }
+                    
+                    // Handle GetMetadata activity - build typeProperties with dataset, fieldList, storeSettings, formatSettings
+                    if (a.type === 'GetMetadata') {
+                        // Build dataset reference
+                        if (a.dataset) {
+                            typeProperties.dataset = {
+                                referenceName: a.dataset,
+                                type: 'DatasetReference'
+                            };
+                        }
+                        
+                        // Build field list array (filter out empty values)
+                        if (a.fieldList && a.fieldList.length > 0) {
+                            typeProperties.fieldList = a.fieldList
+                                .filter(field => field.value && field.value.trim() !== '')
+                                .map(field => {
+                                    if (field.type === 'dynamic') {
+                                        return {
+                                            value: field.value || '',
+                                            type: 'Expression'
+                                        };
+                                    } else {
+                                        return field.value;
+                                    }
+                                });
+                        }
+                        
+                        // Determine dataset location type
+                        let locationType = null;
+                        if (a.dataset && datasetContents[a.dataset]) {
+                            const dsLocation = datasetContents[a.dataset].properties?.typeProperties?.location;
+                            if (dsLocation) {
+                                locationType = dsLocation.type;
+                            }
+                        }
+                        
+                        // For Blob/ADLS datasets, add storeSettings and formatSettings
+                        if (locationType === 'AzureBlobFSLocation' || locationType === 'AzureBlobStorageLocation') {
+                            const storeType = locationType === 'AzureBlobFSLocation' ? 'AzureBlobFSReadSettings' : 'AzureBlobStorageReadSettings';
+                            
+                            const storeSettings = {
+                                type: storeType
+                            };
+                            
+                            // Add modified datetime start if set
+                            if (a.modifiedDatetimeStart) {
+                                const startDate = new Date(a.modifiedDatetimeStart);
+                                storeSettings.modifiedDatetimeStart = startDate.toISOString();
+                            }
+                            
+                            // Add modified datetime end if set
+                            if (a.modifiedDatetimeEnd) {
+                                const endDate = new Date(a.modifiedDatetimeEnd);
+                                storeSettings.modifiedDatetimeEnd = endDate.toISOString();
+                            }
+                            
+                            storeSettings.enablePartitionDiscovery = false;
+                            typeProperties.storeSettings = storeSettings;
+                            
+                            // Add formatSettings if skipLineCount is set
+                            if (a.skipLineCount && a.skipLineCount > 0) {
+                                typeProperties.formatSettings = {
+                                    type: 'DelimitedTextReadSettings',
+                                    skipLineCount: parseInt(a.skipLineCount)
+                                };
+                            }
+                        }
+                        
+                        // Remove UI-only fields from typeProperties
+                        delete typeProperties.dataset;
+                        delete typeProperties.fieldList;
+                        delete typeProperties.timeoutSettings;
+                        delete typeProperties.sleepSettings;
+                        delete typeProperties.modifiedDatetimeStart;
+                        delete typeProperties.modifiedDatetimeEnd;
+                        delete typeProperties.skipLineCount;
+                        delete typeProperties._datasetLocationType;
+                        
+                        // Re-add dataset and fieldList at root level of typeProperties
+                        if (a.dataset) {
+                            typeProperties.dataset = {
+                                referenceName: a.dataset,
+                                type: 'DatasetReference'
+                            };
+                        }
+                        
+                        if (a.fieldList && a.fieldList.length > 0) {
+                            typeProperties.fieldList = a.fieldList
+                                .filter(field => field.value && field.value.trim() !== '')
+                                .map(field => {
+                                    if (field.type === 'dynamic') {
+                                        return {
+                                            value: field.value || '',
+                                            type: 'Expression'
+                                        };
+                                    } else {
+                                        return field.value;
+                                    }
+                                });
                         }
                     }
                     
@@ -1973,6 +2094,13 @@ class PipelineEditorProvider {
                 if (type === 'Delete') {
                     this.filePathType = 'filePathInDataset';
                     this.recursive = false;
+                }
+                
+                // Set default values for GetMetadata
+                if (type === 'GetMetadata') {
+                    this.fieldList = [];
+                    this.timeoutSettings = '0.12:00:00';
+                    this.sleepSettings = 10;
                 }
                 
                 this.createDOMElement();
@@ -2975,6 +3103,87 @@ class PipelineEditorProvider {
                     case 'expression':
                         fieldHtml += \`<input type="text" class="property-input" data-key="\${key}" value="\${value}" placeholder="\${prop.placeholder || 'Enter expression...'}">\`;
                         break;
+                    case 'getmetadata-dataset':
+                        console.log('[GenerateField] GetMetadata-dataset field -', 'key:', key, 'value:', value, 'type:', typeof value);
+                        fieldHtml += \`<select class="property-input getmetadata-dataset-select" data-key="\${key}">\`;
+                        fieldHtml += \`<option value="">\${prop.placeholder || 'Select dataset...'}</option>\`;
+                        // Filter datasets to only show specific types for GetMetadata activity
+                        let getMetadataDatasets = datasetList || [];
+                        const getMetadataAllowedTypes = [
+                            'AzureBlobStorage',
+                            'AzureBlobFSLocation',  // ADLS Gen2
+                            'AzureSqlTable',
+                            'AzureSynapseAnalytics',
+                            'AzureSqlDWTable'  // Synapse dedicated SQL pool
+                        ];
+                        getMetadataDatasets = getMetadataDatasets.filter(dsName => {
+                            const dsContent = datasetContents[dsName];
+                            if (!dsContent || !dsContent.properties) return false;
+                            const dsType = dsContent.properties.type;
+                            const locationType = dsContent.properties.typeProperties?.location?.type;
+                            // Check either dataset type or location type
+                            return getMetadataAllowedTypes.includes(dsType) || getMetadataAllowedTypes.includes(locationType);
+                        });
+                        if (getMetadataDatasets.length > 0) {
+                            getMetadataDatasets.forEach(ds => {
+                                const selected = ds === value ? 'selected' : '';
+                                if (selected) console.log('[GenerateField] Selected GetMetadata dataset:', ds, 'matches value:', value);
+                                fieldHtml += \`<option value="\${ds}" \${selected}>\${ds}</option>\`;
+                            });
+                        }
+                        fieldHtml += \`</select>\`;
+                        break;
+                    case 'getmetadata-fieldlist':
+                        // Render the field list UI with cleaner design matching Set Variable pattern
+                        const fieldListData = value || [];
+                        fieldHtml += \`<div style="flex: 1;"><div style="font-size: 11px; color: var(--vscode-descriptionForeground); margin-bottom: 8px;">Field list items with argument types</div>\`;
+                        fieldHtml += \`<button class="add-getmetadata-field-btn" data-key="\${key}" style="padding: 4px 8px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; font-size: 11px; margin-bottom: 8px;">+ Add Field</button>\`;
+                        fieldHtml += \`<div class="getmetadata-fieldlist-container" data-key="\${key}">\`;
+                        
+                        // Determine options based on dataset type
+                        const isStorageDataset = activity._datasetLocationType === 'AzureBlobStorageLocation' || activity._datasetLocationType === 'AzureBlobFSLocation';
+                        let argumentOptions;
+                        if (isStorageDataset) {
+                            argumentOptions = [
+                                { value: 'childItems', label: 'Child items' },
+                                { value: 'exists', label: 'Exists' },
+                                { value: 'itemName', label: 'Item name' },
+                                { value: 'itemType', label: 'Item type' },
+                                { value: 'lastModified', label: 'Last modified' }
+                            ];
+                        } else {
+                            argumentOptions = [
+                                { value: 'columnCount', label: 'Column count' },
+                                { value: 'exists', label: 'Exists' },
+                                { value: 'structure', label: 'Structure' }
+                            ];
+                        }
+                        
+                        // Render existing field list items
+                        fieldListData.forEach((field, idx) => {
+                            const fieldValue = field.value || '';
+                            const fieldType = field.type || 'predefined';
+                            const isDynamic = fieldType === 'dynamic';
+                            
+                            // Build argument dropdown options
+                            const argOptions = argumentOptions.map(opt => 
+                                \`<option value="\${opt.value}" \${!isDynamic && fieldValue === opt.value ? 'selected' : ''}>\${opt.label}</option>\`
+                            ).join('');
+                            
+                            fieldHtml += \`
+                                <div class="property-group getmetadata-field-item" data-index="\${idx}" style="margin-bottom: 8px; display: flex; gap: 8px; align-items: center;">
+                                    \${isDynamic ? \`<input type="text" class="property-input getmetadata-field-value" data-index="\${idx}" value="\${fieldValue}" placeholder="Dynamic content" style="flex: 1;">\` : ''}
+                                    <select class="property-input getmetadata-field-type" data-index="\${idx}" style="flex: \${isDynamic ? '0 0 150px' : '1'}">
+                                        \${argOptions}
+                                        <option value="__dynamic__" \${isDynamic ? 'selected' : ''}>Dynamic content</option>
+                                    </select>
+                                    <button class="remove-getmetadata-field-btn" data-index="\${idx}" style="padding: 6px 12px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; flex-shrink: 0;">Remove</button>
+                                </div>
+                            \`;
+                        });
+                        
+                        fieldHtml += \`</div></div>\`;
+                        break;
                     case 'object':
                     case 'array':
                         fieldHtml += \`<div style="padding: 8px; background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border); border-radius: 2px; font-family: monospace; font-size: 12px; color: var(--vscode-descriptionForeground); flex: 1; cursor: pointer;">\`;
@@ -3291,6 +3500,112 @@ class PipelineEditorProvider {
                     // Re-render the current tab to show/hide childItems field
                     const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
                     showProperties(activity, activeTab);
+                });
+            });
+            
+            // Add event listeners for getmetadata-dataset dropdowns
+            document.querySelectorAll('#configContent .getmetadata-dataset-select').forEach(select => {
+                select.addEventListener('change', (e) => {
+                    const key = select.getAttribute('data-key');
+                    const datasetName = e.target.value;
+                    
+                    if (datasetName) {
+                        // Store as string for GetMetadata activity
+                        activity[key] = datasetName;
+                        
+                        // Store location type for conditional rendering of fields
+                        if (datasetContents[datasetName]) {
+                            const locationType = datasetContents[datasetName].properties?.typeProperties?.location?.type;
+                            activity._datasetLocationType = locationType;
+                            console.log('GetMetadata dataset selected:', datasetName, 'Location type:', locationType);
+                            
+                            // Reset field list when dataset changes
+                            activity.fieldList = [];
+                        }
+                    } else {
+                        delete activity[key];
+                        delete activity._datasetLocationType;
+                        activity.fieldList = [];
+                    }
+                    
+                    markAsDirty();
+                    console.log('Updated ' + key + ':', activity[key]);
+                    
+                    // Re-render the current tab to show dataset-specific fields
+                    const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                    showProperties(activity, activeTab);
+                });
+            });
+            
+            // Add event listeners for GetMetadata field list
+            document.querySelectorAll('.add-getmetadata-field-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    if (!activity.fieldList) activity.fieldList = [];
+                    
+                    // Set default value based on dataset type
+                    const isStorageDataset = activity._datasetLocationType === 'AzureBlobFSLocation' || 
+                                            activity._datasetLocationType === 'AzureBlobStorageLocation';
+                    const defaultValue = isStorageDataset ? 'childItems' : 'columnCount';
+                    
+                    activity.fieldList.push({ type: 'predefined', value: defaultValue });
+                    markAsDirty();
+                    
+                    // Re-render to show new field
+                    const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                    showProperties(activity, activeTab);
+                });
+            });
+            
+            document.querySelectorAll('.remove-getmetadata-field-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const index = parseInt(e.target.getAttribute('data-index'));
+                    if (activity.fieldList && activity.fieldList[index] !== undefined) {
+                        activity.fieldList.splice(index, 1);
+                        markAsDirty();
+                        
+                        // Re-render to update indices
+                        const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                        showProperties(activity, activeTab);
+                    }
+                });
+            });
+            
+            document.querySelectorAll('.getmetadata-field-type').forEach(select => {
+                select.addEventListener('change', (e) => {
+                    const index = parseInt(e.target.getAttribute('data-index'));
+                    const selectedType = e.target.value;
+                    
+                    if (!activity.fieldList) activity.fieldList = [];
+                    
+                    if (selectedType === '__dynamic__') {
+                        // Switch to dynamic content mode
+                        activity.fieldList[index] = { type: 'dynamic', value: '' };
+                    } else if (selectedType) {
+                        // Predefined option selected
+                        activity.fieldList[index] = { type: 'predefined', value: selectedType };
+                    } else {
+                        // Empty selection
+                        activity.fieldList[index] = { type: 'predefined', value: '' };
+                    }
+                    
+                    markAsDirty();
+                    
+                    // Re-render to update readonly state on value input
+                    const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                    showProperties(activity, activeTab);
+                });
+            });
+            
+            document.querySelectorAll('.getmetadata-field-value').forEach(input => {
+                input.addEventListener('input', (e) => {
+                    const index = parseInt(e.target.getAttribute('data-index'));
+                    const value = e.target.value;
+                    
+                    if (!activity.fieldList) activity.fieldList = [];
+                    if (activity.fieldList[index] && activity.fieldList[index].type === 'dynamic') {
+                        activity.fieldList[index].value = value;
+                        markAsDirty();
+                    }
                 });
             });
             
@@ -4209,6 +4524,57 @@ class PipelineEditorProvider {
                                 activity.childItems = String(tp.childItems); // Convert true/false to "true"/"false"
                             } else {
                                 activity.childItems = 'ignore'; // Default to ignore if not present
+                            }
+                        } else if (activityData.type === 'GetMetadata') {
+                            // Handle GetMetadata activity - parse dataset reference and field list
+                            const tp = activityData.typeProperties || {};
+                            
+                            // Extract dataset reference
+                            if (tp.dataset && tp.dataset.referenceName) {
+                                activity.dataset = tp.dataset.referenceName;
+                                
+                                // Store location type for conditional rendering
+                                if (datasetContents[tp.dataset.referenceName]) {
+                                    const locationType = datasetContents[tp.dataset.referenceName].properties?.typeProperties?.location?.type;
+                                    activity._datasetLocationType = locationType;
+                                    console.log('[Load] GetMetadata dataset location type:', locationType);
+                                }
+                            }
+                            
+                            // Extract field list - convert from array format to internal format
+                            if (tp.fieldList && Array.isArray(tp.fieldList)) {
+                                activity.fieldList = tp.fieldList.map(field => {
+                                    if (typeof field === 'string') {
+                                        // Simple string field like "childItems", "exists"
+                                        return { type: 'predefined', value: field };
+                                    } else if (typeof field === 'object' && field.type === 'Expression') {
+                                        // Dynamic expression field
+                                        return { type: 'dynamic', value: field.value };
+                                    }
+                                    return field;
+                                });
+                            } else {
+                                activity.fieldList = [];
+                            }
+                            
+                            // Parse storeSettings for datetime filters (Blob/ADLS only)
+                            if (tp.storeSettings) {
+                                const ss = tp.storeSettings;
+                                
+                                // Convert ISO datetime to datetime-local format
+                                if (ss.modifiedDatetimeStart) {
+                                    const startDate = new Date(ss.modifiedDatetimeStart);
+                                    activity.modifiedDatetimeStart = startDate.toISOString().slice(0, 19);
+                                }
+                                if (ss.modifiedDatetimeEnd) {
+                                    const endDate = new Date(ss.modifiedDatetimeEnd);
+                                    activity.modifiedDatetimeEnd = endDate.toISOString().slice(0, 19);
+                                }
+                            }
+                            
+                            // Parse formatSettings for skipLineCount (Blob/ADLS only)
+                            if (tp.formatSettings && tp.formatSettings.skipLineCount !== undefined) {
+                                activity.skipLineCount = tp.formatSettings.skipLineCount;
                             }
                         } else {
                             Object.assign(activity, activityData.typeProperties);

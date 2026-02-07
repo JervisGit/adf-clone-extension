@@ -189,5 +189,28 @@
       "sleep": { "type": "number", "label": "Sleep", "default": 10, "placeholder": "10", "min": 1, "required": true },
       "childItems": { "type": "radio-with-info", "label": "Child items", "options": ["ignore", "true", "false"], "default": "ignore", "conditional": { "field": "_datasetLocationType", "value": ["AzureBlobStorageLocation", "AzureBlobFSLocation"] } }
     }
+  },
+  "GetMetadata": {
+    "name": "Get Metadata",
+    "tabs": ["General", "Settings", "User Properties"],
+    "commonProperties": {
+      "name": { "type": "string", "label": "Name", "required": true },
+      "description": { "type": "string", "label": "Description", "multiline": true },
+      "state": { "type": "radio", "label": "Activity state", "options": ["Activated", "Deactivated"], "default": "Activated" },
+      "timeout": { "type": "string", "label": "Timeout", "default": "0.12:00:00", "section": "policy" },
+      "retry": { "type": "number", "label": "Retry", "default": 0, "section": "policy" },
+      "retryIntervalInSeconds": { "type": "number", "label": "Retry interval (sec)", "default": 30, "section": "policy" },
+      "secureOutput": { "type": "boolean", "label": "Secure output", "default": false, "section": "policy" },
+      "secureInput": { "type": "boolean", "label": "Secure input", "default": false, "section": "policy" }
+    },
+    "typeProperties": {
+      "dataset": { "type": "getmetadata-dataset", "label": "Dataset", "required": true, "placeholder": "Select dataset..." },
+      "fieldList": { "type": "getmetadata-fieldlist", "label": "Field list" },
+      "timeoutSettings": { "type": "text", "label": "Timeout", "default": "0.12:00:00", "placeholder": "0.12:00:00" },
+      "sleepSettings": { "type": "number", "label": "Sleep", "default": 10, "placeholder": "10", "min": 1 },
+      "modifiedDatetimeStart": { "type": "datetime", "label": "Start time (UTC)", "placeholder": "2/6/2026, 12:00:00 AM", "conditional": { "field": "_datasetLocationType", "value": ["AzureBlobStorageLocation", "AzureBlobFSLocation"] } },
+      "modifiedDatetimeEnd": { "type": "datetime", "label": "End time (UTC)", "placeholder": "2/6/2026, 12:00:00 AM", "conditional": { "field": "_datasetLocationType", "value": ["AzureBlobStorageLocation", "AzureBlobFSLocation"] } },
+      "skipLineCount": { "type": "number", "label": "Skip line count", "min": 0, "conditional": { "field": "_datasetLocationType", "value": ["AzureBlobStorageLocation", "AzureBlobFSLocation"] } }
+    }
   }
 }

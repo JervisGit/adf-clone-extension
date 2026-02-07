@@ -1589,6 +1589,25 @@ class PipelineEditorProvider {
                             if (!script.text || script.text.trim() === '') {
                                 emptyScripts.push(idx + 1);
                             }
+                            
+                            // Check for duplicate parameter names within this script (only for named parameters)
+                            if (script.parameters && script.parameters.length > 0) {
+                                const paramNames = new Map(); // Track parameter names and their indices
+                                script.parameters.forEach((param, paramIdx) => {
+                                    const paramName = param.name ? param.name.trim() : '';
+                                    // Only check duplicates for parameters that have names
+                                    if (paramName !== '') {
+                                        if (paramNames.has(paramName)) {
+                                            // Duplicate parameter name
+                                            const firstIdx = paramNames.get(paramName);
+                                            invalidActivities.push(a.name + ' (' + a.type + ') - Script ' + (idx + 1) + ' has duplicate parameter name "' + paramName + '" at positions ' + (firstIdx + 1) + ' and ' + (paramIdx + 1));
+                                        } else {
+                                            paramNames.set(paramName, paramIdx);
+                                        }
+                                    }
+                                    // Unnamed parameters are allowed, so we skip them
+                                });
+                            }
                         });
                         if (emptyScripts.length > 0) {
                             invalidActivities.push(a.name + ' (' + a.type + ') - Script(s) ' + emptyScripts.join(', ') + ' cannot be empty');

@@ -68,36 +68,98 @@ class PipelineEditorProvider {
 			let datasetList = [];
 			let datasetContents = {};
 			let pipelineList = [];
+			let linkedServicesList = [];
 			
 			if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
 				const workspaceRoot = vscode.workspace.workspaceFolders[0].uri.fsPath;
+				console.log('[Extension] Workspace root:', workspaceRoot);
 				
-				// Load datasets
-				const datasetPath = path.join(workspaceRoot, 'dataset');
-				if (fs.existsSync(datasetPath)) {
-					const files = fs.readdirSync(datasetPath).filter(f => f.endsWith('.json'));
-					files.forEach(file => {
-						const name = file.replace('.json', '');
-						datasetList.push(name);
-						try {
-							const filePath = path.join(datasetPath, file);
-							const content = fs.readFileSync(filePath, 'utf8');
-							datasetContents[name] = JSON.parse(content);
-						} catch (err) {
-							console.error(`Error reading dataset ${file}:`, err);
-						}
-					});
-				}
+				// Build list of paths to check (root + common subfolders)
+				const pathsToCheck = [
+					workspaceRoot,
+					path.join(workspaceRoot, 'adf-clone-extension'),
+					path.join(workspaceRoot, 'adf-activity-ui')
+				];
 				
-				// Load pipelines
-				const pipelinePath = path.join(workspaceRoot, 'pipeline');
-				if (fs.existsSync(pipelinePath)) {
-					const files = fs.readdirSync(pipelinePath).filter(f => f.endsWith('.json'));
-					files.forEach(file => {
-						const name = file.replace('.json', '');
-						pipelineList.push(name);
-					});
-				}
+				// Helper function to load from a specific path
+				const loadFromPath = (basePath) => {
+					console.log('[Extension] Checking path:', basePath);
+					if (!fs.existsSync(basePath)) {
+						console.log('[Extension] Path does not exist:', basePath);
+						return;
+					}
+					
+					// Load datasets
+					const datasetPath = path.join(basePath, 'dataset');
+					if (fs.existsSync(datasetPath)) {
+						const files = fs.readdirSync(datasetPath).filter(f => f.endsWith('.json'));
+						console.log(`[Extension] Found ${files.length} dataset files in ${datasetPath}`);
+						files.forEach(file => {
+							const name = file.replace('.json', '');
+							if (!datasetList.includes(name)) {
+								datasetList.push(name);
+								try {
+									const filePath = path.join(datasetPath, file);
+									const content = fs.readFileSync(filePath, 'utf8');
+									datasetContents[name] = JSON.parse(content);
+								} catch (err) {
+									console.error(`[Extension] Error reading dataset ${file}:`, err);
+								}
+							}
+						});
+					}
+					
+					// Load pipelines
+					const pipelinePath = path.join(basePath, 'pipeline');
+					if (fs.existsSync(pipelinePath)) {
+						const files = fs.readdirSync(pipelinePath).filter(f => f.endsWith('.json'));
+						console.log(`[Extension] Found ${files.length} pipeline files in ${pipelinePath}`);
+						files.forEach(file => {
+							const name = file.replace('.json', '');
+							if (!pipelineList.includes(name)) {
+								pipelineList.push(name);
+							}
+						});
+					}
+					
+					// Load linked services
+					const linkedServicePath = path.join(basePath, 'linkedService');
+					if (fs.existsSync(linkedServicePath)) {
+						const files = fs.readdirSync(linkedServicePath).filter(f => f.endsWith('.json'));
+						console.log(`[Extension] Found ${files.length} linked service files in ${linkedServicePath}`);
+						files.forEach(file => {
+							try {
+								const filePath = path.join(linkedServicePath, file);
+								const content = fs.readFileSync(filePath, 'utf8');
+								const linkedService = JSON.parse(content);
+								const lsName = linkedService.name;
+								const lsType = linkedService.properties?.type;
+								console.log(`[Extension] Linked service ${file}: name=${lsName}, type=${lsType}`);
+								
+								// Filter for Script activity: only Azure SQL Database and Azure Synapse Analytics
+								if (lsType === 'AzureSqlDatabase' || lsType === 'AzureSqlDW') {
+									// Avoid duplicates
+									if (!linkedServicesList.find(ls => ls.name === lsName)) {
+										linkedServicesList.push({
+											name: lsName,
+											type: lsType
+										});
+										console.log(`[Extension] Added linked service: ${lsName} (${lsType})`);
+									}
+								} else {
+									console.log(`[Extension] Skipped linked service ${lsName} - type ${lsType} not supported for Script activity`);
+								}
+							} catch (err) {
+								console.error(`[Extension] Error reading linked service ${file}:`, err);
+							}
+						});
+					}
+				};
+				
+				// Load from all paths
+				pathsToCheck.forEach(loadFromPath);
+				
+				console.log('[Extension] Final linked services list:', linkedServicesList);
 			}
 			
 			panel.webview.postMessage({
@@ -105,7 +167,8 @@ class PipelineEditorProvider {
 				datasetSchemas: datasetSchemas,
 				datasetList: datasetList,
 				datasetContents: datasetContents,
-				pipelineList: pipelineList
+				pipelineList: pipelineList,
+				linkedServicesList: linkedServicesList
 			});
 		});
 
@@ -323,9 +386,24 @@ class PipelineEditorProvider {
 						if (a.dependsOn) activity.dependsOn = a.dependsOn;
 						if (a.userProperties) activity.userProperties = a.userProperties;
 						
-                        // Preserve policy object from webview if it exists
+                        // Build policy object - check if policy object exists from webview, or build from individual fields
                         if (a.policy && typeof a.policy === 'object') {
+                            // Policy object already exists from webview
                             activity.policy = a.policy;
+                        } else if (a.timeout || a.retry !== undefined || a.retryIntervalInSeconds !== undefined || 
+                            a.secureOutput !== undefined || a.secureInput !== undefined) {
+                            // Build policy from individual fields
+                            activity.policy = {};
+                            if (a.timeout) activity.policy.timeout = a.timeout;
+                            if (a.retry !== undefined) activity.policy.retry = a.retry;
+                            if (a.retryIntervalInSeconds !== undefined) activity.policy.retryIntervalInSeconds = a.retryIntervalInSeconds;
+                            if (a.secureOutput !== undefined) activity.policy.secureOutput = a.secureOutput;
+                            if (a.secureInput !== undefined) activity.policy.secureInput = a.secureInput;
+                        }
+                        
+                        // For Script activity, linkedServiceName should be at activity level
+                        if (a.type === 'Script' && a.linkedServiceName) {
+                            activity.linkedServiceName = a.linkedServiceName;
                         }
                         
                         // Collect typeProperties
@@ -1484,6 +1562,26 @@ class PipelineEditorProvider {
                         }
                     }
                 }
+                if (a.type === 'Script') {
+                    // Validate linked service is selected
+                    if (!a.linkedServiceName || (typeof a.linkedServiceName === 'object' && !a.linkedServiceName.referenceName)) {
+                        invalidActivities.push(a.name + ' (' + a.type + ') - Linked service must be selected');
+                    }
+                    // Validate that ALL scripts have text
+                    if (!a.scripts || a.scripts.length === 0) {
+                        invalidActivities.push(a.name + ' (' + a.type + ') - At least one script is required');
+                    } else {
+                        const emptyScripts = [];
+                        a.scripts.forEach((script, idx) => {
+                            if (!script.text || script.text.trim() === '') {
+                                emptyScripts.push(idx + 1);
+                            }
+                        });
+                        if (emptyScripts.length > 0) {
+                            invalidActivities.push(a.name + ' (' + a.type + ') - Script(s) ' + emptyScripts.join(', ') + ' cannot be empty');
+                        }
+                    }
+                }
             });
             
             if (invalidActivities.length > 0) {
@@ -1545,12 +1643,12 @@ class PipelineEditorProvider {
                             secureOutput: a.secureOutput || false,
                             secureInput: a.secureInput || false
                         };
-                    } else if (a.type === 'GetMetadata') {
-                        // For GetMetadata, always include full policy section with defaults
+                    } else if (a.type === 'GetMetadata' || a.type === 'Script') {
+                        // For GetMetadata and Script, always include full policy section with defaults
                         activity.policy = {
                             timeout: a.timeout || "0.12:00:00",
-                            retry: a.retry || 0,
-                            retryIntervalInSeconds: a.retryIntervalInSeconds || 30,
+                            retry: a.retry !== undefined ? a.retry : 0,
+                            retryIntervalInSeconds: a.retryIntervalInSeconds !== undefined ? a.retryIntervalInSeconds : 30,
                             secureOutput: a.secureOutput || false,
                             secureInput: a.secureInput || false
                         };
@@ -1934,6 +2032,62 @@ class PipelineEditorProvider {
                         }
                     }
                     
+                    // Handle Script activity - build linkedServiceName and scripts array
+                    if (a.type === 'Script') {
+                        // Build linkedServiceName reference
+                        if (a.linkedServiceName) {
+                            activity.linkedServiceName = {
+                                referenceName: typeof a.linkedServiceName === 'object' ? a.linkedServiceName.referenceName : a.linkedServiceName,
+                                type: 'LinkedServiceReference'
+                            };
+                        }
+                        
+                        // Build scripts array
+                        if (a.scripts && a.scripts.length > 0) {
+                            typeProperties.scripts = a.scripts.map(script => {
+                                const scriptObj = {
+                                    type: script.type || 'Query'
+                                };
+                                
+                                // Add text if present
+                                if (script.text) {
+                                    scriptObj.text = script.text;
+                                }
+                                
+                                // Add parameters if present
+                                if (script.parameters && script.parameters.length > 0) {
+                                    scriptObj.parameters = script.parameters.map(param => {
+                                        const paramObj = {
+                                            name: param.name,
+                                            type: param.type,
+                                            value: param.value,
+                                            direction: param.direction
+                                        };
+                                        
+                                        // Add size only if direction is Output or InputOutput and type is String or Byte[]
+                                        if ((param.direction === 'Output' || param.direction === 'InputOutput') && 
+                                            (param.type === 'String' || param.type === 'Byte[]') && 
+                                            param.size !== undefined) {
+                                            paramObj.size = parseInt(param.size);
+                                        }
+                                        
+                                        return paramObj;
+                                    });
+                                }
+                                
+                                return scriptObj;
+                            });
+                        }
+                        
+                        // Add scriptBlockExecutionTimeout if set
+                        if (a.scriptBlockExecutionTimeout) {
+                            typeProperties.scriptBlockExecutionTimeout = a.scriptBlockExecutionTimeout;
+                        }
+                        
+                        // Remove UI-only fields from typeProperties
+                        delete typeProperties.linkedServiceName;
+                    }
+                    
                     activity.typeProperties = typeProperties;
                     return activity;
                 })
@@ -2109,6 +2263,17 @@ class PipelineEditorProvider {
                 // Set default values for GetMetadata
                 if (type === 'GetMetadata') {
                     this.fieldList = [];
+                }
+                
+                // Set default values for Script
+                if (type === 'Script') {
+                    this.scripts = [{ type: 'Query', text: '', parameters: [] }];
+                    this.scriptBlockExecutionTimeout = '02:00:00';
+                    this.timeout = '0.12:00:00';
+                    this.retry = 0;
+                    this.retryIntervalInSeconds = 30;
+                    this.secureOutput = false;
+                    this.secureInput = false;
                 }
                 
                 this.createDOMElement();
@@ -2359,7 +2524,8 @@ class PipelineEditorProvider {
                     'Wait': '⏱️',
                     'WebActivity': '🌐',
                     'StoredProcedure': '💾',
-                    'Validation': '✅'
+                    'Validation': '✅',
+                    'Script': '📜'
                 };
                 return icons[this.type] || '📦';
             }
@@ -3192,6 +3358,132 @@ class PipelineEditorProvider {
                         
                         fieldHtml += \`</div></div>\`;
                         break;
+                    case 'script-linkedservice':
+                        console.log('[GenerateField] Script-linkedservice field -', 'key:', key, 'value:', value, 'type:', typeof value);
+                        // Extract referenceName if value is an object
+                        let linkedServiceRefName = '';
+                        if (typeof value === 'object' && value !== null && value.referenceName) {
+                            linkedServiceRefName = value.referenceName;
+                        } else if (typeof value === 'string') {
+                            linkedServiceRefName = value;
+                        }
+                        fieldHtml += \`<select class="property-input script-linkedservice-select" data-key="\${key}">\`;
+                        fieldHtml += \`<option value="">\${prop.placeholder || 'Select linked service...'}</option>\`;
+                        
+                        // Get linked services list from extension (we'll receive this via message)
+                        if (window.linkedServicesList && window.linkedServicesList.length > 0) {
+                            window.linkedServicesList.forEach(ls => {
+                                const selected = ls.name === linkedServiceRefName ? 'selected' : '';
+                                if (selected) console.log('[GenerateField] Selected linked service:', ls.name, 'matches value:', linkedServiceRefName);
+                                fieldHtml += \`<option value="\${ls.name}" \${selected}>\${ls.name}</option>\`;
+                            });
+                        }
+                        fieldHtml += \`</select>\`;
+                        break;
+                    case 'script-array':
+                        // Render the scripts array UI
+                        const scriptsData = value || [{ type: 'Query', text: '', parameters: [] }];
+                        fieldHtml += \`<div style="flex: 1;">\`;
+                        fieldHtml += \`<div style="font-size: 11px; color: var(--vscode-descriptionForeground); margin-bottom: 8px;">Configure one or more scripts</div>\`;
+                        fieldHtml += \`<button class="add-script-btn" data-key="\${key}" style="padding: 4px 8px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; font-size: 11px; margin-bottom: 8px;">+ Add Script</button>\`;
+                        fieldHtml += \`<div class="scripts-container" data-key="\${key}">\`;
+                        
+                        // Render existing scripts
+                        scriptsData.forEach((script, scriptIdx) => {
+                            const scriptType = script.type || 'Query';
+                            const scriptText = script.text || '';
+                            const scriptParams = script.parameters || [];
+                            
+                            fieldHtml += \`
+                                <div class="script-item" data-script-index="\${scriptIdx}" style="border: 1px solid var(--vscode-panel-border); border-radius: 4px; padding: 12px; margin-bottom: 12px; background: var(--vscode-editor-background);">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                                        <div style="font-weight: 600; font-size: 13px;">Script \${scriptIdx + 1}</div>
+                                        <button class="remove-script-btn" data-script-index="\${scriptIdx}" style="padding: 4px 8px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; font-size: 11px;">Remove Script</button>
+                                    </div>
+                                    
+                                    <div style="margin-bottom: 12px;">
+                                        <div style="display: flex; gap: 16px; align-items: center; margin-bottom: 8px;">
+                                            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                                                <input type="radio" name="scriptType\${scriptIdx}" class="script-type-radio" data-script-index="\${scriptIdx}" value="Query" \${scriptType === 'Query' ? 'checked' : ''} style="margin: 0;">
+                                                <span>Query</span>
+                                                <span class="info-icon" title="Database statements that return one or more result sets." style="display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; border: 1px solid var(--vscode-foreground); font-size: 11px; cursor: help; color: var(--vscode-foreground);">i</span>
+                                            </label>
+                                            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                                                <input type="radio" name="scriptType\${scriptIdx}" class="script-type-radio" data-script-index="\${scriptIdx}" value="NonQuery" \${scriptType === 'NonQuery' ? 'checked' : ''} style="margin: 0;">
+                                                <span>NonQuery</span>
+                                                <span class="info-icon" title="Database statements that perform catalog operations (for example, querying the structure of a database or creating database objects such as tables), or change the data in a database by executing UPDATE, INSERT, or DELETE statements." style="display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; border: 1px solid var(--vscode-foreground); font-size: 11px; cursor: help; color: var(--vscode-foreground);">i</span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                    
+                                    <div style="margin-bottom: 12px;">
+                                        <label style="display: block; font-size: 12px; font-weight: 600; color: var(--vscode-descriptionForeground); margin-bottom: 6px;">Script *</label>
+                                        <textarea class="property-input script-text-area" data-script-index="\${scriptIdx}" rows="4" placeholder="Enter your script here..." style="width: 100%; font-family: monospace; font-size: 12px;">\${scriptText}</textarea>
+                                    </div>
+                                    
+                                    <div style="margin-bottom: 8px;">
+                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                            <label style="font-size: 12px; font-weight: 600; color: var(--vscode-descriptionForeground);">Script Parameters</label>
+                                            <button class="add-script-param-btn" data-script-index="\${scriptIdx}" style="padding: 4px 8px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; font-size: 11px;">+ Add Parameter</button>
+                                        </div>
+                                        <div class="script-params-container" data-script-index="\${scriptIdx}">\`;
+                            
+                            // Render existing parameters
+                            scriptParams.forEach((param, paramIdx) => {
+                                const paramName = param.name || '';
+                                const paramType = param.type || 'String';
+                                const paramValue = param.value !== undefined && param.value !== null ? param.value : '';
+                                const paramDirection = param.direction || 'Input';
+                                const paramSize = param.size || '';
+                                const showSize = (paramDirection === 'Output' || paramDirection === 'InputOutput') && (paramType === 'String' || paramType === 'Byte[]');
+                                
+                                fieldHtml += \`
+                                    <div class="script-param-row" data-script-index="\${scriptIdx}" data-param-index="\${paramIdx}" style="display: grid; grid-template-columns: 40px 1fr 120px 1fr 80px 100px 80px 30px; gap: 8px; margin-bottom: 8px; align-items: center; padding: 8px; background: var(--vscode-sideBar-background); border-radius: 3px;">
+                                        <div style="font-size: 11px; color: var(--vscode-descriptionForeground);">\${paramIdx + 1}</div>
+                                        <input type="text" class="property-input script-param-name" value="\${paramName}" placeholder="Name" style="font-size: 11px; padding: 4px 6px;">
+                                        <select class="property-input script-param-type" style="font-size: 11px; padding: 4px 6px;">
+                                            <option value="Boolean" \${paramType === 'Boolean' ? 'selected' : ''}>Boolean</option>
+                                            <option value="Byte[]" \${paramType === 'Byte[]' ? 'selected' : ''}>Byte[]</option>
+                                            <option value="Datetime" \${paramType === 'Datetime' ? 'selected' : ''}>Datetime</option>
+                                            <option value="Datetimeoffset" \${paramType === 'Datetimeoffset' ? 'selected' : ''}>Datetimeoffset</option>
+                                            <option value="Decimal" \${paramType === 'Decimal' ? 'selected' : ''}>Decimal</option>
+                                            <option value="Double" \${paramType === 'Double' ? 'selected' : ''}>Double</option>
+                                            <option value="Guid" \${paramType === 'Guid' ? 'selected' : ''}>Guid</option>
+                                            <option value="Int16" \${paramType === 'Int16' ? 'selected' : ''}>Int16</option>
+                                            <option value="Int32" \${paramType === 'Int32' ? 'selected' : ''}>Int32</option>
+                                            <option value="Int64" \${paramType === 'Int64' ? 'selected' : ''}>Int64</option>
+                                            <option value="Single" \${paramType === 'Single' ? 'selected' : ''}>Single</option>
+                                            <option value="String" \${paramType === 'String' ? 'selected' : ''}>String</option>
+                                            <option value="Timespan" \${paramType === 'Timespan' ? 'selected' : ''}>Timespan</option>
+                                        </select>
+                                        <input type="text" class="property-input script-param-value" value="\${paramValue === null ? '' : paramValue}" placeholder="Value" \${param.value === null ? 'disabled' : ''} style="font-size: 11px; padding: 4px 6px;\${param.value === null ? ' opacity: 0.5; cursor: not-allowed;' : ''}">
+                                        <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; cursor: pointer;">
+                                            <input type="checkbox" class="script-param-null" \${param.value === null ? 'checked' : ''} style="margin: 0;">
+                                            <span>Null</span>
+                                        </label>
+                                        <select class="property-input script-param-direction" style="font-size: 11px; padding: 4px 6px;" data-param-type="\${paramType}">
+                                            <option value="Input" \${paramDirection === 'Input' ? 'selected' : ''} \${paramType === 'Byte[]' ? 'disabled' : ''}>Input</option>
+                                            <option value="Output" \${paramDirection === 'Output' ? 'selected' : ''}>Output</option>
+                                            <option value="InputOutput" \${paramDirection === 'InputOutput' ? 'selected' : ''} \${paramType === 'Byte[]' ? 'disabled' : ''}>InputOutput</option>
+                                        </select>
+                                        <div style="position: relative; display: flex; align-items: center; gap: 4px;">
+                                            <input type="number" class="property-input script-param-size" value="\${paramSize}" placeholder="Size" \${!showSize ? 'disabled' : ''} style="font-size: 11px; padding: 4px 6px; width: 100%; \${!showSize ? 'opacity: 0.5; cursor: not-allowed;' : ''}">
+                                            \${showSize ? '<span class="info-icon" title="Required if the direction is output or inputoutput and type is string or byte[]." style="display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--vscode-foreground); font-size: 9px; cursor: help; color: var(--vscode-foreground);">i</span>' : ''}
+                                        </div>
+                                        <button class="remove-script-param-btn" style="padding: 2px 6px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; font-size: 10px;">×</button>
+                                    </div>
+                                \`;
+                            });
+                            
+                            fieldHtml += \`
+                                        </div>
+                                    </div>
+                                </div>
+                            \`;
+                        });
+                        
+                        fieldHtml += \`</div></div>\`;
+                        break;
                     case 'object':
                     case 'array':
                         fieldHtml += \`<div style="padding: 8px; background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border); border-radius: 2px; font-family: monospace; font-size: 12px; color: var(--vscode-descriptionForeground); flex: 1; cursor: pointer;">\`;
@@ -3625,6 +3917,222 @@ class PipelineEditorProvider {
                     if (!activity.fieldList) activity.fieldList = [];
                     if (activity.fieldList[index] && activity.fieldList[index].type === 'dynamic') {
                         activity.fieldList[index].value = value;
+                        markAsDirty();
+                    }
+                });
+            });
+            
+            // Add event listeners for Script activity linked service dropdown
+            document.querySelectorAll('#configContent .script-linkedservice-select').forEach(select => {
+                select.addEventListener('change', (e) => {
+                    const key = select.getAttribute('data-key');
+                    const linkedServiceName = e.target.value;
+                    
+                    if (linkedServiceName) {
+                        // Store as reference object for Script activity
+                        activity[key] = {
+                            referenceName: linkedServiceName,
+                            type: 'LinkedServiceReference'
+                        };
+                    } else {
+                        delete activity[key];
+                    }
+                    
+                    markAsDirty();
+                    console.log('Updated ' + key + ':', activity[key]);
+                });
+            });
+            
+            // Add event listeners for Script activity - Add Script button
+            document.querySelectorAll('.add-script-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    if (!activity.scripts) activity.scripts = [];
+                    activity.scripts.push({ type: 'Query', text: '', parameters: [] });
+                    markAsDirty();
+                    
+                    // Re-render to show new script
+                    const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                    showProperties(activity, activeTab);
+                });
+            });
+            
+            // Add event listeners for Script activity - Remove Script button
+            document.querySelectorAll('.remove-script-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const scriptIndex = parseInt(e.target.getAttribute('data-script-index'));
+                    if (activity.scripts && activity.scripts[scriptIndex] !== undefined) {
+                        activity.scripts.splice(scriptIndex, 1);
+                        markAsDirty();
+                        
+                        // Re-render to update indices
+                        const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                        showProperties(activity, activeTab);
+                    }
+                });
+            });
+            
+            // Add event listeners for Script activity - Script type radio buttons
+            document.querySelectorAll('.script-type-radio').forEach(radio => {
+                radio.addEventListener('change', (e) => {
+                    const scriptIndex = parseInt(e.target.getAttribute('data-script-index'));
+                    if (activity.scripts && activity.scripts[scriptIndex]) {
+                        activity.scripts[scriptIndex].type = e.target.value;
+                        markAsDirty();
+                        console.log(\`Updated script \${scriptIndex} type:\`, activity.scripts[scriptIndex].type);
+                    }
+                });
+            });
+            
+            // Add event listeners for Script activity - Script text area
+            document.querySelectorAll('.script-text-area').forEach(textarea => {
+                textarea.addEventListener('input', (e) => {
+                    const scriptIndex = parseInt(e.target.getAttribute('data-script-index'));
+                    if (activity.scripts && activity.scripts[scriptIndex]) {
+                        activity.scripts[scriptIndex].text = e.target.value;
+                        markAsDirty();
+                    }
+                });
+            });
+            
+            // Add event listeners for Script activity - Add Parameter button
+            document.querySelectorAll('.add-script-param-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const scriptIndex = parseInt(e.target.getAttribute('data-script-index'));
+                    if (!activity.scripts) activity.scripts = [];
+                    if (!activity.scripts[scriptIndex]) activity.scripts[scriptIndex] = { type: 'Query', text: '', parameters: [] };
+                    if (!activity.scripts[scriptIndex].parameters) activity.scripts[scriptIndex].parameters = [];
+                    
+                    activity.scripts[scriptIndex].parameters.push({
+                        name: '',
+                        type: 'String',
+                        value: '',
+                        direction: 'Input'
+                    });
+                    markAsDirty();
+                    
+                    // Re-render to show new parameter
+                    const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                    showProperties(activity, activeTab);
+                });
+            });
+            
+            // Add event listeners for Script activity - Remove Parameter button
+            document.querySelectorAll('.remove-script-param-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const paramRow = e.target.closest('.script-param-row');
+                    const scriptIndex = parseInt(paramRow.getAttribute('data-script-index'));
+                    const paramIndex = parseInt(paramRow.getAttribute('data-param-index'));
+                    
+                    if (activity.scripts && activity.scripts[scriptIndex] && activity.scripts[scriptIndex].parameters) {
+                        activity.scripts[scriptIndex].parameters.splice(paramIndex, 1);
+                        markAsDirty();
+                        
+                        // Re-render to update indices
+                        const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                        showProperties(activity, activeTab);
+                    }
+                });
+            });
+            
+            // Add event listeners for Script activity parameter fields
+            document.querySelectorAll('.script-param-name, .script-param-value').forEach(input => {
+                input.addEventListener('input', (e) => {
+                    const paramRow = e.target.closest('.script-param-row');
+                    const scriptIndex = parseInt(paramRow.getAttribute('data-script-index'));
+                    const paramIndex = parseInt(paramRow.getAttribute('data-param-index'));
+                    
+                    if (activity.scripts && activity.scripts[scriptIndex] && activity.scripts[scriptIndex].parameters && activity.scripts[scriptIndex].parameters[paramIndex]) {
+                        const param = activity.scripts[scriptIndex].parameters[paramIndex];
+                        if (e.target.classList.contains('script-param-name')) {
+                            param.name = e.target.value;
+                        } else if (e.target.classList.contains('script-param-value')) {
+                            param.value = e.target.value;
+                        }
+                        markAsDirty();
+                    }
+                });
+            });
+            
+            document.querySelectorAll('.script-param-type, .script-param-direction').forEach(select => {
+                select.addEventListener('change', (e) => {
+                    const paramRow = e.target.closest('.script-param-row');
+                    const scriptIndex = parseInt(paramRow.getAttribute('data-script-index'));
+                    const paramIndex = parseInt(paramRow.getAttribute('data-param-index'));
+                    
+                    if (activity.scripts && activity.scripts[scriptIndex] && activity.scripts[scriptIndex].parameters && activity.scripts[scriptIndex].parameters[paramIndex]) {
+                        const param = activity.scripts[scriptIndex].parameters[paramIndex];
+                        if (e.target.classList.contains('script-param-type')) {
+                            param.type = e.target.value;
+                            
+                            // If type is Byte[], restrict direction to Output only
+                            if (e.target.value === 'Byte[]') {
+                                const directionSelect = paramRow.querySelector('.script-param-direction');
+                                if (directionSelect && directionSelect.value !== 'Output') {
+                                    directionSelect.value = 'Output';
+                                    param.direction = 'Output';
+                                }
+                            }
+                        } else if (e.target.classList.contains('script-param-direction')) {
+                            const typeSelect = paramRow.querySelector('.script-param-type');
+                            const currentType = typeSelect ? typeSelect.value : param.type;
+                            
+                            // Prevent non-Output direction for Byte[] type
+                            if (currentType === 'Byte[]' && e.target.value !== 'Output') {
+                                e.target.value = 'Output';
+                                return;
+                            }
+                            
+                            param.direction = e.target.value;
+                        }
+                        markAsDirty();
+                        
+                        // Re-render to update size field visibility
+                        const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                        showProperties(activity, activeTab);
+                    }
+                });
+            });
+            
+            document.querySelectorAll('.script-param-size').forEach(input => {
+                input.addEventListener('input', (e) => {
+                    const paramRow = e.target.closest('.script-param-row');
+                    const scriptIndex = parseInt(paramRow.getAttribute('data-script-index'));
+                    const paramIndex = parseInt(paramRow.getAttribute('data-param-index'));
+                    
+                    if (activity.scripts && activity.scripts[scriptIndex] && activity.scripts[scriptIndex].parameters && activity.scripts[scriptIndex].parameters[paramIndex]) {
+                        const value = parseInt(e.target.value);
+                        activity.scripts[scriptIndex].parameters[paramIndex].size = isNaN(value) ? undefined : value;
+                        markAsDirty();
+                    }
+                });
+            });
+            
+            document.querySelectorAll('.script-param-null').forEach(checkbox => {
+                checkbox.addEventListener('change', (e) => {
+                    const paramRow = e.target.closest('.script-param-row');
+                    const scriptIndex = parseInt(paramRow.getAttribute('data-script-index'));
+                    const paramIndex = parseInt(paramRow.getAttribute('data-param-index'));
+                    
+                    if (activity.scripts && activity.scripts[scriptIndex] && activity.scripts[scriptIndex].parameters && activity.scripts[scriptIndex].parameters[paramIndex]) {
+                        const param = activity.scripts[scriptIndex].parameters[paramIndex];
+                        if (e.target.checked) {
+                            param.value = null;
+                            // Disable value input
+                            const valueInput = paramRow.querySelector('.script-param-value');
+                            if (valueInput) {
+                                valueInput.value = '';
+                                valueInput.disabled = true;
+                                valueInput.style.opacity = '0.5';
+                            }
+                        } else {
+                            param.value = '';
+                            // Enable value input
+                            const valueInput = paramRow.querySelector('.script-param-value');
+                            if (valueInput) {
+                                valueInput.disabled = false;
+                                valueInput.style.opacity = '1';
+                            }
+                        }
                         markAsDirty();
                     }
                 });
@@ -4164,10 +4672,12 @@ class PipelineEditorProvider {
                 datasetList = message.datasetList || [];
                 datasetContents = message.datasetContents || {};
                 pipelineList = message.pipelineList || [];
+                window.linkedServicesList = message.linkedServicesList || [];
                 console.log('Dataset schemas loaded:', Object.keys(datasetSchemas));
                 console.log('Dataset list loaded:', datasetList);
                 console.log('Dataset contents loaded:', Object.keys(datasetContents).length, 'datasets');
                 console.log('Pipeline list loaded:', pipelineList);
+                console.log('Linked services list loaded:', window.linkedServicesList);
             } else if (message.type === 'addActivity') {
                 const canvasWrapper = document.getElementById('canvasWrapper');
                 const activity = new Activity(message.activityType, 100, 100, canvasWrapper);
@@ -4596,6 +5106,36 @@ class PipelineEditorProvider {
                             // Parse formatSettings for skipLineCount (Blob/ADLS only)
                             if (tp.formatSettings && tp.formatSettings.skipLineCount !== undefined) {
                                 activity.skipLineCount = tp.formatSettings.skipLineCount;
+                            }
+                        } else if (activityData.type === 'Script') {
+                            // Handle Script activity - parse linkedServiceName and scripts array
+                            const tp = activityData.typeProperties || {};
+                            
+                            // Parse linkedServiceName
+                            if (activityData.linkedServiceName) {
+                                activity.linkedServiceName = activityData.linkedServiceName;
+                            }
+                            
+                            // Parse scripts array
+                            if (tp.scripts && Array.isArray(tp.scripts)) {
+                                activity.scripts = tp.scripts.map(script => ({
+                                    type: script.type || 'Query',
+                                    text: script.text || '',
+                                    parameters: script.parameters ? script.parameters.map(param => ({
+                                        name: param.name || '',
+                                        type: param.type || 'String',
+                                        value: param.value,
+                                        direction: param.direction || 'Input',
+                                        size: param.size
+                                    })) : []
+                                }));
+                            } else {
+                                activity.scripts = [{ type: 'Query', text: '', parameters: [] }];
+                            }
+                            
+                            // Parse scriptBlockExecutionTimeout
+                            if (tp.scriptBlockExecutionTimeout) {
+                                activity.scriptBlockExecutionTimeout = tp.scriptBlockExecutionTimeout;
                             }
                         } else {
                             Object.assign(activity, activityData.typeProperties);

@@ -428,7 +428,7 @@ class PipelineEditorProvider {
                                              'wildcardFolderPath', 'wildcardFileName', 'enablePartitionDiscovery',
                                              'writeBatchSize', 'writeBatchTimeout', 'preCopyScript', 'maxConcurrentConnections', 'writeBehavior', 
                                              'sqlWriterUseTableLock', 'disableMetricsCollection', '_sourceObject', '_sinkObject',
-                                             '_sourceDatasetType', '_sinkDatasetType', '_datasetLocationType', 'inputs', 'outputs', 'source', 'sink', 'typeProperties',
+                                             '_sourceDatasetType', '_sinkDatasetType', '_datasetLocationType', 'inputs', 'outputs', 'sink', 'typeProperties',
                                              'linkedServiceName', '_selectedLinkedServiceType', 'linkedServiceProperties'];
 						
 						for (const key in a) {
@@ -1581,6 +1581,43 @@ class PipelineEditorProvider {
                         }
                     }
                 }
+                if (a.type === 'Lookup') {
+                    // Validate dataset is selected
+                    if (!a.dataset) {
+                        invalidActivities.push(a.name + ' (' + a.type + ') - Source dataset must be selected');
+                    }
+                    
+                    // For SQL datasets, validate query/stored procedure fields if useQuery is set
+                    if (a._datasetType === 'AzureSqlTable' || a._datasetType === 'AzureSynapseAnalytics') {
+                        if (a.useQuery === 'Query' && (!a.sqlReaderQuery || a.sqlReaderQuery.trim() === '')) {
+                            invalidActivities.push(a.name + ' (' + a.type + ') - Query must be provided when Query option is selected');
+                        }
+                        if (a.useQuery === 'Stored procedure' && (!a.sqlReaderStoredProcedureName || a.sqlReaderStoredProcedureName.trim() === '')) {
+                            invalidActivities.push(a.name + ' (' + a.type + ') - Stored procedure name must be provided when Stored procedure option is selected');
+                        }
+                        
+                        // Validate stored procedure parameters - check for empty names
+                        if (a.useQuery === 'Stored procedure' && a.storedProcedureParameters && typeof a.storedProcedureParameters === 'object') {
+                            const paramNames = new Set();
+                            for (const [paramName, paramData] of Object.entries(a.storedProcedureParameters)) {
+                                if (!paramName || paramName.trim() === '') {
+                                    invalidActivities.push(a.name + ' (' + a.type + ') - Stored procedure parameter name cannot be empty');
+                                    break;
+                                }
+                                // Check for duplicates (should not happen due to object keys, but just in case)
+                                if (paramNames.has(paramName)) {
+                                    invalidActivities.push(a.name + ' (' + a.type + ') - Duplicate stored procedure parameter name: ' + paramName);
+                                }
+                                paramNames.add(paramName);
+                            }
+                        }
+                    }
+                    
+                    // For HTTP datasets, validate request method is set
+                    if (a._datasetType === 'HttpFile' && !a.requestMethod) {
+                        invalidActivities.push(a.name + ' (' + a.type + ') - Request method must be selected');
+                    }
+                }
                 if (a.type === 'Script') {
                     // Validate linked service is selected
                     if (!a.linkedServiceName || (typeof a.linkedServiceName === 'object' && !a.linkedServiceName.referenceName)) {
@@ -2022,8 +2059,8 @@ class PipelineEditorProvider {
                             secureOutput: a.secureOutput || false,
                             secureInput: a.secureInput || false
                         };
-                    } else if (a.type === 'GetMetadata' || a.type === 'Script' || a.type === 'SqlServerStoredProcedure' || a.type === 'WebActivity') {
-                        // For GetMetadata, Script, SqlServerStoredProcedure, and WebActivity, always include full policy section with defaults
+                    } else if (a.type === 'GetMetadata' || a.type === 'Script' || a.type === 'SqlServerStoredProcedure' || a.type === 'WebActivity' || a.type === 'Lookup' || a.type === 'Delete' || a.type === 'Validation') {
+                        // For GetMetadata, Script, SqlServerStoredProcedure, WebActivity, Lookup, Delete, and Validation, always include full policy section with defaults
                         activity.policy = {
                             timeout: a.timeout || "0.12:00:00",
                             retry: a.retry !== undefined ? a.retry : 0,
@@ -2087,7 +2124,7 @@ class PipelineEditorProvider {
                                          'wildcardFolderPath', 'wildcardFileName', 'enablePartitionDiscovery',
                                          'writeBatchSize', 'writeBatchTimeout', 'preCopyScript', 'maxConcurrentConnections', 'writeBehavior', 
                                          'sqlWriterUseTableLock', 'disableMetricsCollection', '_sourceObject', '_sinkObject', '_sourceDatasetType', '_sinkDatasetType',
-                                         'typeProperties', 'inputs', 'outputs', 'source', 'sink', 'linkedServiceName', '_selectedLinkedServiceType', 'linkedServiceProperties',
+                                         'typeProperties', 'inputs', 'outputs', 'sink', 'linkedServiceName', '_selectedLinkedServiceType', 'linkedServiceProperties',
                                          'storedProcedureName', 'storedProcedureParameters'];
                     
                     for (const key in a) {
@@ -2343,6 +2380,266 @@ class PipelineEditorProvider {
                                     }
                                 });
                         }
+                    }
+                    
+                    // Handle Lookup activity - build typeProperties with dataset and source settings
+                    if (a.type === 'Lookup') {
+                        // Build dataset reference
+                        if (a.dataset) {
+                            typeProperties.dataset = {
+                                referenceName: a.dataset,
+                                type: 'DatasetReference'
+                            };
+                        }
+                        
+                        // Add firstRowOnly (default to true if not specified)
+                        typeProperties.firstRowOnly = a.firstRowOnly !== undefined ? a.firstRowOnly : true;
+                        
+                        // Determine dataset type
+                        let datasetType = a._datasetType;
+                        if (!datasetType && a.dataset && datasetContents[a.dataset]) {
+                            datasetType = datasetContents[a.dataset].properties?.type;
+                        }
+                        
+                        // For SQL datasets, add source configuration based on useQuery selection
+                        if (datasetType === 'AzureSqlTable' || datasetType === 'AzureSynapseAnalytics') {
+                            const source = {
+                                type: datasetType === 'AzureSqlTable' ? 'AzureSqlSource' : 'SqlDWSource'
+                            };
+                            
+                            // Add query or stored procedure based on useQuery selection
+                            if (a.useQuery === 'Query' && a.sqlReaderQuery) {
+                                source.sqlReaderQuery = a.sqlReaderQuery;
+                            } else if (a.useQuery === 'Stored procedure' && a.sqlReaderStoredProcedureName) {
+                                source.sqlReaderStoredProcedureName = a.sqlReaderStoredProcedureName;
+                            }
+                            
+                            // Add query timeout in HH:MM:SS format
+                            if (a.queryTimeout !== undefined && a.queryTimeout !== '') {
+                                const minutes = parseInt(a.queryTimeout) || 120;
+                                const hours = Math.floor(minutes / 60);
+                                const mins = minutes % 60;
+                                const hourStr = hours < 10 ? '0' + hours : hours.toString();
+                                const minStr = mins < 10 ? '0' + mins : mins.toString();
+                                source.queryTimeout = hourStr + ':' + minStr + ':00';
+                            } else {
+                                source.queryTimeout = "02:00:00"; // Default 2 hours
+                            }
+                            
+                            // Add isolation level if specified
+                            if (a.isolationLevel) {
+                                source.isolationLevel = a.isolationLevel;
+                            }
+                            
+                            // Add partition option - check all three partition option fields based on useQuery
+                            let partitionOptionValue = 'None';
+                            if (a.useQuery === 'Table' && a.partitionOption) {
+                                partitionOptionValue = a.partitionOption;
+                            } else if (a.useQuery === 'Query' && a.partitionOptionQuery) {
+                                partitionOptionValue = a.partitionOptionQuery;
+                            } else if (a.useQuery === 'Stored procedure' && a.partitionOptionStoredProc) {
+                                partitionOptionValue = a.partitionOptionStoredProc;
+                            }
+                            source.partitionOption = partitionOptionValue;
+                            
+                            // Add partition settings if DynamicRange is selected
+                            if (partitionOptionValue === 'DynamicRange') {
+                                const partitionSettings = {};
+                                
+                                if (a.useQuery === 'Table') {
+                                    if (a.partitionColumnName) partitionSettings.partitionColumnName = a.partitionColumnName;
+                                    if (a.partitionUpperBound) partitionSettings.partitionUpperBound = a.partitionUpperBound;
+                                    if (a.partitionLowerBound) partitionSettings.partitionLowerBound = a.partitionLowerBound;
+                                } else if (a.useQuery === 'Query') {
+                                    if (a.partitionColumnNameQuery) partitionSettings.partitionColumnName = a.partitionColumnNameQuery;
+                                    if (a.partitionUpperBoundQuery) partitionSettings.partitionUpperBound = a.partitionUpperBoundQuery;
+                                    if (a.partitionLowerBoundQuery) partitionSettings.partitionLowerBound = a.partitionLowerBoundQuery;
+                                }
+                                
+                                if (Object.keys(partitionSettings).length > 0) {
+                                    source.partitionSettings = partitionSettings;
+                                }
+                            }
+                            
+                            // Add stored procedure parameters if stored procedure is selected
+                            if (a.useQuery === 'Stored procedure' && a.storedProcedureParameters && typeof a.storedProcedureParameters === 'object') {
+                                source.storedProcedureParameters = a.storedProcedureParameters;
+                            }
+                            
+                            typeProperties.source = source;
+                        }
+                        // For storage datasets (ADLS, Blob, etc.)
+                        else if (datasetType === 'DelimitedText' || datasetType === 'Parquet' || datasetType === 'Json' || datasetType === 'Avro' || datasetType === 'ORC' || datasetType === 'Xml') {
+                            let sourceType = datasetType + 'Source';
+                            const source = {
+                                type: sourceType
+                            };
+                            
+                            // Determine store settings type from dataset
+                            let storeType = 'AzureBlobFSReadSettings';
+                            if (a.dataset && datasetContents[a.dataset]) {
+                                const locationType = datasetContents[a.dataset].properties?.typeProperties?.location?.type;
+                                if (locationType === 'AzureBlobFSLocation') {
+                                    storeType = 'AzureBlobFSReadSettings';
+                                } else if (locationType === 'AzureBlobStorageLocation') {
+                                    storeType = 'AzureBlobStorageReadSettings';
+                                }
+                            }
+                            
+                            const storeSettings = {
+                                type: storeType
+                            };
+                            
+                            // Add conditional fields based on filePathType
+                            if (a.filePathType === 'listOfFiles' && a.fileListPath) {
+                                storeSettings.fileListPath = a.fileListPath;
+                            } else if (a.filePathType === 'wildcardFilePath') {
+                                if (a.wildcardFolderPath) {
+                                    storeSettings.wildcardFolderPath = a.wildcardFolderPath;
+                                }
+                                if (a.wildcardFileName) {
+                                    storeSettings.wildcardFileName = a.wildcardFileName;
+                                }
+                            } else if (a.filePathType === 'prefix' && a.prefix) {
+                                storeSettings.prefix = a.prefix;
+                            }
+                            
+                            // Add modified datetime filters if specified
+                            if (a.modifiedDatetimeStart) {
+                                const startDate = new Date(a.modifiedDatetimeStart);
+                                storeSettings.modifiedDatetimeStart = startDate.toISOString();
+                            }
+                            if (a.modifiedDatetimeEnd) {
+                                const endDate = new Date(a.modifiedDatetimeEnd);
+                                storeSettings.modifiedDatetimeEnd = endDate.toISOString();
+                            }
+                            
+                            // Add recursive flag (default to true)
+                            storeSettings.recursive = a.recursive !== undefined ? a.recursive : true;
+                            
+                            // Add partition discovery
+                            storeSettings.enablePartitionDiscovery = a.enablePartitionDiscovery || false;
+                            
+                            // Add partition root path if partition discovery is enabled
+                            if (a.enablePartitionDiscovery && a.partitionRootPath) {
+                                storeSettings.partitionRootPath = a.partitionRootPath;
+                            }
+                            
+                            // Add max concurrent connections
+                            if (a.maxConcurrentConnections) {
+                                storeSettings.maxConcurrentConnections = parseInt(a.maxConcurrentConnections);
+                            }
+                            
+                            source.storeSettings = storeSettings;
+                            
+                            // Add format settings for certain types
+                            if (datasetType === 'DelimitedText') {
+                                source.formatSettings = {
+                                    type: 'DelimitedTextReadSettings'
+                                };
+                                if (a.skipLineCount && a.skipLineCount > 0) {
+                                    source.formatSettings.skipLineCount = parseInt(a.skipLineCount);
+                                }
+                            } else if (datasetType === 'Xml') {
+                                source.formatSettings = {
+                                    type: 'XmlReadSettings'
+                                };
+                                
+                                // Add validation mode
+                                if (a.validationMode) {
+                                    source.formatSettings.validationMode = a.validationMode;
+                                }
+                                
+                                // Add detectDataType
+                                if (a.detectDataType !== undefined) {
+                                    source.formatSettings.detectDataType = a.detectDataType;
+                                }
+                                
+                                // Add namespaces
+                                if (a.namespaces !== undefined) {
+                                    source.formatSettings.namespaces = a.namespaces;
+                                }
+                                
+                                // Add namespace prefix pairs
+                                if (a.namespacePrefixPairs && Object.keys(a.namespacePrefixPairs).length > 0) {
+                                    source.formatSettings.namespacePrefixes = a.namespacePrefixPairs;
+                                }
+                            }
+                            
+                            typeProperties.source = source;
+                        }
+                        // For HTTP datasets
+                        else if (datasetType === 'HttpFile') {
+                            const source = {
+                                type: 'HttpSource'
+                            };
+                            
+                            // Add request settings
+                            const requestSettings = {
+                                requestMethod: a.requestMethod || 'GET'
+                            };
+                            
+                            if (a.additionalHeaders) {
+                                requestSettings.additionalHeaders = a.additionalHeaders;
+                            }
+                            
+                            if (a.requestBody) {
+                                requestSettings.requestBody = a.requestBody;
+                            }
+                            
+                            if (a.requestTimeout) {
+                                requestSettings.requestTimeout = a.requestTimeout;
+                            }
+                            
+                            source.httpRequestTimeout = requestSettings.requestTimeout;
+                            
+                            // Add max concurrent connections
+                            if (a.maxConcurrentConnections) {
+                                source.maxConcurrentConnections = parseInt(a.maxConcurrentConnections);
+                            }
+                            
+                            typeProperties.source = source;
+                        }
+                        
+                        // Remove UI-only fields from typeProperties but NOT source
+                        delete typeProperties.useQuery;
+                        delete typeProperties.sqlReaderQuery;
+                        delete typeProperties.sqlReaderStoredProcedureName;
+                        delete typeProperties.queryTimeout;
+                        delete typeProperties.isolationLevel;
+                        delete typeProperties.partitionOption;
+                        delete typeProperties.partitionOptionQuery;
+                        delete typeProperties.partitionOptionStoredProc;
+                        delete typeProperties.partitionColumnName;
+                        delete typeProperties.partitionUpperBound;
+                        delete typeProperties.partitionLowerBound;
+                        delete typeProperties.partitionColumnNameQuery;
+                        delete typeProperties.partitionUpperBoundQuery;
+                        delete typeProperties.partitionLowerBoundQuery;
+                        delete typeProperties.storedProcedureParameters;
+                        delete typeProperties.filePathType;
+                        delete typeProperties.prefix;
+                        delete typeProperties.wildcardFolderPath;
+                        delete typeProperties.wildcardFileName;
+                        delete typeProperties.fileListPath;
+                        delete typeProperties.modifiedDatetimeStart;
+                        delete typeProperties.modifiedDatetimeEnd;
+                        delete typeProperties.recursive;
+                        delete typeProperties.enablePartitionDiscovery;
+                        delete typeProperties.partitionRootPath;
+                        delete typeProperties.maxConcurrentConnections;
+                        delete typeProperties.skipLineCount;
+                        delete typeProperties.requestMethod;
+                        delete typeProperties.additionalHeaders;
+                        delete typeProperties.requestBody;
+                        delete typeProperties.requestTimeout;
+                        delete typeProperties.validationMode;
+                        delete typeProperties.namespaces;
+                        delete typeProperties.namespacePrefixPairs;
+                        delete typeProperties.detectDataType;
+                        delete typeProperties._datasetType;
+                        
+                        // Do NOT delete dataset or source - they should be in typeProperties
                     }
                     
                     // Handle Delete activity - build complex storeSettings structure
@@ -3087,6 +3384,17 @@ class PipelineEditorProvider {
                 // Set default values for GetMetadata
                 if (type === 'GetMetadata') {
                     this.fieldList = [];
+                }
+                
+                // Set default values for Lookup
+                if (type === 'Lookup') {
+                    this.useQuery = 'Table';
+                    this.firstRowOnly = true;
+                    this.timeout = '0.12:00:00';
+                    this.retry = 0;
+                    this.retryIntervalInSeconds = 30;
+                    this.secureOutput = false;
+                    this.secureInput = false;
                 }
                 
                 // Set default values for Script
@@ -3950,6 +4258,11 @@ class PipelineEditorProvider {
                         const readonly = prop.readonly ? 'readonly' : '';
                         fieldHtml += \`<input type="text" class="property-input" data-key="\${key}" value="\${value}" placeholder="\${prop.placeholder || prop.label}" \${readonly}>\`;
                         break;
+                    case 'textarea':
+                        const rows = prop.rows || 3;
+                        const placeholder = prop.placeholder || prop.label || '';
+                        fieldHtml += \`<textarea class="property-input" data-key="\${key}" rows="\${rows}" placeholder="\${placeholder}" style="width: 100%; font-family: var(--vscode-editor-font-family); font-size: 12px;">\${value}</textarea>\`;
+                        break;
                     case 'number':
                         const min = prop.min !== undefined ? \`min="\${prop.min}"\` : '';
                         const max = prop.max !== undefined ? \`max="\${prop.max}"\` : '';
@@ -3966,18 +4279,22 @@ class PipelineEditorProvider {
                             fieldHtml += \`<option value="" disabled selected>\${prop.placeholder}</option>\`;
                         }
                         
-                        prop.options.forEach(opt => {
-                            const selected = opt === value ? 'selected' : '';
-                            // Use optionLabels if available, otherwise use the option value as-is
+                        prop.options.forEach((opt, idx) => {
+                            // Use optionValues if available, otherwise use the option itself
+                            const optValue = prop.optionValues ? prop.optionValues[idx] : opt;
+                            const selected = optValue === value ? 'selected' : '';
+                            // Use optionLabels if available, otherwise use the option value as display
                             const displayName = (prop.optionLabels && prop.optionLabels[opt]) ? prop.optionLabels[opt] : opt;
-                            fieldHtml += \`<option value="\${opt}" \${selected}>\${displayName}</option>\`;
+                            fieldHtml += \`<option value="\${optValue}" \${selected}>\${displayName}</option>\`;
                         });
                         fieldHtml += \`</select>\`;
                         break;
                     case 'radio':
                         fieldHtml += \`<div style="display: flex; gap: 16px; flex: 1; align-items: center;">\`;
-                        prop.options.forEach(opt => {
-                            const checked = opt === value ? 'checked' : '';
+                        prop.options.forEach((opt, idx) => {
+                            // Use optionValues if available, otherwise use the option itself
+                            const optValue = prop.optionValues ? prop.optionValues[idx] : opt;
+                            const checked = optValue === value ? 'checked' : '';
                             // Custom display names
                             let displayName;
                             if (opt === 'storedProcedure') displayName = 'Stored procedure';
@@ -3986,7 +4303,7 @@ class PipelineEditorProvider {
                             else if (opt === 'listOfFiles') displayName = 'List of files';
                             else displayName = opt.charAt(0).toUpperCase() + opt.slice(1);
                             fieldHtml += \`<label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">\`;
-                            fieldHtml += \`<input type="radio" name="\${key}" data-key="\${key}" value="\${opt}" \${checked} style="margin: 0;">\`;
+                            fieldHtml += \`<input type="radio" name="\${key}" data-key="\${key}" value="\${optValue}" \${checked} style="margin: 0;">\`;
                             fieldHtml += \`<span>\${displayName}</span>\`;
                             fieldHtml += \`</label>\`;
                         });
@@ -4211,6 +4528,20 @@ class PipelineEditorProvider {
                             getMetadataDatasets.forEach(ds => {
                                 const selected = ds === value ? 'selected' : '';
                                 if (selected) console.log('[GenerateField] Selected GetMetadata dataset:', ds, 'matches value:', value);
+                                fieldHtml += \`<option value="\${ds}" \${selected}>\${ds}</option>\`;
+                            });
+                        }
+                        fieldHtml += \`</select>\`;
+                        break;
+                    case 'dataset-lookup':
+                        console.log('[GenerateField] Lookup-dataset field -', 'key:', key, 'value:', value, 'type:', typeof value);
+                        fieldHtml += \`<select class="property-input lookup-dataset-select" data-key="\${key}">\`;
+                        fieldHtml += \`<option value="">\${prop.placeholder || 'Select dataset...'}</option>\`;
+                        // For Lookup activity, show all datasets
+                        if (datasetList && datasetList.length > 0) {
+                            datasetList.forEach(ds => {
+                                const selected = ds === value ? 'selected' : '';
+                                if (selected) console.log('[GenerateField] Selected Lookup dataset:', ds, 'matches value:', value);
                                 fieldHtml += \`<option value="\${ds}" \${selected}>\${ds}</option>\`;
                             });
                         }
@@ -4483,6 +4814,38 @@ class PipelineEditorProvider {
                         
                         fieldHtml += \`</div></div>\`;
                         break;
+                    case 'namespace-prefixes':
+                        // Render the namespace prefix pairs UI for XML datasets
+                        const namespacePairsData = value || {};
+                        fieldHtml += \`<div style="flex: 1;">\`;
+                        fieldHtml += \`<button class="add-namespace-prefix-btn" data-key="\${key}" style="padding: 4px 8px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; font-size: 11px; margin-bottom: 8px;">+ New</button>\`;
+                        fieldHtml += \`<button class="delete-namespace-prefix-btn" data-key="\${key}" style="padding: 4px 8px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; font-size: 11px; margin-bottom: 8px; margin-left: 8px;">Delete</button>\`;
+                        fieldHtml += \`<div class="namespace-prefixes-container" data-key="\${key}">\`;
+                        
+                        // Header row
+                        fieldHtml += \`
+                            <div style="display: grid; grid-template-columns: 30px 1fr 1fr; gap: 8px; margin-bottom: 4px; font-size: 11px; font-weight: 600; color: var(--vscode-descriptionForeground);">
+                                <div></div>
+                                <div>URI</div>
+                                <div>Prefix</div>
+                            </div>
+                        \`;
+                        
+                        // Render existing namespace pairs
+                        let nsPairIdx = 0;
+                        for (const [uri, prefix] of Object.entries(namespacePairsData)) {
+                            fieldHtml += \`
+                                <div class="namespace-prefix-row" data-pair-index="\${nsPairIdx}" style="display: grid; grid-template-columns: 30px 1fr 1fr; gap: 8px; margin-bottom: 8px; align-items: center;">
+                                    <input type="checkbox" class="namespace-prefix-checkbox" style="margin: 0;">
+                                    <input type="text" class="property-input namespace-prefix-uri" value="\${uri}" placeholder="URlName" style="font-size: 11px; padding: 4px 6px;">
+                                    <input type="text" class="property-input namespace-prefix-value" value="\${prefix}" placeholder="prefix1" style="font-size: 11px; padding: 4px 6px;">
+                                </div>
+                            \`;
+                            nsPairIdx++;
+                        }
+                        
+                        fieldHtml += \`</div></div>\`;
+                        break;
                     case 'web-secret':
                         // For password, pfx, etc. - Azure Key Vault secret reference
                         const secretValue = value || {};
@@ -4639,6 +5002,34 @@ class PipelineEditorProvider {
                 settingsContent = '<div style="color: var(--vscode-descriptionForeground); padding: 20px; text-align: center;">No activity-specific settings available</div>';
             }
             console.log('Settings content length:', settingsContent.length);
+            
+            // For Lookup activity, add dataset-specific fields dynamically
+            if (activity.type === 'Lookup' && activity.dataset) {
+                // Ensure _datasetType is set
+                if (!activity._datasetType && datasetContents[activity.dataset]) {
+                    activity._datasetType = datasetContents[activity.dataset].properties?.type;
+                    console.log('[ShowProps] Auto-detected dataset type for Lookup:', activity._datasetType);
+                }
+                
+                // If dataset is selected, dynamically load dataset-specific lookup fields
+                if (activity._datasetType) {
+                    const datasetType = activity._datasetType;
+                    console.log('Adding lookup fields for dataset type:', datasetType);
+                    if (datasetSchemas[datasetType] && datasetSchemas[datasetType].lookupFields) {
+                        settingsContent += '<div style="border-top: 1px solid var(--vscode-panel-border); margin: 16px 0; padding-top: 16px;"></div>';
+                        settingsContent += '<div style="font-size: 13px; font-weight: bold; color: var(--vscode-foreground); margin-bottom: 12px;">Dataset Settings (' + datasetSchemas[datasetType].name + ')</div>';
+                        
+                        // Special handling for SQL datasets with useQuery field
+                        const lookupFields = datasetSchemas[datasetType].lookupFields;
+                        for (const [key, prop] of Object.entries(lookupFields)) {
+                            // Skip firstRowOnly as it's already in typeProperties
+                            if (key === 'firstRowOnly') continue;
+                            settingsContent += generateFormField(key, prop, activity);
+                        }
+                        console.log('Added', Object.keys(datasetSchemas[datasetType].lookupFields).length, 'lookup fields');
+                    }
+                }
+            }
             
             // Build Source tab content
             let sourceContent = '';
@@ -4838,6 +5229,14 @@ class PipelineEditorProvider {
                         activity[key] = e.target.checked;
                         markAsDirty();
                         console.log('Updated ' + key + ':', activity[key]);
+                        
+                        // If enablePartitionDiscovery or namespaces changed, re-render to show/hide conditional fields
+                        if (key === 'enablePartitionDiscovery' || key === 'namespaces') {
+                            const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                            if (activeTab === 'settings') {
+                                showProperties(activity, 'settings');
+                            }
+                        }
                     });
                 } else {
                     input.addEventListener('input', (e) => {
@@ -4954,6 +5353,36 @@ class PipelineEditorProvider {
                         delete activity[key];
                         delete activity._datasetLocationType;
                         activity.fieldList = [];
+                    }
+                    
+                    markAsDirty();
+                    console.log('Updated ' + key + ':', activity[key]);
+                    
+                    // Re-render the current tab to show dataset-specific fields
+                    const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                    showProperties(activity, activeTab);
+                });
+            });
+            
+            // Add event listeners for lookup-dataset dropdowns
+            document.querySelectorAll('#configContent .lookup-dataset-select').forEach(select => {
+                select.addEventListener('change', (e) => {
+                    const key = select.getAttribute('data-key');
+                    const datasetName = e.target.value;
+                    
+                    if (datasetName) {
+                        // Store as string for Lookup activity
+                        activity[key] = datasetName;
+                        
+                        // Store dataset type for conditional rendering of fields
+                        if (datasetContents[datasetName]) {
+                            const datasetType = datasetContents[datasetName].properties?.type;
+                            activity._datasetType = datasetType;
+                            console.log('Lookup dataset selected:', datasetName, 'Type:', datasetType);
+                        }
+                    } else {
+                        delete activity[key];
+                        delete activity._datasetType;
                     }
                     
                     markAsDirty();
@@ -5145,6 +5574,90 @@ class PipelineEditorProvider {
                         // Re-render to update indices
                         const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
                         showProperties(activity, activeTab);
+                    }
+                });
+            });
+            
+            // Add event listeners for namespace prefix pairs (XML datasets)
+            document.querySelectorAll('.add-namespace-prefix-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    if (!activity.namespacePrefixPairs) {
+                        activity.namespacePrefixPairs = {};
+                    }
+                    
+                    // Add a new empty namespace pair with unique key
+                    const newKey = \`URLName\${Object.keys(activity.namespacePrefixPairs).length + 1}\`;
+                    activity.namespacePrefixPairs[newKey] = \`prefix\${Object.keys(activity.namespacePrefixPairs).length + 1}\`;
+                    
+                    markAsDirty();
+                    console.log('Added new namespace prefix pair');
+                    
+                    // Re-render to show new pair
+                    const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                    showProperties(activity, activeTab);
+                });
+            });
+            
+            // Delete selected namespace prefix pairs
+            document.querySelectorAll('.delete-namespace-prefix-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    if (!activity.namespacePrefixPairs) return;
+                    
+                    // Find all checked rows
+                    const checkedRows = Array.from(document.querySelectorAll('.namespace-prefix-checkbox:checked'));
+                    if (checkedRows.length === 0) {
+                        console.log('No namespace prefix pairs selected for deletion');
+                        return;
+                    }
+                    
+                    // Get the URIs to delete
+                    const urisToDelete = checkedRows.map(checkbox => {
+                        const row = checkbox.closest('.namespace-prefix-row');
+                        const uriInput = row.querySelector('.namespace-prefix-uri');
+                        return uriInput.value;
+                    });
+                    
+                    // Delete from activity
+                    urisToDelete.forEach(uri => {
+                        if (uri && activity.namespacePrefixPairs[uri] !== undefined) {
+                            delete activity.namespacePrefixPairs[uri];
+                        }
+                    });
+                    
+                    markAsDirty();
+                    console.log('Deleted namespace prefix pairs:', urisToDelete);
+                    
+                    // Re-render to update list
+                    const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                    showProperties(activity, activeTab);
+                });
+            });
+            
+            // Add event listeners for namespace prefix URI and value fields
+            document.querySelectorAll('.namespace-prefix-uri, .namespace-prefix-value').forEach(input => {
+                input.addEventListener('input', (e) => {
+                    const pairRow = e.target.closest('.namespace-prefix-row');
+                    const pairIndex = parseInt(pairRow.getAttribute('data-pair-index'));
+                    
+                    if (activity.namespacePrefixPairs) {
+                        const uris = Object.keys(activity.namespacePrefixPairs);
+                        const oldUri = uris[pairIndex];
+                        
+                        if (oldUri !== undefined) {
+                            if (e.target.classList.contains('namespace-prefix-uri')) {
+                                const newUri = e.target.value;
+                                const prefixValue = activity.namespacePrefixPairs[oldUri];
+                                
+                                // Update the URI (key)
+                                delete activity.namespacePrefixPairs[oldUri];
+                                activity.namespacePrefixPairs[newUri] = prefixValue;
+                            } else if (e.target.classList.contains('namespace-prefix-value')) {
+                                // Update the prefix value
+                                activity.namespacePrefixPairs[oldUri] = e.target.value;
+                            }
+                            
+                            markAsDirty();
+                        }
                     }
                 });
             });
@@ -5634,8 +6147,8 @@ class PipelineEditorProvider {
                         markAsDirty();
                         console.log('Updated ' + key + ':', activity[key]);
                         
-                        // If dynamicAllocation, variableType, filePathType, or Web activity auth fields changed, re-render to show/hide conditional fields
-                        if (key === 'dynamicAllocation' || key === 'variableType') {
+                        // If dynamicAllocation, variableType, filePathType, useQuery, partitionOption, or Web activity auth fields changed, re-render to show/hide conditional fields
+                        if (key === 'dynamicAllocation' || key === 'variableType' || key === 'useQuery' || key === 'partitionOption' || key === 'partitionOptionQuery' || key === 'partitionOptionStoredProc' || key === 'filePathType') {
                             const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
                             if (activeTab === 'settings') {
                                 showProperties(activity, 'settings');
@@ -6599,6 +7112,177 @@ class PipelineEditorProvider {
                             // Parse formatSettings for skipLineCount (Blob/ADLS only)
                             if (tp.formatSettings && tp.formatSettings.skipLineCount !== undefined) {
                                 activity.skipLineCount = tp.formatSettings.skipLineCount;
+                            }
+                        } else if (activityData.type === 'Lookup') {
+                            // Handle Lookup activity - parse dataset reference and source configuration
+                            const tp = activityData.typeProperties || {};
+                            
+                            // Extract dataset reference
+                            if (tp.dataset && tp.dataset.referenceName) {
+                                activity.dataset = tp.dataset.referenceName;
+                                
+                                // Store dataset type for conditional rendering
+                                if (datasetContents[tp.dataset.referenceName]) {
+                                    const datasetType = datasetContents[tp.dataset.referenceName].properties?.type;
+                                    activity._datasetType = datasetType;
+                                    console.log('[Load] Lookup dataset type:', datasetType);
+                                }
+                            }
+                            
+                            // Extract firstRowOnly (default to true if not specified)
+                            if (tp.firstRowOnly !== undefined) {
+                                activity.firstRowOnly = tp.firstRowOnly;
+                            } else {
+                                activity.firstRowOnly = true;
+                            }
+                            
+                            // Parse source configuration
+                            if (tp.source) {
+                                const source = tp.source;
+                                
+                                // For SQL sources
+                                if (source.type === 'AzureSqlSource' || source.type === 'SqlDWSource') {
+                                    // Determine useQuery based on what's present
+                                    if (source.sqlReaderQuery) {
+                                        activity.useQuery = 'Query';
+                                        activity.sqlReaderQuery = source.sqlReaderQuery;
+                                    } else if (source.sqlReaderStoredProcedureName) {
+                                        activity.useQuery = 'Stored procedure';
+                                        activity.sqlReaderStoredProcedureName = source.sqlReaderStoredProcedureName;
+                                    } else {
+                                        activity.useQuery = 'Table';
+                                    }
+                                    
+                                    // Extract query timeout - convert from HH:MM:SS to minutes
+                                    if (source.queryTimeout !== undefined) {
+                                        const timeStr = source.queryTimeout;
+                                        if (typeof timeStr === 'string' && timeStr.includes(':')) {
+                                            const parts = timeStr.split(':');
+                                            const hours = parseInt(parts[0]) || 0;
+                                            const minutes = parseInt(parts[1]) || 0;
+                                            activity.queryTimeout = (hours * 60) + minutes;
+                                        } else {
+                                            activity.queryTimeout = parseInt(source.queryTimeout) || 120;
+                                        }
+                                    }
+                                    
+                                    // Extract isolation level
+                                    if (source.isolationLevel) {
+                                        activity.isolationLevel = source.isolationLevel;
+                                    }
+                                    
+                                    // Extract partition option - handle both string and nested object format
+                                    if (source.partitionOption) {
+                                        const partitionValue = typeof source.partitionOption === 'string' 
+                                            ? source.partitionOption 
+                                            : source.partitionOption.partitionOption;
+                                        
+                                        // Set the appropriate partition option field based on useQuery
+                                        if (activity.useQuery === 'Table') {
+                                            activity.partitionOption = partitionValue;
+                                        } else if (activity.useQuery === 'Query') {
+                                            activity.partitionOptionQuery = partitionValue;
+                                        } else if (activity.useQuery === 'Stored procedure') {
+                                            activity.partitionOptionStoredProc = partitionValue;
+                                        }
+                                    }
+                                    
+                                    // Extract partition settings (for DynamicRange)
+                                    if (source.partitionSettings) {
+                                        const ps = source.partitionSettings;
+                                        if (activity.useQuery === 'Table') {
+                                            if (ps.partitionColumnName) activity.partitionColumnName = ps.partitionColumnName;
+                                            if (ps.partitionUpperBound) activity.partitionUpperBound = ps.partitionUpperBound;
+                                            if (ps.partitionLowerBound) activity.partitionLowerBound = ps.partitionLowerBound;
+                                        } else if (activity.useQuery === 'Query') {
+                                            if (ps.partitionColumnName) activity.partitionColumnNameQuery = ps.partitionColumnName;
+                                            if (ps.partitionUpperBound) activity.partitionUpperBoundQuery = ps.partitionUpperBound;
+                                            if (ps.partitionLowerBound) activity.partitionLowerBoundQuery = ps.partitionLowerBound;
+                                        }
+                                    }
+                                    
+                                    // Extract stored procedure parameters
+                                    if (source.storedProcedureParameters) {
+                                        activity.storedProcedureParameters = source.storedProcedureParameters;
+                                    }
+                                }
+                                // For storage sources (DelimitedText, Parquet, Json, etc.)
+                                else if (source.storeSettings) {
+                                    const ss = source.storeSettings;
+                                    
+                                    // Determine file path type (simplified for Lookup)
+                                    activity.filePathType = 'filePathInDataset';
+                                    
+                                    // Extract modified datetime filters
+                                    if (ss.modifiedDatetimeStart) {
+                                        const startDate = new Date(ss.modifiedDatetimeStart);
+                                        activity.modifiedDatetimeStart = startDate.toISOString().slice(0, 19);
+                                    }
+                                    if (ss.modifiedDatetimeEnd) {
+                                        const endDate = new Date(ss.modifiedDatetimeEnd);
+                                        activity.modifiedDatetimeEnd = endDate.toISOString().slice(0, 19);
+                                    }
+                                    
+                                    // Extract recursive flag
+                                    if (ss.recursive !== undefined) {
+                                        activity.recursive = ss.recursive;
+                                    }
+                                    
+                                    // Extract partition discovery
+                                    if (ss.enablePartitionDiscovery !== undefined) {
+                                        activity.enablePartitionDiscovery = ss.enablePartitionDiscovery;
+                                    }
+                                    
+                                    // Extract max concurrent connections
+                                    if (ss.maxConcurrentConnections !== undefined) {
+                                        activity.maxConcurrentConnections = ss.maxConcurrentConnections;
+                                    }
+                                    
+                                    // Extract skipLineCount from formatSettings
+                                    if (source.formatSettings && source.formatSettings.skipLineCount !== undefined) {
+                                        activity.skipLineCount = source.formatSettings.skipLineCount;
+                                    }
+                                    
+                                    // Extract XML-specific formatSettings
+                                    if (source.formatSettings && source.formatSettings.type === 'XmlReadSettings') {
+                                        const fs = source.formatSettings;
+                                        
+                                        // Extract validation mode
+                                        if (fs.validationMode) {
+                                            activity.validationMode = fs.validationMode;
+                                        }
+                                        
+                                        // Extract detectDataType
+                                        if (fs.detectDataType !== undefined) {
+                                            activity.detectDataType = fs.detectDataType;
+                                        }
+                                        
+                                        // Extract namespaces
+                                        if (fs.namespaces !== undefined) {
+                                            activity.namespaces = fs.namespaces;
+                                        }
+                                        
+                                        // Extract namespace prefix pairs
+                                        if (fs.namespacePrefixes) {
+                                            activity.namespacePrefixPairs = fs.namespacePrefixes;
+                                        }
+                                    }
+                                }
+                                // For HTTP sources
+                                else if (source.type === 'HttpSource') {
+                                    // Extract request method (default to GET)
+                                    activity.requestMethod = 'GET';
+                                    
+                                    // Extract request timeout
+                                    if (source.httpRequestTimeout) {
+                                        activity.requestTimeout = source.httpRequestTimeout;
+                                    }
+                                    
+                                    // Extract max concurrent connections
+                                    if (source.maxConcurrentConnections !== undefined) {
+                                        activity.maxConcurrentConnections = source.maxConcurrentConnections;
+                                    }
+                                }
                             }
                         } else if (activityData.type === 'Script') {
                             // Handle Script activity - parse linkedServiceName and scripts array

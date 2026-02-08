@@ -137,6 +137,24 @@
       "condition": { "type": "expression", "label": "Condition", "required": true, "placeholder": "This property should be parameterized." }
     }
   },
+  "Lookup": {
+    "name": "Lookup",
+    "tabs": ["General", "Settings", "User Properties"],
+    "commonProperties": {
+      "name": { "type": "string", "label": "Name", "required": true },
+      "description": { "type": "string", "label": "Description", "multiline": true },
+      "state": { "type": "radio", "label": "Activity state", "options": ["Activated", "Deactivated"] },
+      "timeout": { "type": "string", "label": "Timeout", "default": "0.12:00:00", "section": "policy" },
+      "retry": { "type": "number", "label": "Retry", "default": 0, "section": "policy" },
+      "retryIntervalInSeconds": { "type": "number", "label": "Retry interval (sec)", "default": 30, "section": "policy" },
+      "secureOutput": { "type": "boolean", "label": "Secure output", "default": false, "section": "policy" },
+      "secureInput": { "type": "boolean", "label": "Secure input", "default": false, "section": "policy" }
+    },
+    "typeProperties": {
+      "dataset": { "type": "dataset-lookup", "label": "Source dataset", "required": true, "placeholder": "Select dataset..." },
+      "firstRowOnly": { "type": "boolean", "label": "First row only", "default": true }
+    }
+  },
   "Delete": {
     "name": "Delete",
     "tabs": ["General", "Source", "User Properties"],

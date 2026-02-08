@@ -7,6 +7,24 @@
       "isolationLevel": { "type": "select", "label": "Isolation level", "options": ["None", "ReadCommitted", "ReadUncommitted", "RepeatableRead", "Serializable", "Snapshot"], "default": "ReadCommitted" },
       "partitionOption": { "type": "select", "label": "Partition option", "options": ["None", "PhysicalPartitionsOfTable", "DynamicRange"], "default": "None" }
     },
+    "lookupFields": {
+      "firstRowOnly": { "type": "boolean", "label": "First row only", "default": true },
+      "useQuery": { "type": "radio", "label": "Use query", "options": ["Table", "Query", "Stored procedure"], "default": "Table" },
+      "sqlReaderQuery": { "type": "textarea", "label": "Query", "required": true, "placeholder": "SELECT * FROM table", "conditional": { "field": "useQuery", "value": "Query" } },
+      "sqlReaderStoredProcedureName": { "type": "text", "label": "Stored procedure name", "required": true, "placeholder": "sp_name", "conditional": { "field": "useQuery", "value": "Stored procedure" } },
+      "queryTimeout": { "type": "number", "label": "Query timeout (minutes)", "default": 120, "min": 1, "placeholder": "120" },
+      "isolationLevel": { "type": "select", "label": "Isolation level", "options": ["Read committed", "Read uncommitted", "Repeatable read", "Serializable", "Snapshot"], "optionValues": ["ReadCommitted", "ReadUncommitted", "RepeatableRead", "Serializable", "Snapshot"], "placeholder": "Select..." },
+      "partitionOption": { "type": "radio", "label": "Partition option", "options": ["None", "Physical partitions of table", "Dynamic range"], "optionValues": ["None", "PhysicalPartitionsOfTable", "DynamicRange"], "default": "None", "conditional": { "field": "useQuery", "value": "Table" } },
+      "partitionColumnName": { "type": "text", "label": "Partition column name", "placeholder": "Column name", "conditional": { "field": "partitionOption", "value": "DynamicRange" }, "nestedConditional": { "field": "useQuery", "value": "Table" } },
+      "partitionUpperBound": { "type": "text", "label": "Partition upper bound", "placeholder": "Upper bound value", "conditional": { "field": "partitionOption", "value": "DynamicRange" }, "nestedConditional": { "field": "useQuery", "value": "Table" } },
+      "partitionLowerBound": { "type": "text", "label": "Partition lower bound", "placeholder": "Lower bound value", "conditional": { "field": "partitionOption", "value": "DynamicRange" }, "nestedConditional": { "field": "useQuery", "value": "Table" } },
+      "partitionOptionQuery": { "type": "radio", "label": "Partition option", "options": ["None", "Dynamic range"], "optionValues": ["None", "DynamicRange"], "default": "None", "conditional": { "field": "useQuery", "value": "Query" } },
+      "partitionColumnNameQuery": { "type": "text", "label": "Partition column name", "placeholder": "Column name", "conditional": { "field": "partitionOptionQuery", "value": "DynamicRange" }, "nestedConditional": { "field": "useQuery", "value": "Query" } },
+      "partitionUpperBoundQuery": { "type": "text", "label": "Partition upper bound", "placeholder": "Upper bound value", "conditional": { "field": "partitionOptionQuery", "value": "DynamicRange" }, "nestedConditional": { "field": "useQuery", "value": "Query" } },
+      "partitionLowerBoundQuery": { "type": "text", "label": "Partition lower bound", "placeholder": "Lower bound value", "conditional": { "field": "partitionOptionQuery", "value": "DynamicRange" }, "nestedConditional": { "field": "useQuery", "value": "Query" } },
+      "partitionOptionStoredProc": { "type": "radio", "label": "Partition option", "options": ["None"], "optionValues": ["None"], "default": "None", "conditional": { "field": "useQuery", "value": "Stored procedure" } },
+      "storedProcedureParameters": { "type": "storedprocedure-parameters", "label": "Stored procedure parameters", "conditional": { "field": "useQuery", "value": "Stored procedure" } }
+    },
     "sinkFields": {
       "writeBehavior": { "type": "radio", "label": "Write behavior", "options": ["insert", "upsert", "storedProcedure"], "default": "insert" },
       "tableOption": { "type": "radio", "label": "Table option", "options": ["useExisting", "autoCreate"], "default": "useExisting" },
@@ -31,6 +49,21 @@
       "maxConcurrentConnections": { "type": "number", "label": "Max concurrent connections" },
       "deleteFilesAfterCompletion": { "type": "boolean", "label": "Delete files after completion", "default": false }
     },
+    "lookupFields": {
+      "firstRowOnly": { "type": "boolean", "label": "First row only", "default": true },
+      "filePathType": { "type": "radio", "label": "File path type", "options": ["File path in dataset", "Prefix", "Wildcard file path", "List of files"], "optionValues": ["filePathInDataset", "prefix", "wildcardFilePath", "listOfFiles"], "default": "filePathInDataset" },
+      "prefix": { "type": "text", "label": "Prefix", "conditional": { "field": "filePathType", "value": "prefix" } },
+      "wildcardFolderPath": { "type": "text", "label": "Wildcard folder path", "placeholder": "folder/subfolder", "conditional": { "field": "filePathType", "value": "wildcardFilePath" } },
+      "wildcardFileName": { "type": "text", "label": "Wildcard file name", "placeholder": "*.csv", "default": "*", "conditional": { "field": "filePathType", "value": "wildcardFilePath" } },
+      "fileListPath": { "type": "text", "label": "Path to file list", "conditional": { "field": "filePathType", "value": "listOfFiles" } },
+      "modifiedDatetimeStart": { "type": "datetime", "label": "Start time (UTC)", "placeholder": "2/18/2026, 12:00:00 AM" },
+      "modifiedDatetimeEnd": { "type": "datetime", "label": "End time (UTC)", "placeholder": "2/18/2026, 12:00:00 AM" },
+      "recursive": { "type": "boolean", "label": "Recursively", "default": true },
+      "enablePartitionDiscovery": { "type": "boolean", "label": "Enable partitions discovery", "default": false },
+      "partitionRootPath": { "type": "text", "label": "Partition root path", "conditional": { "field": "enablePartitionDiscovery", "value": true } },
+      "maxConcurrentConnections": { "type": "number", "label": "Max concurrent connections", "min": 1 },
+      "skipLineCount": { "type": "number", "label": "Skip line count", "min": 0, "placeholder": "0" }
+    },
     "sinkFields": {
       "copyBehavior": { "type": "select", "label": "Copy behavior", "options": ["None", "PreserveHierarchy", "FlattenHierarchy", "MergeFiles"], "default": "None" },
       "fileExtension": { "type": "text", "label": "File extension", "default": ".csv" },
@@ -52,6 +85,20 @@
       "maxConcurrentConnections": { "type": "number", "label": "Max concurrent connections" },
       "deleteFilesAfterCompletion": { "type": "boolean", "label": "Delete files after completion", "default": false }
     },
+    "lookupFields": {
+      "firstRowOnly": { "type": "boolean", "label": "First row only", "default": true },
+      "filePathType": { "type": "radio", "label": "File path type", "options": ["File path in dataset", "Prefix", "Wildcard file path", "List of files"], "optionValues": ["filePathInDataset", "prefix", "wildcardFilePath", "listOfFiles"], "default": "filePathInDataset" },
+      "prefix": { "type": "text", "label": "Prefix", "conditional": { "field": "filePathType", "value": "prefix" } },
+      "wildcardFolderPath": { "type": "text", "label": "Wildcard folder path", "placeholder": "folder/subfolder", "conditional": { "field": "filePathType", "value": "wildcardFilePath" } },
+      "wildcardFileName": { "type": "text", "label": "Wildcard file name", "placeholder": "*.parquet", "default": "*.parquet", "conditional": { "field": "filePathType", "value": "wildcardFilePath" } },
+      "fileListPath": { "type": "text", "label": "Path to file list", "conditional": { "field": "filePathType", "value": "listOfFiles" } },
+      "modifiedDatetimeStart": { "type": "datetime", "label": "Start time (UTC)", "placeholder": "2/18/2026, 12:00:00 AM" },
+      "modifiedDatetimeEnd": { "type": "datetime", "label": "End time (UTC)", "placeholder": "2/18/2026, 12:00:00 AM" },
+      "recursive": { "type": "boolean", "label": "Recursively", "default": true },
+      "enablePartitionDiscovery": { "type": "boolean", "label": "Enable partitions discovery", "default": false },
+      "partitionRootPath": { "type": "text", "label": "Partition root path", "conditional": { "field": "enablePartitionDiscovery", "value": true } },
+      "maxConcurrentConnections": { "type": "number", "label": "Max concurrent connections", "min": 1 }
+    },
     "sinkFields": {
       "copyBehavior": { "type": "select", "label": "Copy behavior", "options": ["None", "PreserveHierarchy", "FlattenHierarchy", "MergeFiles"], "default": "None" },
       "maxConcurrentConnections": { "type": "number", "label": "Max concurrent connections" },
@@ -71,6 +118,20 @@
       "enablePartitionDiscovery": { "type": "boolean", "label": "Enable partitions discovery", "default": false },
       "maxConcurrentConnections": { "type": "number", "label": "Max concurrent connections" }
     },
+    "lookupFields": {
+      "firstRowOnly": { "type": "boolean", "label": "First row only", "default": true },
+      "filePathType": { "type": "radio", "label": "File path type", "options": ["File path in dataset", "Prefix", "Wildcard file path", "List of files"], "optionValues": ["filePathInDataset", "prefix", "wildcardFilePath", "listOfFiles"], "default": "filePathInDataset" },
+      "prefix": { "type": "text", "label": "Prefix", "conditional": { "field": "filePathType", "value": "prefix" } },
+      "wildcardFolderPath": { "type": "text", "label": "Wildcard folder path", "placeholder": "folder/subfolder", "conditional": { "field": "filePathType", "value": "wildcardFilePath" } },
+      "wildcardFileName": { "type": "text", "label": "Wildcard file name", "placeholder": "*.json", "default": "*.json", "conditional": { "field": "filePathType", "value": "wildcardFilePath" } },
+      "fileListPath": { "type": "text", "label": "Path to file list", "conditional": { "field": "filePathType", "value": "listOfFiles" } },
+      "modifiedDatetimeStart": { "type": "datetime", "label": "Start time (UTC)", "placeholder": "2/18/2026, 12:00:00 AM" },
+      "modifiedDatetimeEnd": { "type": "datetime", "label": "End time (UTC)", "placeholder": "2/18/2026, 12:00:00 AM" },
+      "recursive": { "type": "boolean", "label": "Recursively", "default": true },
+      "enablePartitionDiscovery": { "type": "boolean", "label": "Enable partitions discovery", "default": false },
+      "partitionRootPath": { "type": "text", "label": "Partition root path", "conditional": { "field": "enablePartitionDiscovery", "value": true } },
+      "maxConcurrentConnections": { "type": "number", "label": "Max concurrent connections", "min": 1 }
+    },
     "sinkFields": {
       "copyBehavior": { "type": "select", "label": "Copy behavior", "options": ["None", "PreserveHierarchy", "FlattenHierarchy", "MergeFiles"], "default": "None" },
       "filePattern": { "type": "select", "label": "File pattern", "options": ["setOfObjects", "arrayOfObjects"], "default": "setOfObjects" },
@@ -88,6 +149,20 @@
       "enablePartitionDiscovery": { "type": "boolean", "label": "Enable partitions discovery", "default": false },
       "maxConcurrentConnections": { "type": "number", "label": "Max concurrent connections" }
     },
+    "lookupFields": {
+      "firstRowOnly": { "type": "boolean", "label": "First row only", "default": true },
+      "filePathType": { "type": "radio", "label": "File path type", "options": ["File path in dataset", "Prefix", "Wildcard file path", "List of files"], "optionValues": ["filePathInDataset", "prefix", "wildcardFilePath", "listOfFiles"], "default": "filePathInDataset" },
+      "prefix": { "type": "text", "label": "Prefix", "conditional": { "field": "filePathType", "value": "prefix" } },
+      "wildcardFolderPath": { "type": "text", "label": "Wildcard folder path", "placeholder": "folder/subfolder", "conditional": { "field": "filePathType", "value": "wildcardFilePath" } },
+      "wildcardFileName": { "type": "text", "label": "Wildcard file name", "placeholder": "*.avro", "default": "*.avro", "conditional": { "field": "filePathType", "value": "wildcardFilePath" } },
+      "fileListPath": { "type": "text", "label": "Path to file list", "conditional": { "field": "filePathType", "value": "listOfFiles" } },
+      "modifiedDatetimeStart": { "type": "datetime", "label": "Start time (UTC)", "placeholder": "2/18/2026, 12:00:00 AM" },
+      "modifiedDatetimeEnd": { "type": "datetime", "label": "End time (UTC)", "placeholder": "2/18/2026, 12:00:00 AM" },
+      "recursive": { "type": "boolean", "label": "Recursively", "default": true },
+      "enablePartitionDiscovery": { "type": "boolean", "label": "Enable partitions discovery", "default": false },
+      "partitionRootPath": { "type": "text", "label": "Partition root path", "conditional": { "field": "enablePartitionDiscovery", "value": true } },
+      "maxConcurrentConnections": { "type": "number", "label": "Max concurrent connections", "min": 1 }
+    },
     "sinkFields": {
       "copyBehavior": { "type": "select", "label": "Copy behavior", "options": ["None", "PreserveHierarchy", "FlattenHierarchy", "MergeFiles"], "default": "None" },
       "maxConcurrentConnections": { "type": "number", "label": "Max concurrent connections" },
@@ -103,10 +178,80 @@
       "enablePartitionDiscovery": { "type": "boolean", "label": "Enable partitions discovery", "default": false },
       "maxConcurrentConnections": { "type": "number", "label": "Max concurrent connections" }
     },
+    "lookupFields": {
+      "firstRowOnly": { "type": "boolean", "label": "First row only", "default": true },
+      "filePathType": { "type": "radio", "label": "File path type", "options": ["File path in dataset", "Prefix", "Wildcard file path", "List of files"], "optionValues": ["filePathInDataset", "prefix", "wildcardFilePath", "listOfFiles"], "default": "filePathInDataset" },
+      "prefix": { "type": "text", "label": "Prefix", "conditional": { "field": "filePathType", "value": "prefix" } },
+      "wildcardFolderPath": { "type": "text", "label": "Wildcard folder path", "placeholder": "folder/subfolder", "conditional": { "field": "filePathType", "value": "wildcardFilePath" } },
+      "wildcardFileName": { "type": "text", "label": "Wildcard file name", "placeholder": "*.orc", "default": "*.orc", "conditional": { "field": "filePathType", "value": "wildcardFilePath" } },
+      "fileListPath": { "type": "text", "label": "Path to file list", "conditional": { "field": "filePathType", "value": "listOfFiles" } },
+      "modifiedDatetimeStart": { "type": "datetime", "label": "Start time (UTC)", "placeholder": "2/18/2026, 12:00:00 AM" },
+      "modifiedDatetimeEnd": { "type": "datetime", "label": "End time (UTC)", "placeholder": "2/18/2026, 12:00:00 AM" },
+      "recursive": { "type": "boolean", "label": "Recursively", "default": true },
+      "enablePartitionDiscovery": { "type": "boolean", "label": "Enable partitions discovery", "default": false },
+      "partitionRootPath": { "type": "text", "label": "Partition root path", "conditional": { "field": "enablePartitionDiscovery", "value": true } },
+      "maxConcurrentConnections": { "type": "number", "label": "Max concurrent connections", "min": 1 }
+    },
     "sinkFields": {
       "copyBehavior": { "type": "select", "label": "Copy behavior", "options": ["None", "PreserveHierarchy", "FlattenHierarchy", "MergeFiles"], "default": "None" },
       "maxConcurrentConnections": { "type": "number", "label": "Max concurrent connections" },
       "disableMetricsCollection": { "type": "boolean", "label": "Disable performance metrics analytics", "default": false }
     }
+  },
+  "Xml": {
+    "name": "XML",
+    "sourceFields": {
+      "filePathType": { "type": "radio", "label": "File path type", "options": ["filePathInDataset", "wildcardFilePath", "listOfFiles"], "default": "wildcardFilePath" },
+      "recursive": { "type": "boolean", "label": "Recursively", "default": true },
+      "modifiedDatetimeStart": { "type": "text", "label": "Start time (UTC)", "placeholder": "1/18/2026, 12:00:00 AM" },
+      "modifiedDatetimeEnd": { "type": "text", "label": "End time (UTC)", "placeholder": "1/21/2026, 12:00:00 AM" },
+      "wildcardFolderPath": { "type": "text", "label": "Wildcard folder path" },
+      "wildcardFileName": { "type": "text", "label": "Wildcard file name", "default": "*.xml" },
+      "enablePartitionDiscovery": { "type": "boolean", "label": "Enable partitions discovery", "default": false },
+      "maxConcurrentConnections": { "type": "number", "label": "Max concurrent connections" }
+    },
+    "lookupFields": {
+      "firstRowOnly": { "type": "boolean", "label": "First row only", "default": true },
+      "filePathType": { "type": "radio", "label": "File path type", "options": ["File path in dataset", "Wildcard file path", "List of files"], "optionValues": ["filePathInDataset", "wildcardFilePath", "listOfFiles"], "default": "filePathInDataset" },
+      "wildcardFolderPath": { "type": "text", "label": "Wildcard folder path", "placeholder": "folder/subfolder", "conditional": { "field": "filePathType", "value": "wildcardFilePath" } },
+      "wildcardFileName": { "type": "text", "label": "Wildcard file name", "placeholder": "*.xml", "default": "*", "conditional": { "field": "filePathType", "value": "wildcardFilePath" } },
+      "fileListPath": { "type": "text", "label": "Path to file list", "conditional": { "field": "filePathType", "value": "listOfFiles" } },
+      "modifiedDatetimeStart": { "type": "datetime", "label": "Start time (UTC)", "placeholder": "2/18/2026, 12:00:00 AM" },
+      "modifiedDatetimeEnd": { "type": "datetime", "label": "End time (UTC)", "placeholder": "2/18/2026, 12:00:00 AM" },
+      "recursive": { "type": "boolean", "label": "Recursively", "default": true },
+      "enablePartitionDiscovery": { "type": "boolean", "label": "Enable partitions discovery", "default": false },
+      "partitionRootPath": { "type": "text", "label": "Partition root path", "conditional": { "field": "enablePartitionDiscovery", "value": true } },
+      "maxConcurrentConnections": { "type": "number", "label": "Max concurrent connections", "min": 1 },
+      "validationMode": { "type": "select", "label": "Validation mode", "options": ["none", "xsd", "dtd"], "default": "none" },
+      "namespaces": { "type": "boolean", "label": "Namespaces", "default": false },
+      "namespacePrefixPairs": { "type": "namespace-prefixes", "label": "Namespace prefix pairs", "conditional": { "field": "namespaces", "value": true } },
+      "detectDataType": { "type": "boolean", "label": "Detect data type", "default": false }
+    },
+    "sinkFields": {
+      "copyBehavior": { "type": "select", "label": "Copy behavior", "options": ["None", "PreserveHierarchy", "FlattenHierarchy", "MergeFiles"], "default": "None" },
+      "maxConcurrentConnections": { "type": "number", "label": "Max concurrent connections" },
+      "blockSizeInMB": { "type": "number", "label": "Block size in MB" },
+      "disableMetricsCollection": { "type": "boolean", "label": "Disable performance metrics analytics", "default": false }
+    }
+  },
+  "HttpFile": {
+    "name": "HTTP File",
+    "sourceFields": {
+      "requestMethod": { "type": "select", "label": "Request method", "options": ["GET", "POST"], "default": "GET" },
+      "additionalHeaders": { "type": "text", "label": "Additional headers", "multiline": true },
+      "requestBody": { "type": "text", "label": "Request body", "multiline": true },
+      "requestTimeout": { "type": "text", "label": "Request timeout", "placeholder": "00:01:40" },
+      "maxConcurrentConnections": { "type": "number", "label": "Max concurrent connections" }
+    },
+    "lookupFields": {
+      "firstRowOnly": { "type": "boolean", "label": "First row only", "default": true },
+      "requestMethod": { "type": "select", "label": "Request method", "options": ["GET"], "default": "GET", "placeholder": "GET" },
+      "additionalHeaders": { "type": "text", "label": "Additional headers", "multiline": true, "placeholder": "Enter headers in JSON format" },
+      "requestBody": { "type": "text", "label": "Request body", "multiline": true, "placeholder": "Enter request body" },
+      "requestTimeout": { "type": "text", "label": "Request timeout", "placeholder": "00:01:40" },
+      "maxConcurrentConnections": { "type": "number", "label": "Max concurrent connections", "min": 1 },
+      "skipLineCount": { "type": "number", "label": "Skip line count", "min": 0, "placeholder": "0" }
+    },
+    "sinkFields": {}
   }
 }

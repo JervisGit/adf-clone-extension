@@ -1757,7 +1757,7 @@ class PipelineEditorProvider {
                     }
                     // Validate UserAssignedManagedIdentity authentication fields
                     if (a.authenticationType === 'UserAssignedManagedIdentity') {
-                        if (!a.credential || a.credential.trim() === '') {
+                        if (!a.credentialUserAssigned || a.credentialUserAssigned.trim() === '') {
                             invalidActivities.push(a.name + ' (' + a.type + ') - Credential is required for User-assigned managed identity authentication');
                         }
                         if (!a.resource || a.resource.trim() === '') {
@@ -2507,9 +2507,9 @@ class PipelineEditorProvider {
                             }
                             // User-assigned managed identity
                             else if (a.authenticationType === 'UserAssignedManagedIdentity') {
-                                if (a.credential) {
+                                if (a.credentialUserAssigned) {
                                     authentication.credential = {
-                                        referenceName: a.credential,
+                                        referenceName: a.credentialUserAssigned,
                                         type: 'CredentialReference'
                                     };
                                 }
@@ -2535,6 +2535,7 @@ class PipelineEditorProvider {
                         delete typeProperties.servicePrincipalResource;
                         delete typeProperties.credential;
                         delete typeProperties.credentialResource;
+                        delete typeProperties.credentialUserAssigned;
                         
                         // Convert headers array to object format
                         if (a.headers && a.headers.length > 0) {

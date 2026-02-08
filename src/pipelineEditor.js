@@ -437,6 +437,11 @@ class PipelineEditorProvider {
 							}
 						}
 						
+						// For WebHook, timeout should be in typeProperties, not policy
+						if (a.type === 'WebHook' && a.timeout) {
+							typeProperties.timeout = a.timeout;
+						}
+						
 						// For SynapseNotebook, convert dynamicAllocation fields back to conf object
 						if (a.type === 'SynapseNotebook') {
 							// Always add snapshot: true
@@ -1814,6 +1819,148 @@ class PipelineEditorProvider {
                         }
                     }
                 }
+                if (a.type === 'WebHook') {
+                    // Validate URL is entered
+                    if (!a.url || a.url.trim() === '') {
+                        invalidActivities.push(a.name + ' (' + a.type + ') - URL must be entered');
+                    }
+                    // Method is always POST for WebHook, but validate it's set
+                    if (!a.method) {
+                        invalidActivities.push(a.name + ' (' + a.type + ') - Method must be set');
+                    }
+                    // Validate Basic authentication fields
+                    if (a.authenticationType === 'Basic') {
+                        if (!a.username || a.username.trim() === '') {
+                            invalidActivities.push(a.name + ' (' + a.type + ') - Username is required for Basic authentication');
+                        }
+                        if (!a.password) {
+                            invalidActivities.push(a.name + ' (' + a.type + ') - Password is required for Basic authentication');
+                        } else if (typeof a.password === 'object') {
+                            // Validate Azure Key Vault Secret structure
+                            if (!a.password.store || !a.password.store.referenceName) {
+                                invalidActivities.push(a.name + ' (' + a.type + ') - Azure Key Vault linked service must be selected for password');
+                            }
+                            if (!a.password.secretName || a.password.secretName.trim() === '') {
+                                invalidActivities.push(a.name + ' (' + a.type + ') - Secret name is required for password');
+                            }
+                        }
+                    }
+                    // Validate MSI (System-assigned managed identity) authentication fields
+                    if (a.authenticationType === 'MSI') {
+                        if (!a.resource || a.resource.trim() === '') {
+                            invalidActivities.push(a.name + ' (' + a.type + ') - Resource is required for MSI authentication');
+                        }
+                    }
+                    // Validate ClientCertificate authentication fields
+                    if (a.authenticationType === 'ClientCertificate') {
+                        if (!a.pfx) {
+                            invalidActivities.push(a.name + ' (' + a.type + ') - Pfx is required for Client Certificate authentication');
+                        } else if (typeof a.pfx === 'object') {
+                            // Validate Azure Key Vault Secret structure
+                            if (!a.pfx.store || !a.pfx.store.referenceName) {
+                                invalidActivities.push(a.name + ' (' + a.type + ') - Azure Key Vault linked service must be selected for Pfx');
+                            }
+                            if (!a.pfx.secretName || a.pfx.secretName.trim() === '') {
+                                invalidActivities.push(a.name + ' (' + a.type + ') - Secret name is required for Pfx');
+                            }
+                        }
+                        if (!a.pfxPassword) {
+                            invalidActivities.push(a.name + ' (' + a.type + ') - Password is required for Client Certificate authentication');
+                        } else if (typeof a.pfxPassword === 'object') {
+                            // Validate Azure Key Vault Secret structure
+                            if (!a.pfxPassword.store || !a.pfxPassword.store.referenceName) {
+                                invalidActivities.push(a.name + ' (' + a.type + ') - Azure Key Vault linked service must be selected for password');
+                            }
+                            if (!a.pfxPassword.secretName || a.pfxPassword.secretName.trim() === '') {
+                                invalidActivities.push(a.name + ' (' + a.type + ') - Secret name is required for password');
+                            }
+                        }
+                    }
+                    // Validate ServicePrincipal authentication fields
+                    if (a.authenticationType === 'ServicePrincipal') {
+                        const authMethod = a.servicePrincipalAuthMethod || 'Inline';
+                        
+                        if (authMethod === 'Inline') {
+                            if (!a.tenant || a.tenant.trim() === '') {
+                                invalidActivities.push(a.name + ' (' + a.type + ') - Tenant is required for Service Principal authentication');
+                            }
+                            if (!a.servicePrincipalId || a.servicePrincipalId.trim() === '') {
+                                invalidActivities.push(a.name + ' (' + a.type + ') - Service principal ID is required for Service Principal authentication');
+                            }
+                            if (!a.servicePrincipalResource || a.servicePrincipalResource.trim() === '') {
+                                invalidActivities.push(a.name + ' (' + a.type + ') - Resource is required for Service Principal authentication');
+                            }
+                            
+                            const credentialType = a.servicePrincipalCredentialType || 'Service Principal Key';
+                            
+                            if (credentialType === 'Service Principal Key') {
+                                if (!a.servicePrincipalKey) {
+                                    invalidActivities.push(a.name + ' (' + a.type + ') - Service principal key is required');
+                                } else if (typeof a.servicePrincipalKey === 'object') {
+                                    if (!a.servicePrincipalKey.store || !a.servicePrincipalKey.store.referenceName) {
+                                        invalidActivities.push(a.name + ' (' + a.type + ') - Azure Key Vault linked service must be selected for service principal key');
+                                    }
+                                    if (!a.servicePrincipalKey.secretName || a.servicePrincipalKey.secretName.trim() === '') {
+                                        invalidActivities.push(a.name + ' (' + a.type + ') - Secret name is required for service principal key');
+                                    }
+                                }
+                            } else if (credentialType === 'Service Principal Certificate') {
+                                if (!a.servicePrincipalCert) {
+                                    invalidActivities.push(a.name + ' (' + a.type + ') - Service principal certificate is required');
+                                } else if (typeof a.servicePrincipalCert === 'object') {
+                                    if (!a.servicePrincipalCert.store || !a.servicePrincipalCert.store.referenceName) {
+                                        invalidActivities.push(a.name + ' (' + a.type + ') - Azure Key Vault linked service must be selected for service principal certificate');
+                                    }
+                                    if (!a.servicePrincipalCert.secretName || a.servicePrincipalCert.secretName.trim() === '') {
+                                        invalidActivities.push(a.name + ' (' + a.type + ') - Secret name is required for service principal certificate');
+                                    }
+                                }
+                            }
+                        } else if (authMethod === 'Credential') {
+                            if (!a.credential || a.credential.trim() === '') {
+                                invalidActivities.push(a.name + ' (' + a.type + ') - Credentials is required for Service Principal authentication');
+                            }
+                            if (!a.credentialResource || a.credentialResource.trim() === '') {
+                                invalidActivities.push(a.name + ' (' + a.type + ') - Resource is required for Service Principal authentication');
+                            }
+                        }
+                    }
+                    // Validate UserAssignedManagedIdentity authentication fields
+                    if (a.authenticationType === 'UserAssignedManagedIdentity') {
+                        if (!a.credentialUserAssigned || a.credentialUserAssigned.trim() === '') {
+                            invalidActivities.push(a.name + ' (' + a.type + ') - Credential is required for User-assigned managed identity authentication');
+                        }
+                        if (!a.resource || a.resource.trim() === '') {
+                            invalidActivities.push(a.name + ' (' + a.type + ') - Resource is required for User-assigned managed identity authentication');
+                        }
+                    }
+                    // Validate headers have names and values
+                    if (a.headers && a.headers.length > 0) {
+                        const invalidHeaders = [];
+                        const headerNames = new Set();
+                        const duplicateHeaders = [];
+                        
+                        a.headers.forEach((header, idx) => {
+                            if (!header.name || header.name.trim() === '' || !header.value || header.value.trim() === '') {
+                                invalidHeaders.push(idx + 1);
+                            } else {
+                                const headerName = header.name.trim();
+                                if (headerNames.has(headerName)) {
+                                    duplicateHeaders.push(headerName);
+                                } else {
+                                    headerNames.add(headerName);
+                                }
+                            }
+                        });
+                        
+                        if (invalidHeaders.length > 0) {
+                            invalidActivities.push(a.name + ' (' + a.type + ') - Header(s) ' + invalidHeaders.join(', ') + ' must have both Name and Value');
+                        }
+                        if (duplicateHeaders.length > 0) {
+                            invalidActivities.push(a.name + ' (' + a.type + ') - Duplicate header name(s): ' + [...new Set(duplicateHeaders)].join(', '));
+                        }
+                    }
+                }
             });
             
             if (invalidActivities.length > 0) {
@@ -1881,6 +2028,12 @@ class PipelineEditorProvider {
                             timeout: a.timeout || "0.12:00:00",
                             retry: a.retry !== undefined ? a.retry : 0,
                             retryIntervalInSeconds: a.retryIntervalInSeconds !== undefined ? a.retryIntervalInSeconds : 30,
+                            secureOutput: a.secureOutput || false,
+                            secureInput: a.secureInput || false
+                        };
+                    } else if (a.type === 'WebHook') {
+                        // For WebHook, always include policy with secureOutput and secureInput
+                        activity.policy = {
                             secureOutput: a.secureOutput || false,
                             secureInput: a.secureInput || false
                         };
@@ -2563,6 +2716,202 @@ class PipelineEditorProvider {
                         delete typeProperties.disableAsyncPattern;
                     }
                     
+                    // Handle WebHook - build authentication object and other settings
+                    if (a.type === 'WebHook') {
+                        // Build authentication object based on authentication type
+                        if (a.authenticationType && a.authenticationType !== 'None') {
+                            const authentication = {};
+                            
+                            // Determine if we should include the type field
+                            const isServicePrincipalCredential = a.authenticationType === 'ServicePrincipal' && 
+                                                                  a.servicePrincipalAuthMethod === 'Credential';
+                            
+                            if (!isServicePrincipalCredential) {
+                                authentication.type = a.authenticationType;
+                            }
+                            
+                            // Basic authentication
+                            if (a.authenticationType === 'Basic') {
+                                if (a.username) authentication.username = a.username;
+                                if (a.password) {
+                                    // Check if password is an Azure Key Vault Secret object
+                                    if (typeof a.password === 'object' && a.password.type === 'AzureKeyVaultSecret') {
+                                        authentication.password = {
+                                            type: 'AzureKeyVaultSecret',
+                                            store: a.password.store,
+                                            secretName: a.password.secretName
+                                        };
+                                        // Only include secretVersion if it's not 'latest'
+                                        if (a.password.secretVersion && a.password.secretVersion !== 'latest') {
+                                            authentication.password.secretVersion = a.password.secretVersion;
+                                        }
+                                    } else {
+                                        // Plain text password
+                                        authentication.password = a.password;
+                                    }
+                                }
+                            }
+                            // System-assigned managed identity
+                            else if (a.authenticationType === 'MSI') {
+                                if (a.resource) authentication.resource = a.resource;
+                            }
+                            // Client certificate
+                            else if (a.authenticationType === 'ClientCertificate') {
+                                if (a.pfx) {
+                                    // Check if pfx is an Azure Key Vault Secret object
+                                    if (typeof a.pfx === 'object' && a.pfx.type === 'AzureKeyVaultSecret') {
+                                        authentication.pfx = {
+                                            type: 'AzureKeyVaultSecret',
+                                            store: a.pfx.store,
+                                            secretName: a.pfx.secretName
+                                        };
+                                        // Only include secretVersion if it's not 'latest'
+                                        if (a.pfx.secretVersion && a.pfx.secretVersion !== 'latest') {
+                                            authentication.pfx.secretVersion = a.pfx.secretVersion;
+                                        }
+                                    } else {
+                                        // Plain text pfx
+                                        authentication.pfx = a.pfx;
+                                    }
+                                }
+                                if (a.pfxPassword) {
+                                    // Check if pfxPassword is an Azure Key Vault Secret object
+                                    if (typeof a.pfxPassword === 'object' && a.pfxPassword.type === 'AzureKeyVaultSecret') {
+                                        authentication.password = {
+                                            type: 'AzureKeyVaultSecret',
+                                            store: a.pfxPassword.store,
+                                            secretName: a.pfxPassword.secretName
+                                        };
+                                        // Only include secretVersion if it's not 'latest'
+                                        if (a.pfxPassword.secretVersion && a.pfxPassword.secretVersion !== 'latest') {
+                                            authentication.password.secretVersion = a.pfxPassword.secretVersion;
+                                        }
+                                    } else {
+                                        // Plain text password
+                                        authentication.password = a.pfxPassword;
+                                    }
+                                }
+                            }
+                            // Service principal
+                            else if (a.authenticationType === 'ServicePrincipal') {
+                                if (a.servicePrincipalResource) authentication.resource = a.servicePrincipalResource;
+                                
+                                // Inline authentication
+                                if (a.servicePrincipalAuthMethod === 'Inline' || !a.servicePrincipalAuthMethod) {
+                                    if (a.tenant) authentication.userTenant = a.tenant;
+                                    if (a.servicePrincipalId) authentication.username = a.servicePrincipalId;
+                                    
+                                    // Service principal key or certificate
+                                    if (a.servicePrincipalCredentialType === 'Service Principal Key' || !a.servicePrincipalCredentialType) {
+                                        if (a.servicePrincipalKey) {
+                                            // Check if servicePrincipalKey is an Azure Key Vault Secret object
+                                            if (typeof a.servicePrincipalKey === 'object' && a.servicePrincipalKey.type === 'AzureKeyVaultSecret') {
+                                                authentication.password = {
+                                                    type: 'AzureKeyVaultSecret',
+                                                    store: a.servicePrincipalKey.store,
+                                                    secretName: a.servicePrincipalKey.secretName
+                                                };
+                                                // Only include secretVersion if it's not 'latest'
+                                                if (a.servicePrincipalKey.secretVersion && a.servicePrincipalKey.secretVersion !== 'latest') {
+                                                    authentication.password.secretVersion = a.servicePrincipalKey.secretVersion;
+                                                }
+                                            } else {
+                                                authentication.password = a.servicePrincipalKey;
+                                            }
+                                        }
+                                    } else if (a.servicePrincipalCredentialType === 'Service Principal Certificate') {
+                                        if (a.servicePrincipalCert) {
+                                            // Check if servicePrincipalCert is an Azure Key Vault Secret object
+                                            if (typeof a.servicePrincipalCert === 'object' && a.servicePrincipalCert.type === 'AzureKeyVaultSecret') {
+                                                authentication.pfx = {
+                                                    type: 'AzureKeyVaultSecret',
+                                                    store: a.servicePrincipalCert.store,
+                                                    secretName: a.servicePrincipalCert.secretName
+                                                };
+                                                // Only include secretVersion if it's not 'latest'
+                                                if (a.servicePrincipalCert.secretVersion && a.servicePrincipalCert.secretVersion !== 'latest') {
+                                                    authentication.pfx.secretVersion = a.servicePrincipalCert.secretVersion;
+                                                }
+                                            } else {
+                                                authentication.pfx = a.servicePrincipalCert;
+                                            }
+                                        }
+                                    }
+                                }
+                                // Credential-based authentication
+                                else if (a.servicePrincipalAuthMethod === 'Credential') {
+                                    if (a.credential) {
+                                        authentication.credential = {
+                                            referenceName: a.credential,
+                                            type: 'CredentialReference'
+                                        };
+                                    }
+                                    if (a.credentialResource) authentication.resource = a.credentialResource;
+                                }
+                            }
+                            // User-assigned managed identity
+                            else if (a.authenticationType === 'UserAssignedManagedIdentity') {
+                                if (a.credentialUserAssigned) {
+                                    authentication.credential = {
+                                        referenceName: a.credentialUserAssigned,
+                                        type: 'CredentialReference'
+                                    };
+                                }
+                                if (a.resource) authentication.resource = a.resource;
+                            }
+                            
+                            typeProperties.authentication = authentication;
+                        }
+                        
+                        // Remove authentication-related fields from typeProperties
+                        delete typeProperties.authenticationType;
+                        delete typeProperties.username;
+                        delete typeProperties.password;
+                        delete typeProperties.resource;
+                        delete typeProperties.pfx;
+                        delete typeProperties.pfxPassword;
+                        delete typeProperties.servicePrincipalAuthMethod;
+                        delete typeProperties.tenant;
+                        delete typeProperties.servicePrincipalId;
+                        delete typeProperties.servicePrincipalCredentialType;
+                        delete typeProperties.servicePrincipalKey;
+                        delete typeProperties.servicePrincipalCert;
+                        delete typeProperties.servicePrincipalResource;
+                        delete typeProperties.credential;
+                        delete typeProperties.credentialResource;
+                        delete typeProperties.credentialUserAssigned;
+                        
+                        // Convert headers array to object format
+                        if (a.headers && a.headers.length > 0) {
+                            const headersObj = {};
+                            a.headers.forEach(header => {
+                                if (header.name && header.value) {
+                                    headersObj[header.name] = header.value;
+                                }
+                            });
+                            typeProperties.headers = headersObj;
+                        }
+                        
+                        // Remove these fields from the initial typeProperties copy
+                        delete typeProperties.reportStatusOnCallBack;
+                        delete typeProperties.disableCertValidation;
+                        delete typeProperties.secureOutput;
+                        delete typeProperties.secureInput;
+                        
+                        // Add timeout to typeProperties (default is 00:10:00 for WebHook)
+                        typeProperties.timeout = a.timeout || '00:10:00';
+                        
+                        // Only add reportStatusOnCallBack if true
+                        if (a.reportStatusOnCallBack === true) {
+                            typeProperties.reportStatusOnCallBack = true;
+                        }
+                        
+                        // Only add disableCertValidation if true
+                        if (a.disableCertValidation === true) {
+                            typeProperties.disableCertValidation = true;
+                        }
+                    }
+                    
                     activity.typeProperties = typeProperties;
                     return activity;
                 })
@@ -2761,6 +3110,15 @@ class PipelineEditorProvider {
                     this.storedProcedureParameters = {};
                 }
                 
+                // Set default values for WebHook
+                if (type === 'WebHook') {
+                    this.method = 'POST';
+                    this.timeout = '00:10:00';
+                    this.authenticationType = 'None';
+                    this.disableCertValidation = false;
+                    this.reportStatusOnCallBack = false;
+                }
+                
                 this.createDOMElement();
             }
 
@@ -2774,6 +3132,7 @@ class PipelineEditorProvider {
                     'IfCondition': '#ff8c00',
                     'Wait': '#00bcf2',
                     'WebActivity': '#8661c5',
+                    'WebHook': '#9b59b6',
                     'StoredProcedure': '#847545'
                 };
                 return colors[type] || '#0078d4';
@@ -2993,6 +3352,7 @@ class PipelineEditorProvider {
                     'IfCondition': 'If Condition',
                     'Wait': 'Wait',
                     'WebActivity': 'Web Activity',
+                    'WebHook': 'WebHook',
                     'StoredProcedure': 'Stored Procedure',
                     'SqlServerStoredProcedure': 'Stored procedure'
                 };
@@ -3009,6 +3369,7 @@ class PipelineEditorProvider {
                     'IfCondition': '❓',
                     'Wait': '⏱️',
                     'WebActivity': '🌐',
+                    'WebHook': '🪝',
                     'StoredProcedure': '💾',
                     'Validation': '✅',
                     'Script': '📜'

@@ -292,5 +292,41 @@
       "datasets": { "type": "web-dataset-list", "label": "Datasets" },
       "linkedServices": { "type": "web-linkedservice-list", "label": "Linked services" }
     }
+  },
+  "WebHook": {
+    "name": "WebHook",
+    "tabs": ["General", "Settings", "User Properties"],
+    "commonProperties": {
+      "name": { "type": "string", "label": "Name", "required": true },
+      "description": { "type": "string", "label": "Description", "multiline": true },
+      "state": { "type": "radio", "label": "Activity state", "options": ["Activated", "Deactivated"], "default": "Activated" },
+      "secureOutput": { "type": "boolean", "label": "Secure output", "default": false, "section": "policy" },
+      "secureInput": { "type": "boolean", "label": "Secure input", "default": false, "section": "policy" }
+    },
+    "typeProperties": {
+      "url": { "type": "text", "label": "URL", "required": true, "placeholder": "Enter URL" },
+      "method": { "type": "select", "label": "Method", "required": true, "options": ["POST"], "default": "POST", "placeholder": "POST" },
+      "headers": { "type": "web-headers", "label": "Headers" },
+      "body": { "type": "string", "label": "Body", "multiline": true, "placeholder": "Enter request body..." },
+      "timeout": { "type": "text", "label": "Timeout", "default": "00:10:00", "placeholder": "00:10:00" },
+      "disableCertValidation": { "type": "boolean", "label": "Disable certificate validation", "default": false },
+      "reportStatusOnCallBack": { "type": "boolean", "label": "Report status on callback", "default": false },
+      "authenticationType": { "type": "select", "label": "Authentication", "options": ["None", "Basic", "MSI", "ClientCertificate", "ServicePrincipal", "UserAssignedManagedIdentity"], "optionLabels": { "MSI": "System-assigned managed identity", "ClientCertificate": "Client Certificate", "ServicePrincipal": "Service Principal", "UserAssignedManagedIdentity": "User-assigned managed identity" }, "default": "None" },
+      "username": { "type": "text", "label": "Username", "placeholder": "Enter username", "conditional": { "field": "authenticationType", "value": "Basic" } },
+      "password": { "type": "web-secret", "label": "Password", "placeholder": "Enter password or Azure Key Vault secret", "conditional": { "field": "authenticationType", "value": "Basic" } },
+      "resource": { "type": "text", "label": "Resource", "placeholder": "Enter resource", "conditional": { "field": "authenticationType", "value": ["MSI", "UserAssignedManagedIdentity"] } },
+      "pfx": { "type": "web-secret", "label": "Pfx", "placeholder": "Select Azure Key Vault secret", "conditional": { "field": "authenticationType", "value": "ClientCertificate" } },
+      "pfxPassword": { "type": "web-secret", "label": "Password", "placeholder": "Select Azure Key Vault secret", "conditional": { "field": "authenticationType", "value": "ClientCertificate" } },
+      "servicePrincipalAuthMethod": { "type": "radio", "label": "Authentication reference method", "options": ["Inline", "Credential"], "default": "Inline", "conditional": { "field": "authenticationType", "value": "ServicePrincipal" } },
+      "tenant": { "type": "text", "label": "Tenant", "required": true, "placeholder": "Enter tenant ID", "conditional": { "field": "authenticationType", "value": "ServicePrincipal" }, "nestedConditional": { "field": "servicePrincipalAuthMethod", "value": "Inline" } },
+      "servicePrincipalId": { "type": "text", "label": "Service principal ID", "required": true, "placeholder": "Enter service principal ID", "conditional": { "field": "authenticationType", "value": "ServicePrincipal" }, "nestedConditional": { "field": "servicePrincipalAuthMethod", "value": "Inline" } },
+      "servicePrincipalCredentialType": { "type": "radio", "label": "Service principal credential type", "options": ["Service Principal Key", "Service Principal Certificate"], "default": "Service Principal Key", "conditional": { "field": "authenticationType", "value": "ServicePrincipal" }, "nestedConditional": { "field": "servicePrincipalAuthMethod", "value": "Inline" } },
+      "servicePrincipalKey": { "type": "web-secret", "label": "Service principal key", "required": true, "placeholder": "Select Azure Key Vault secret", "conditional": { "field": "authenticationType", "value": "ServicePrincipal" }, "nestedConditional": { "field": "servicePrincipalCredentialType", "value": "Service Principal Key" } },
+      "servicePrincipalCert": { "type": "web-secret", "label": "Service principal certificate", "placeholder": "Select Azure Key Vault secret", "conditional": { "field": "authenticationType", "value": "ServicePrincipal" }, "nestedConditional": { "field": "servicePrincipalCredentialType", "value": "Service Principal Certificate" } },
+      "servicePrincipalResource": { "type": "text", "label": "Resource", "required": true, "placeholder": "Enter resource", "conditional": { "field": "authenticationType", "value": "ServicePrincipal" }, "nestedConditional": { "field": "servicePrincipalAuthMethod", "value": "Inline" } },
+      "credential": { "type": "text", "label": "Credentials", "required": true, "placeholder": "Select credential", "conditional": { "field": "authenticationType", "value": "ServicePrincipal" }, "nestedConditional": { "field": "servicePrincipalAuthMethod", "value": "Credential" } },
+      "credentialResource": { "type": "text", "label": "Resource", "required": true, "placeholder": "Enter resource", "conditional": { "field": "authenticationType", "value": "ServicePrincipal" }, "nestedConditional": { "field": "servicePrincipalAuthMethod", "value": "Credential" } },
+      "credentialUserAssigned": { "type": "text", "label": "Credentials", "required": true, "placeholder": "Select credential", "conditional": { "field": "authenticationType", "value": "UserAssignedManagedIdentity" } }
+    }
   }
 }

@@ -2,6 +2,7 @@
 const activitiesConfig = require('./activities-config-verified.json');
 const activitySchemas = require('./activity-schemas.json');
 const datasetSchemas = require('./dataset-schemas.json');
+const irConfig = require('./ir-config.json');
 
 class PipelineEditorProvider {
 	static panels = new Map(); // Map<filePath, panel>
@@ -1638,6 +1639,181 @@ class PipelineEditorProvider {
                         }
                     }
                 }
+                if (a.type === 'WebActivity') {
+                    // Validate URL is entered
+                    if (!a.url || a.url.trim() === '') {
+                        invalidActivities.push(a.name + ' (' + a.type + ') - URL must be entered');
+                    }
+                    // Validate method is selected
+                    if (!a.method) {
+                        invalidActivities.push(a.name + ' (' + a.type + ') - Method must be selected');
+                    }
+                    // Validate Basic authentication fields
+                    if (a.authenticationType === 'Basic') {
+                        if (!a.username || a.username.trim() === '') {
+                            invalidActivities.push(a.name + ' (' + a.type + ') - Username is required for Basic authentication');
+                        }
+                        if (!a.password) {
+                            invalidActivities.push(a.name + ' (' + a.type + ') - Password is required for Basic authentication');
+                        } else if (typeof a.password === 'object') {
+                            // Validate Azure Key Vault Secret structure
+                            if (!a.password.store || !a.password.store.referenceName) {
+                                invalidActivities.push(a.name + ' (' + a.type + ') - Azure Key Vault linked service must be selected for password');
+                            }
+                            if (!a.password.secretName || a.password.secretName.trim() === '') {
+                                invalidActivities.push(a.name + ' (' + a.type + ') - Secret name is required for password');
+                            }
+                        }
+                    }
+                    // Validate MSI (System-assigned managed identity) authentication fields
+                    if (a.authenticationType === 'MSI') {
+                        if (!a.resource || a.resource.trim() === '') {
+                            invalidActivities.push(a.name + ' (' + a.type + ') - Resource is required for MSI authentication');
+                        }
+                    }
+                    // Validate ClientCertificate authentication fields
+                    if (a.authenticationType === 'ClientCertificate') {
+                        if (!a.pfx) {
+                            invalidActivities.push(a.name + ' (' + a.type + ') - Pfx is required for Client Certificate authentication');
+                        } else if (typeof a.pfx === 'object') {
+                            // Validate Azure Key Vault Secret structure
+                            if (!a.pfx.store || !a.pfx.store.referenceName) {
+                                invalidActivities.push(a.name + ' (' + a.type + ') - Azure Key Vault linked service must be selected for Pfx');
+                            }
+                            if (!a.pfx.secretName || a.pfx.secretName.trim() === '') {
+                                invalidActivities.push(a.name + ' (' + a.type + ') - Secret name is required for Pfx');
+                            }
+                        }
+                        if (!a.pfxPassword) {
+                            invalidActivities.push(a.name + ' (' + a.type + ') - Password is required for Client Certificate authentication');
+                        } else if (typeof a.pfxPassword === 'object') {
+                            // Validate Azure Key Vault Secret structure
+                            if (!a.pfxPassword.store || !a.pfxPassword.store.referenceName) {
+                                invalidActivities.push(a.name + ' (' + a.type + ') - Azure Key Vault linked service must be selected for password');
+                            }
+                            if (!a.pfxPassword.secretName || a.pfxPassword.secretName.trim() === '') {
+                                invalidActivities.push(a.name + ' (' + a.type + ') - Secret name is required for password');
+                            }
+                        }
+                    }
+                    // Validate ServicePrincipal authentication fields
+                    if (a.authenticationType === 'ServicePrincipal') {
+                        // Check authentication reference method (default is Inline if not specified)
+                        const authMethod = a.servicePrincipalAuthMethod || 'Inline';
+                        
+                        if (authMethod === 'Inline') {
+                            // Tenant and Service Principal ID are required for Inline method
+                            if (!a.tenant || a.tenant.trim() === '') {
+                                invalidActivities.push(a.name + ' (' + a.type + ') - Tenant is required for Service Principal authentication');
+                            }
+                            if (!a.servicePrincipalId || a.servicePrincipalId.trim() === '') {
+                                invalidActivities.push(a.name + ' (' + a.type + ') - Service principal ID is required for Service Principal authentication');
+                            }
+                            
+                            // Validate resource for inline method
+                            if (!a.servicePrincipalResource || a.servicePrincipalResource.trim() === '') {
+                                invalidActivities.push(a.name + ' (' + a.type + ') - Resource is required for Service Principal authentication');
+                            }
+                            
+                            // Get credential type (default is Service Principal Key if not specified)
+                            const credentialType = a.servicePrincipalCredentialType || 'Service Principal Key';
+                            
+                            if (credentialType === 'Service Principal Key') {
+                                // Validate servicePrincipalKey
+                                if (!a.servicePrincipalKey) {
+                                    invalidActivities.push(a.name + ' (' + a.type + ') - Service principal key is required');
+                                } else if (typeof a.servicePrincipalKey === 'object') {
+                                    // Validate Azure Key Vault Secret structure
+                                    if (!a.servicePrincipalKey.store || !a.servicePrincipalKey.store.referenceName) {
+                                        invalidActivities.push(a.name + ' (' + a.type + ') - Azure Key Vault linked service must be selected for service principal key');
+                                    }
+                                    if (!a.servicePrincipalKey.secretName || a.servicePrincipalKey.secretName.trim() === '') {
+                                        invalidActivities.push(a.name + ' (' + a.type + ') - Secret name is required for service principal key');
+                                    }
+                                }
+                            } else if (credentialType === 'Service Principal Certificate') {
+                                // Validate servicePrincipalCert
+                                if (!a.servicePrincipalCert) {
+                                    invalidActivities.push(a.name + ' (' + a.type + ') - Service principal certificate is required');
+                                } else if (typeof a.servicePrincipalCert === 'object') {
+                                    // Validate Azure Key Vault Secret structure
+                                    if (!a.servicePrincipalCert.store || !a.servicePrincipalCert.store.referenceName) {
+                                        invalidActivities.push(a.name + ' (' + a.type + ') - Azure Key Vault linked service must be selected for service principal certificate');
+                                    }
+                                    if (!a.servicePrincipalCert.secretName || a.servicePrincipalCert.secretName.trim() === '') {
+                                        invalidActivities.push(a.name + ' (' + a.type + ') - Secret name is required for service principal certificate');
+                                    }
+                                }
+                            }
+                        } else if (authMethod === 'Credential') {
+                            // Validate credential and credentialResource for credential method
+                            if (!a.credential || a.credential.trim() === '') {
+                                invalidActivities.push(a.name + ' (' + a.type + ') - Credentials is required for Service Principal authentication');
+                            }
+                            if (!a.credentialResource || a.credentialResource.trim() === '') {
+                                invalidActivities.push(a.name + ' (' + a.type + ') - Resource is required for Service Principal authentication');
+                            }
+                        }
+                    }
+                    // Validate UserAssignedManagedIdentity authentication fields
+                    if (a.authenticationType === 'UserAssignedManagedIdentity') {
+                        if (!a.credential || a.credential.trim() === '') {
+                            invalidActivities.push(a.name + ' (' + a.type + ') - Credential is required for User-assigned managed identity authentication');
+                        }
+                        if (!a.resource || a.resource.trim() === '') {
+                            invalidActivities.push(a.name + ' (' + a.type + ') - Resource is required for User-assigned managed identity authentication');
+                        }
+                    }
+                    // Validate httpRequestTimeout format and range if provided
+                    if (a.httpRequestTimeout) {
+                        const timeoutValue = String(a.httpRequestTimeout).trim();
+                        console.log('[Validation] httpRequestTimeout raw:', JSON.stringify(a.httpRequestTimeout));
+                        console.log('[Validation] httpRequestTimeout trimmed:', JSON.stringify(timeoutValue));
+                        console.log('[Validation] httpRequestTimeout length:', timeoutValue.length);
+                        const timeoutPattern = /^(\\d{2}):(\\d{2}):(\\d{2})$/;
+                        const match = timeoutValue.match(timeoutPattern);
+                        console.log('[Validation] Regex match result:', match);
+                        
+                        if (!match) {
+                            invalidActivities.push(a.name + ' (' + a.type + ') - HTTP request timeout must be in format HH:MM:SS');
+                        } else {
+                            const hours = parseInt(match[1], 10);
+                            const minutes = parseInt(match[2], 10);
+                            const seconds = parseInt(match[3], 10);
+                            const totalMinutes = hours * 60 + minutes + seconds / 60;
+                            
+                            if (totalMinutes < 1 || totalMinutes > 10) {
+                                invalidActivities.push(a.name + ' (' + a.type + ') - HTTP request timeout must be between 1 and 10 minutes (valid range: 00:01:00 to 00:10:00)');
+                            }
+                        }
+                    }
+                    // Validate headers have names and values
+                    if (a.headers && a.headers.length > 0) {
+                        const invalidHeaders = [];
+                        const headerNames = new Set();
+                        const duplicateHeaders = [];
+                        
+                        a.headers.forEach((header, idx) => {
+                            if (!header.name || header.name.trim() === '' || !header.value || header.value.trim() === '') {
+                                invalidHeaders.push(idx + 1);
+                            } else {
+                                const headerName = header.name.trim();
+                                if (headerNames.has(headerName)) {
+                                    duplicateHeaders.push(headerName);
+                                } else {
+                                    headerNames.add(headerName);
+                                }
+                            }
+                        });
+                        
+                        if (invalidHeaders.length > 0) {
+                            invalidActivities.push(a.name + ' (' + a.type + ') - Header(s) ' + invalidHeaders.join(', ') + ' must have both Name and Value');
+                        }
+                        if (duplicateHeaders.length > 0) {
+                            invalidActivities.push(a.name + ' (' + a.type + ') - Duplicate header name(s): ' + [...new Set(duplicateHeaders)].join(', '));
+                        }
+                    }
+                }
             });
             
             if (invalidActivities.length > 0) {
@@ -1699,8 +1875,8 @@ class PipelineEditorProvider {
                             secureOutput: a.secureOutput || false,
                             secureInput: a.secureInput || false
                         };
-                    } else if (a.type === 'GetMetadata' || a.type === 'Script' || a.type === 'SqlServerStoredProcedure') {
-                        // For GetMetadata, Script, and SqlServerStoredProcedure, always include full policy section with defaults
+                    } else if (a.type === 'GetMetadata' || a.type === 'Script' || a.type === 'SqlServerStoredProcedure' || a.type === 'WebActivity') {
+                        // For GetMetadata, Script, SqlServerStoredProcedure, and WebActivity, always include full policy section with defaults
                         activity.policy = {
                             timeout: a.timeout || "0.12:00:00",
                             retry: a.retry !== undefined ? a.retry : 0,
@@ -2193,6 +2369,197 @@ class PipelineEditorProvider {
                                 typeProperties.storedProcedureParameters = validParams;
                             }
                         }
+                    }
+                    
+                    // Handle WebActivity - build authentication object and other settings
+                    if (a.type === 'WebActivity') {
+                        // Build authentication object based on authentication type
+                        if (a.authenticationType && a.authenticationType !== 'None') {
+                            const authentication = {};
+                            
+                            // Determine if we should include the type field
+                            // For ServicePrincipal with Credential method, type is not needed
+                            const isServicePrincipalCredential = a.authenticationType === 'ServicePrincipal' && 
+                                                                  a.servicePrincipalAuthMethod === 'Credential';
+                            
+                            if (!isServicePrincipalCredential) {
+                                authentication.type = a.authenticationType;
+                            }
+                            
+                            // Basic authentication
+                            if (a.authenticationType === 'Basic') {
+                                if (a.username) authentication.username = a.username;
+                                if (a.password) {
+                                    // Check if password is an Azure Key Vault Secret object
+                                    if (typeof a.password === 'object' && a.password.type === 'AzureKeyVaultSecret') {
+                                        authentication.password = {
+                                            type: 'AzureKeyVaultSecret',
+                                            store: a.password.store,
+                                            secretName: a.password.secretName
+                                        };
+                                        // Only include secretVersion if it's not 'latest'
+                                        if (a.password.secretVersion && a.password.secretVersion !== 'latest') {
+                                            authentication.password.secretVersion = a.password.secretVersion;
+                                        }
+                                    } else {
+                                        // Plain text password
+                                        authentication.password = a.password;
+                                    }
+                                }
+                            }
+                            // System-assigned managed identity
+                            else if (a.authenticationType === 'MSI') {
+                                if (a.resource) authentication.resource = a.resource;
+                            }
+                            // Client certificate
+                            else if (a.authenticationType === 'ClientCertificate') {
+                                if (a.pfx) {
+                                    // Check if pfx is an Azure Key Vault Secret object
+                                    if (typeof a.pfx === 'object' && a.pfx.type === 'AzureKeyVaultSecret') {
+                                        authentication.pfx = {
+                                            type: 'AzureKeyVaultSecret',
+                                            store: a.pfx.store,
+                                            secretName: a.pfx.secretName
+                                        };
+                                        // Only include secretVersion if it's not 'latest'
+                                        if (a.pfx.secretVersion && a.pfx.secretVersion !== 'latest') {
+                                            authentication.pfx.secretVersion = a.pfx.secretVersion;
+                                        }
+                                    } else {
+                                        // Plain text pfx
+                                        authentication.pfx = a.pfx;
+                                    }
+                                }
+                                if (a.pfxPassword) {
+                                    // Check if pfxPassword is an Azure Key Vault Secret object
+                                    if (typeof a.pfxPassword === 'object' && a.pfxPassword.type === 'AzureKeyVaultSecret') {
+                                        authentication.password = {
+                                            type: 'AzureKeyVaultSecret',
+                                            store: a.pfxPassword.store,
+                                            secretName: a.pfxPassword.secretName
+                                        };
+                                        // Only include secretVersion if it's not 'latest'
+                                        if (a.pfxPassword.secretVersion && a.pfxPassword.secretVersion !== 'latest') {
+                                            authentication.password.secretVersion = a.pfxPassword.secretVersion;
+                                        }
+                                    } else {
+                                        // Plain text password
+                                        authentication.password = a.pfxPassword;
+                                    }
+                                }
+                            }
+                            // Service principal
+                            else if (a.authenticationType === 'ServicePrincipal') {
+                                if (a.servicePrincipalResource) authentication.resource = a.servicePrincipalResource;
+                                
+                                // Inline authentication
+                                if (a.servicePrincipalAuthMethod === 'Inline' || !a.servicePrincipalAuthMethod) {
+                                    if (a.tenant) authentication.userTenant = a.tenant;
+                                    if (a.servicePrincipalId) authentication.username = a.servicePrincipalId;
+                                    
+                                    // Service principal key or certificate
+                                    if (a.servicePrincipalCredentialType === 'Service Principal Key' || !a.servicePrincipalCredentialType) {
+                                        if (a.servicePrincipalKey) {
+                                            // Check if servicePrincipalKey is an Azure Key Vault Secret object
+                                            if (typeof a.servicePrincipalKey === 'object' && a.servicePrincipalKey.type === 'AzureKeyVaultSecret') {
+                                                authentication.password = {
+                                                    type: 'AzureKeyVaultSecret',
+                                                    store: a.servicePrincipalKey.store,
+                                                    secretName: a.servicePrincipalKey.secretName
+                                                };
+                                                // Only include secretVersion if it's not 'latest'
+                                                if (a.servicePrincipalKey.secretVersion && a.servicePrincipalKey.secretVersion !== 'latest') {
+                                                    authentication.password.secretVersion = a.servicePrincipalKey.secretVersion;
+                                                }
+                                            } else {
+                                                authentication.password = a.servicePrincipalKey;
+                                            }
+                                        }
+                                    } else if (a.servicePrincipalCredentialType === 'Service Principal Certificate') {
+                                        if (a.servicePrincipalCert) {
+                                            // Check if servicePrincipalCert is an Azure Key Vault Secret object
+                                            if (typeof a.servicePrincipalCert === 'object' && a.servicePrincipalCert.type === 'AzureKeyVaultSecret') {
+                                                authentication.pfx = {
+                                                    type: 'AzureKeyVaultSecret',
+                                                    store: a.servicePrincipalCert.store,
+                                                    secretName: a.servicePrincipalCert.secretName
+                                                };
+                                                // Only include secretVersion if it's not 'latest'
+                                                if (a.servicePrincipalCert.secretVersion && a.servicePrincipalCert.secretVersion !== 'latest') {
+                                                    authentication.pfx.secretVersion = a.servicePrincipalCert.secretVersion;
+                                                }
+                                            } else {
+                                                authentication.pfx = a.servicePrincipalCert;
+                                            }
+                                        }
+                                    }
+                                }
+                                // Credential-based authentication
+                                else if (a.servicePrincipalAuthMethod === 'Credential') {
+                                    if (a.credential) {
+                                        authentication.credential = {
+                                            referenceName: a.credential,
+                                            type: 'CredentialReference'
+                                        };
+                                    }
+                                    if (a.credentialResource) authentication.resource = a.credentialResource;
+                                }
+                            }
+                            // User-assigned managed identity
+                            else if (a.authenticationType === 'UserAssignedManagedIdentity') {
+                                if (a.credential) {
+                                    authentication.credential = {
+                                        referenceName: a.credential,
+                                        type: 'CredentialReference'
+                                    };
+                                }
+                                if (a.resource) authentication.resource = a.resource;
+                            }
+                            
+                            typeProperties.authentication = authentication;
+                        }
+                        
+                        // Remove authentication-related fields from typeProperties as they're now in the authentication object
+                        delete typeProperties.authenticationType;
+                        delete typeProperties.username;
+                        delete typeProperties.password;
+                        delete typeProperties.resource;
+                        delete typeProperties.pfx;
+                        delete typeProperties.pfxPassword;
+                        delete typeProperties.servicePrincipalAuthMethod;
+                        delete typeProperties.tenant;
+                        delete typeProperties.servicePrincipalId;
+                        delete typeProperties.servicePrincipalCredentialType;
+                        delete typeProperties.servicePrincipalKey;
+                        delete typeProperties.servicePrincipalCert;
+                        delete typeProperties.servicePrincipalResource;
+                        delete typeProperties.credential;
+                        delete typeProperties.credentialResource;
+                        
+                        // Convert headers array to object format
+                        if (a.headers && a.headers.length > 0) {
+                            const headersObj = {};
+                            a.headers.forEach(header => {
+                                if (header.name && header.value) {
+                                    headersObj[header.name] = header.value;
+                                }
+                            });
+                            typeProperties.headers = headersObj;
+                        }
+                        
+                        // Build optional advanced settings
+                        if (a.httpRequestTimeout) typeProperties.httpRequestTimeout = a.httpRequestTimeout;
+                        if (a.disableAsyncPattern) typeProperties.turnOffAsync = a.disableAsyncPattern;
+                        if (a.disableCertValidation) typeProperties.disableCertValidation = a.disableCertValidation;
+                        
+                        // Add connectVia integration runtime reference from config
+                        typeProperties.connectVia = {
+                            referenceName: ${JSON.stringify(irConfig)}.integrationRuntime.name,
+                            type: 'IntegrationRuntimeReference'
+                        };
+                        
+                        // Remove the UI field names
+                        delete typeProperties.disableAsyncPattern;
                     }
                     
                     activity.typeProperties = typeProperties;
@@ -3127,6 +3494,65 @@ class PipelineEditorProvider {
                     }
                 }
                 
+                // Check nested conditional (for fields that depend on other conditional fields)
+                if (prop.nestedConditional) {
+                    const nestedField = prop.nestedConditional.field;
+                    const nestedValue = prop.nestedConditional.value;
+                    let actualNestedValue = activity[nestedField];
+                    
+                    // If the nested field value is undefined, check if the nested field has a default value in schema
+                    // BUT only use the default if the nested field's own conditional would be met
+                    if (actualNestedValue === undefined) {
+                        const allProps = {...schema.commonProperties, ...schema.typeProperties, ...schema.advancedProperties};
+                        const nestedFieldProp = allProps[nestedField];
+                        
+                        // Check if the nested field itself would be rendered
+                        let nestedFieldWouldRender = true;
+                        
+                        // Check the nested field's conditional
+                        if (nestedFieldProp && nestedFieldProp.conditional) {
+                            const nestedCondField = nestedFieldProp.conditional.field;
+                            const nestedCondValue = nestedFieldProp.conditional.value;
+                            const nestedActualValue = activity[nestedCondField];
+                            
+                            if (Array.isArray(nestedCondValue)) {
+                                nestedFieldWouldRender = nestedCondValue.includes(nestedActualValue);
+                            } else {
+                                nestedFieldWouldRender = nestedActualValue === nestedCondValue;
+                            }
+                        }
+                        
+                        // Also check the nested field's nestedConditional
+                        if (nestedFieldWouldRender && nestedFieldProp && nestedFieldProp.nestedConditional) {
+                            const nestedNestedField = nestedFieldProp.nestedConditional.field;
+                            const nestedNestedValue = nestedFieldProp.nestedConditional.value;
+                            const nestedNestedActualValue = activity[nestedNestedField];
+                            
+                            if (Array.isArray(nestedNestedValue)) {
+                                nestedFieldWouldRender = nestedNestedValue.includes(nestedNestedActualValue);
+                            } else {
+                                nestedFieldWouldRender = nestedNestedActualValue === nestedNestedValue;
+                            }
+                        }
+                        
+                        // Only use default if the nested field would actually be rendered
+                        if (nestedFieldWouldRender && nestedFieldProp && nestedFieldProp.default !== undefined) {
+                            actualNestedValue = nestedFieldProp.default;
+                        }
+                    }
+                    
+                    // Support both single value and array of values
+                    if (Array.isArray(nestedValue)) {
+                        if (!nestedValue.includes(actualNestedValue)) {
+                            return '';
+                        }
+                    } else {
+                        if (actualNestedValue !== nestedValue) {
+                            return '';
+                        }
+                    }
+                }
+                
                 let value = activity[key] || prop.default || '';
                 
                 // Handle reference objects (e.g., {referenceName: "...", type: "..."})
@@ -3177,9 +3603,12 @@ class PipelineEditorProvider {
                         if (prop.placeholder && !value) {
                             fieldHtml += \`<option value="" disabled selected>\${prop.placeholder}</option>\`;
                         }
+                        
                         prop.options.forEach(opt => {
                             const selected = opt === value ? 'selected' : '';
-                            fieldHtml += \`<option value="\${opt}" \${selected}>\${opt}</option>\`;
+                            // Use optionLabels if available, otherwise use the option value as-is
+                            const displayName = (prop.optionLabels && prop.optionLabels[opt]) ? prop.optionLabels[opt] : opt;
+                            fieldHtml += \`<option value="\${opt}" \${selected}>\${displayName}</option>\`;
                         });
                         fieldHtml += \`</select>\`;
                         break;
@@ -3692,6 +4121,108 @@ class PipelineEditorProvider {
                         
                         fieldHtml += \`</div></div>\`;
                         break;
+                    case 'web-secret':
+                        // For password, pfx, etc. - Azure Key Vault secret reference
+                        const secretValue = value || {};
+                        const secretType = secretValue.type || 'AzureKeyVaultSecret';
+                        const secretStore = secretValue.store?.referenceName || '';
+                        const secretName = secretValue.secretName || '';
+                        const secretVersion = secretValue.secretVersion || 'latest';
+                        
+                        fieldHtml += \`<div style="flex: 1;">\`;
+                        fieldHtml += \`<div style="display: flex; gap: 8px; margin-bottom: 8px;">\`;
+                        fieldHtml += \`<input type="text" class="property-input web-secret-store" data-key="\${key}" value="\${secretStore}" placeholder="Azure Key Vault linked service" style="flex: 1;">\`;
+                        fieldHtml += \`</div>\`;
+                        fieldHtml += \`<div style="display: flex; gap: 8px;">\`;
+                        fieldHtml += \`<input type="text" class="property-input web-secret-name" data-key="\${key}" value="\${secretName}" placeholder="Secret name" style="flex: 1;">\`;
+                        fieldHtml += \`<input type="text" class="property-input web-secret-version" data-key="\${key}" value="\${secretVersion}" placeholder="Version (optional)" style="flex: 0 0 150px;">\`;
+                        fieldHtml += \`</div>\`;
+                        fieldHtml += \`</div>\`;
+                        break;
+                    case 'web-headers':
+                        // Headers - array of name-value pairs
+                        const headersValue = value || [];
+                        fieldHtml += \`<div style="flex: 1;">\`;
+                        fieldHtml += \`<div style="font-size: 11px; color: var(--vscode-descriptionForeground); margin-bottom: 8px;">Add one or more name-value pairs</div>\`;
+                        fieldHtml += \`<button class="add-web-header-btn" data-key="\${key}" style="padding: 4px 8px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; font-size: 11px; margin-bottom: 8px;">+ Add Header</button>\`;
+                        fieldHtml += \`<div class="web-headers-list" data-key="\${key}">\`;
+                        
+                        headersValue.forEach((header, idx) => {
+                            const headerName = header.name || '';
+                            const headerValue = header.value || '';
+                            fieldHtml += \`
+                                <div class="property-group web-header-item" data-index="\${idx}" style="margin-bottom: 8px; display: flex; gap: 8px; align-items: center;">
+                                    <input type="text" class="property-input web-header-name" data-index="\${idx}" value="\${headerName}" placeholder="Name" style="flex: 1;">
+                                    <input type="text" class="property-input web-header-value" data-index="\${idx}" value="\${headerValue}" placeholder="Value" style="flex: 1;">
+                                    <button class="remove-web-header-btn" data-index="\${idx}" style="padding: 6px 12px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; flex-shrink: 0;">Remove</button>
+                                </div>
+                            \`;
+                        });
+                        
+                        fieldHtml += \`</div></div>\`;
+                        break;
+                    case 'web-dataset-list':
+                        // Datasets - array of dataset references
+                        const datasetsValue = value || [];
+                        fieldHtml += \`<div style="flex: 1;">\`;
+                        fieldHtml += \`<div style="font-size: 11px; color: var(--vscode-descriptionForeground); margin-bottom: 8px;">Add dataset references</div>\`;
+                        fieldHtml += \`<button class="add-web-dataset-btn" data-key="\${key}" style="padding: 4px 8px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; font-size: 11px; margin-bottom: 8px;">+ Add Dataset</button>\`;
+                        fieldHtml += \`<div class="web-datasets-list" data-key="\${key}">\`;
+                        
+                        datasetsValue.forEach((dataset, idx) => {
+                            const datasetName = dataset.referenceName || '';
+                            fieldHtml += \`
+                                <div class="property-group web-dataset-item" data-index="\${idx}" style="margin-bottom: 8px; display: flex; gap: 8px; align-items: center;">
+                                    <select class="property-input web-dataset-select" data-index="\${idx}" style="flex: 1;">
+                                        <option value="">Select dataset...</option>\`;
+                            
+                            if (datasetList && datasetList.length > 0) {
+                                datasetList.forEach(ds => {
+                                    const selected = ds === datasetName ? 'selected' : '';
+                                    fieldHtml += \`<option value="\${ds}" \${selected}>\${ds}</option>\`;
+                                });
+                            }
+                            
+                            fieldHtml += \`
+                                    </select>
+                                    <button class="remove-web-dataset-btn" data-index="\${idx}" style="padding: 6px 12px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; flex-shrink: 0;">Remove</button>
+                                </div>
+                            \`;
+                        });
+                        
+                        fieldHtml += \`</div></div>\`;
+                        break;
+                    case 'web-linkedservice-list':
+                        // Linked services - array of linked service references
+                        const linkedServicesValue = value || [];
+                        fieldHtml += \`<div style="flex: 1;">\`;
+                        fieldHtml += \`<div style="font-size: 11px; color: var(--vscode-descriptionForeground); margin-bottom: 8px;">Add linked service references</div>\`;
+                        fieldHtml += \`<button class="add-web-linkedservice-btn" data-key="\${key}" style="padding: 4px 8px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; font-size: 11px; margin-bottom: 8px;">+ Add Linked Service</button>\`;
+                        fieldHtml += \`<div class="web-linkedservices-list" data-key="\${key}">\`;
+                        
+                        linkedServicesValue.forEach((ls, idx) => {
+                            const lsName = ls.referenceName || '';
+                            fieldHtml += \`
+                                <div class="property-group web-linkedservice-item" data-index="\${idx}" style="margin-bottom: 8px; display: flex; gap: 8px; align-items: center;">
+                                    <select class="property-input web-linkedservice-select" data-index="\${idx}" style="flex: 1;">
+                                        <option value="">Select linked service...</option>\`;
+                            
+                            if (window.linkedServicesList && window.linkedServicesList.length > 0) {
+                                window.linkedServicesList.forEach(linkedService => {
+                                    const selected = linkedService.name === lsName ? 'selected' : '';
+                                    fieldHtml += \`<option value="\${linkedService.name}" \${selected}>\${linkedService.name}</option>\`;
+                                });
+                            }
+                            
+                            fieldHtml += \`
+                                    </select>
+                                    <button class="remove-web-linkedservice-btn" data-index="\${idx}" style="padding: 6px 12px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; flex-shrink: 0;">Remove</button>
+                                </div>
+                            \`;
+                        });
+                        
+                        fieldHtml += \`</div></div>\`;
+                        break;
                     case 'object':
                     case 'array':
                         fieldHtml += \`<div style="padding: 8px; background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border); border-radius: 2px; font-family: monospace; font-size: 12px; color: var(--vscode-descriptionForeground); flex: 1; cursor: pointer;">\`;
@@ -3819,6 +4350,14 @@ class PipelineEditorProvider {
             // Build Mapping tab content
             let mappingContent = '<div style="color: var(--vscode-descriptionForeground); padding: 20px; text-align: center;">Mapping configuration coming soon</div>';
             
+            // Build Advanced tab content
+            let advancedContent = '';
+            if (schema && schema.advancedProperties) {
+                for (const [key, prop] of Object.entries(schema.advancedProperties)) {
+                    advancedContent += generateFormField(key, prop, activity);
+                }
+            }
+            
             activity.userProperties = activity.userProperties || [];
             let userPropsContent = '<div style="margin-bottom: 12px;">';
             userPropsContent += '<button id="addUserPropBtn" style="padding: 6px 12px; background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; cursor: pointer; border-radius: 2px; font-size: 12px;">+ Add User Property</button>';
@@ -3860,6 +4399,7 @@ class PipelineEditorProvider {
                 else if (tabId === 'source') tabContent = sourceContent;
                 else if (tabId === 'sink') tabContent = sinkContent;
                 else if (tabId === 'mapping') tabContent = mappingContent;
+                else if (tabId === 'advanced') tabContent = advancedContent;
                 else if (tabId === 'user-properties') tabContent = userPropsContent;
                 
                 console.log(\`Tab \${tabName} (id: \${tabId}) content length: \${tabContent.length}\`);
@@ -3928,6 +4468,8 @@ class PipelineEditorProvider {
                 
                 // Skip inputs that have their own specific handlers
                 if (input.classList.contains('storedprocedure-lsprop-value')) return;
+                // Skip web-secret fields (password, pfx, etc.) as they have their own handler
+                if (input.classList.contains('web-secret-store') || input.classList.contains('web-secret-name') || input.classList.contains('web-secret-version')) return;
                 
                 if (input.type === 'checkbox') {
                     input.addEventListener('change', (e) => {
@@ -4551,6 +5093,176 @@ class PipelineEditorProvider {
                 });
             });
             
+            // Add event listeners for Web activity - Authentication type dropdown
+            document.querySelectorAll('#configContent select[data-key="authenticationType"]').forEach(select => {
+                select.addEventListener('change', (e) => {
+                    activity.authenticationType = e.target.value;
+                    markAsDirty();
+                    console.log('Updated authenticationType:', activity.authenticationType);
+                    
+                    // Re-render settings tab to show/hide conditional fields
+                    const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                    if (activeTab === 'settings') {
+                        showProperties(activity, 'settings');
+                    }
+                });
+            });
+            
+            // Add event listeners for Web activity - Method dropdown
+            document.querySelectorAll('#configContent select[data-key="method"]').forEach(select => {
+                select.addEventListener('change', (e) => {
+                    activity.method = e.target.value;
+                    markAsDirty();
+                    console.log('Updated method:', activity.method);
+                    
+                    // Re-render settings tab to show/hide body field
+                    const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                    if (activeTab === 'settings') {
+                        showProperties(activity, 'settings');
+                    }
+                });
+            });
+            
+            // Add event listeners for Web activity - Secret fields (password, pfx, etc.)
+            document.querySelectorAll('.web-secret-store, .web-secret-name, .web-secret-version').forEach(input => {
+                input.addEventListener('input', (e) => {
+                    const key = e.target.getAttribute('data-key');
+                    if (!activity[key]) activity[key] = { type: 'AzureKeyVaultSecret', store: {}, secretName: '', secretVersion: 'latest' };
+                    
+                    if (e.target.classList.contains('web-secret-store')) {
+                        if (!activity[key].store) activity[key].store = {};
+                        activity[key].store.referenceName = e.target.value;
+                        activity[key].store.type = 'LinkedServiceReference';
+                    } else if (e.target.classList.contains('web-secret-name')) {
+                        activity[key].secretName = e.target.value;
+                    } else if (e.target.classList.contains('web-secret-version')) {
+                        activity[key].secretVersion = e.target.value || 'latest';
+                    }
+                    
+                    markAsDirty();
+                    console.log('Updated ' + key + ':', activity[key]);
+                });
+            });
+            
+            // Add event listeners for Web activity - Headers
+            document.querySelectorAll('.add-web-header-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    if (!activity.headers) activity.headers = [];
+                    activity.headers.push({ name: '', value: '' });
+                    markAsDirty();
+                    
+                    // Re-render settings tab to show new header
+                    const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                    showProperties(activity, activeTab);
+                });
+            });
+            
+            document.querySelectorAll('.remove-web-header-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const index = parseInt(e.target.getAttribute('data-index'));
+                    if (activity.headers && activity.headers[index] !== undefined) {
+                        activity.headers.splice(index, 1);
+                        markAsDirty();
+                        
+                        // Re-render settings tab to update indices
+                        const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                        showProperties(activity, activeTab);
+                    }
+                });
+            });
+            
+            document.querySelectorAll('.web-header-name, .web-header-value').forEach(input => {
+                input.addEventListener('input', (e) => {
+                    const index = parseInt(e.target.getAttribute('data-index'));
+                    if (!activity.headers) activity.headers = [];
+                    if (!activity.headers[index]) activity.headers[index] = { name: '', value: '' };
+                    
+                    if (e.target.classList.contains('web-header-name')) {
+                        activity.headers[index].name = e.target.value;
+                    } else if (e.target.classList.contains('web-header-value')) {
+                        activity.headers[index].value = e.target.value;
+                    }
+                    
+                    markAsDirty();
+                });
+            });
+            
+            // Add event listeners for Web activity - Datasets
+            document.querySelectorAll('.add-web-dataset-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    if (!activity.datasets) activity.datasets = [];
+                    activity.datasets.push({ referenceName: '', type: 'DatasetReference' });
+                    markAsDirty();
+                    
+                    // Re-render advanced tab to show new dataset
+                    const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                    showProperties(activity, activeTab);
+                });
+            });
+            
+            document.querySelectorAll('.remove-web-dataset-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const index = parseInt(e.target.getAttribute('data-index'));
+                    if (activity.datasets && activity.datasets[index] !== undefined) {
+                        activity.datasets.splice(index, 1);
+                        markAsDirty();
+                        
+                        // Re-render advanced tab to update indices
+                        const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                        showProperties(activity, activeTab);
+                    }
+                });
+            });
+            
+            document.querySelectorAll('.web-dataset-select').forEach(select => {
+                select.addEventListener('change', (e) => {
+                    const index = parseInt(e.target.getAttribute('data-index'));
+                    if (!activity.datasets) activity.datasets = [];
+                    if (!activity.datasets[index]) activity.datasets[index] = { referenceName: '', type: 'DatasetReference' };
+                    
+                    activity.datasets[index].referenceName = e.target.value;
+                    markAsDirty();
+                });
+            });
+            
+            // Add event listeners for Web activity - Linked Services
+            document.querySelectorAll('.add-web-linkedservice-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    if (!activity.linkedServices) activity.linkedServices = [];
+                    activity.linkedServices.push({ referenceName: '', type: 'LinkedServiceReference' });
+                    markAsDirty();
+                    
+                    // Re-render advanced tab to show new linked service
+                    const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                    showProperties(activity, activeTab);
+                });
+            });
+            
+            document.querySelectorAll('.remove-web-linkedservice-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const index = parseInt(e.target.getAttribute('data-index'));
+                    if (activity.linkedServices && activity.linkedServices[index] !== undefined) {
+                        activity.linkedServices.splice(index, 1);
+                        markAsDirty();
+                        
+                        // Re-render advanced tab to update indices
+                        const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                        showProperties(activity, activeTab);
+                    }
+                });
+            });
+            
+            document.querySelectorAll('.web-linkedservice-select').forEach(select => {
+                select.addEventListener('change', (e) => {
+                    const index = parseInt(e.target.getAttribute('data-index'));
+                    if (!activity.linkedServices) activity.linkedServices = [];
+                    if (!activity.linkedServices[index]) activity.linkedServices[index] = { referenceName: '', type: 'LinkedServiceReference' };
+                    
+                    activity.linkedServices[index].referenceName = e.target.value;
+                    markAsDirty();
+                });
+            });
+            
             // Add event listeners for radio buttons
             document.querySelectorAll('#configContent input[type="radio"]').forEach(radio => {
                 radio.addEventListener('change', (e) => {
@@ -4560,7 +5272,7 @@ class PipelineEditorProvider {
                         markAsDirty();
                         console.log('Updated ' + key + ':', activity[key]);
                         
-                        // If dynamicAllocation, variableType, or filePathType changed, re-render to show/hide conditional fields
+                        // If dynamicAllocation, variableType, filePathType, or Web activity auth fields changed, re-render to show/hide conditional fields
                         if (key === 'dynamicAllocation' || key === 'variableType') {
                             const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
                             if (activeTab === 'settings') {
@@ -4570,6 +5282,12 @@ class PipelineEditorProvider {
                             const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
                             if (activeTab === 'source') {
                                 showProperties(activity, 'source');
+                            }
+                        } else if (key === 'servicePrincipalAuthMethod' || key === 'servicePrincipalCredentialType') {
+                            // Web activity Service Principal fields - re-render settings tab
+                            const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                            if (activeTab === 'settings') {
+                                showProperties(activity, 'settings');
                             }
                         }
                     }

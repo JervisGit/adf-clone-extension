@@ -1,0 +1,6 @@
+{
+  "integrationRuntime": {
+    "name": "selfhostedir1",
+    "comment": "Default integration runtime for activities that require it. Change this value to use a different integration runtime."
+  }
+}

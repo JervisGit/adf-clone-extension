@@ -183,6 +183,9 @@ class PipelineEditorProvider {
 					case 'error':
 						vscode.window.showErrorMessage(message.text);
 						break;
+					case 'validationError':
+						vscode.window.showErrorMessage(message.message);
+						break;
 					case 'save':
 						console.log('[Extension] Received save message:', message);
 						// Use filePath from message if available, otherwise use closure filePath
@@ -2113,7 +2116,10 @@ class PipelineEditorProvider {
             for (const a of activities) {
                 if (a.type === 'IfCondition') {
                     if (!a.expression || a.expression.trim() === '') {
-                        alert('Activity "' + a.name + '" requires an Expression. Please set the expression before saving.');
+                        vscode.postMessage({
+                            type: 'validationError',
+                            message: 'Activity "' + a.name + '" requires an Expression. Please set the expression in the Activities tab before saving.'
+                        });
                         throw new Error('IfCondition activity "' + a.name + '" is missing required Expression field');
                     }
                 }
@@ -3332,14 +3338,23 @@ class PipelineEditorProvider {
                         }
                         
                         // Add nested activities only if they exist
-                        // Note: Nested activities need full serialization, but for now we'll add the arrays
-                        // TODO: Implement recursive serialization when context switching is complete
+                        // Strip x, y properties which are UI-only and shouldn't be saved to file
                         if (a.ifTrueActivities && a.ifTrueActivities.length > 0) {
-                            typeProperties.ifTrueActivities = a.ifTrueActivities;
+                            typeProperties.ifTrueActivities = a.ifTrueActivities.map(nestedAct => {
+                                const cleanAct = { ...nestedAct };
+                                delete cleanAct.x;
+                                delete cleanAct.y;
+                                return cleanAct;
+                            });
                         }
                         
                         if (a.ifFalseActivities && a.ifFalseActivities.length > 0) {
-                            typeProperties.ifFalseActivities = a.ifFalseActivities;
+                            typeProperties.ifFalseActivities = a.ifFalseActivities.map(nestedAct => {
+                                const cleanAct = { ...nestedAct };
+                                delete cleanAct.x;
+                                delete cleanAct.y;
+                                return cleanAct;
+                            });
                         }
                     }
                     
@@ -3590,12 +3605,20 @@ class PipelineEditorProvider {
             }
 
             createDOMElement() {
+                // Remove existing element if present
+                if (this.element && this.element.parentNode) {
+                    console.log('[createDOMElement] Removing existing element for:', this.name, this.id);
+                    this.element.parentNode.removeChild(this.element);
+                    this.element = null;
+                }
+                
                 // For container activities (IfCondition, ForEach, Until, Switch), use special rendering
                 if (this.isContainer) {
                     this.createContainerElement();
                     return;
                 }
                 
+                console.log('[createDOMElement] Creating new element for:', this.name, this.id);
                 // Create the main activity box element
                 this.element = document.createElement('div');
                 this.element.className = 'activity-box';
@@ -3697,6 +3720,14 @@ class PipelineEditorProvider {
             }
             
             createContainerElement() {
+                // Remove existing element if present
+                if (this.element && this.element.parentNode) {
+                    console.log('[createContainerElement] Removing existing element for:', this.name, this.id);
+                    this.element.parentNode.removeChild(this.element);
+                    this.element = null;
+                }
+                
+                console.log('[createContainerElement] Creating new element for:', this.name, this.id);
                 // Create container activity element (larger, shows info about nested activities)
                 this.element = document.createElement('div');
                 this.element.className = 'activity-box container-activity';
@@ -4367,7 +4398,7 @@ class PipelineEditorProvider {
             // Close on click outside
             setTimeout(() => {
                 const closeHandler = (e) => {
-                    if (!dialog.contains(e.target)) {
+                    if (!dialog.contains(e.target) && dialog.parentNode) {
                         document.body.removeChild(dialog);
                         document.removeEventListener('click', closeHandler);
                     }
@@ -4436,26 +4467,68 @@ class PipelineEditorProvider {
             const branchActivities = branch === 'true' ? activity.ifTrueActivities : activity.ifFalseActivities;
             
             // Clear current canvas
-            activities.forEach(a => a.remove());
             activities = [];
             connections = [];
             selectedActivity = null;
             
-            // Load branch activities into main canvas
+            // Clear only activity elements from canvas wrapper (keep canvas element)
             const canvasWrapper = document.getElementById('canvasWrapper');
+            const activityElements = canvasWrapper.querySelectorAll('.activity-box');
+            console.log('[openIfConditionEditor] Found', activityElements.length, 'activity elements to remove');
+            activityElements.forEach(el => {
+                if (el && el.parentNode) {
+                    console.log('[openIfConditionEditor] Removing element:', el.dataset.activityId, el.className);
+                    el.parentNode.removeChild(el);
+                }
+            });
+            console.log('[openIfConditionEditor] After cleanup, canvasWrapper children:', canvasWrapper.children.length);
+            
+            // Load branch activities into main canvas
+            const activityMap = new Map();
+            
+            console.log('[openIfConditionEditor] Loading', branchActivities?.length || 0, 'branch activities');
             if (branchActivities && Array.isArray(branchActivities)) {
                 branchActivities.forEach((actData, idx) => {
+                    console.log('[openIfConditionEditor] Loading activity:', actData.name, actData.type);
                     const x = actData.x !== undefined ? actData.x : (100 + (idx % 4) * 220);
                     const y = actData.y !== undefined ? actData.y : (100 + Math.floor(idx / 4) * 120);
                     
                     const act = new Activity(actData.type, x, y, canvasWrapper);
-                    Object.assign(act, actData);
+                    act.name = actData.name;
+                    act.description = actData.description || '';
+                    
+                    // Copy typeProperties without nesting
+                    if (actData.typeProperties) {
+                        Object.assign(act, actData.typeProperties);
+                    }
+                    
+                    act.userProperties = actData.userProperties || [];
                     act.container = canvasWrapper;
-                    act.element = null;
-                    act.createDOMElement();
+                    // Note: createDOMElement() is already called by Activity constructor
                     activities.push(act);
+                    activityMap.set(actData.name, act);
+                });
+                
+                // Recreate connections after all activities are created
+                branchActivities.forEach((actData) => {
+                    if (actData.dependsOn && actData.dependsOn.length > 0) {
+                        const toActivity = activityMap.get(actData.name);
+                        if (toActivity) {
+                            actData.dependsOn.forEach(dep => {
+                                const fromActivity = activityMap.get(dep.activity);
+                                if (fromActivity) {
+                                    const condition = dep.dependencyConditions?.[0] || 'Succeeded';
+                                    const connection = new Connection(fromActivity, toActivity, condition);
+                                    connections.push(connection);
+                                }
+                            });
+                        }
+                    }
                 });
             }
+            
+            // Redraw canvas to show connections
+            draw();
             
             // Update breadcrumb
             updateBreadcrumb();
@@ -4478,7 +4551,14 @@ class PipelineEditorProvider {
                 const cleaned = {
                     name: a.name,
                     type: a.type,
-                    dependsOn: [],
+                    x: a.x,
+                    y: a.y,
+                    dependsOn: connections
+                        .filter(c => c.to === a)
+                        .map(c => ({
+                            activity: c.from.name,
+                            dependencyConditions: [c.condition || 'Succeeded']
+                        })),
                     userProperties: a.userProperties || []
                 };
                 
@@ -4489,7 +4569,8 @@ class PipelineEditorProvider {
                 const tp = {};
                 const excludedProps = ['id', 'type', 'x', 'y', 'width', 'height', 'name', 'description', 
                                       'color', 'container', 'element', 'userProperties', 'state', 
-                                      'dependsOn', 'isContainer', 'ifTrueActivities', 'ifFalseActivities', 'expression'];
+                                      'dependsOn', 'isContainer', 'ifTrueActivities', 'ifFalseActivities', 'expression',
+                                      'typeProperties'];
                 
                 for (const key in a) {
                     if (!excludedProps.includes(key) && a.hasOwnProperty(key) && typeof a[key] !== 'function') {
@@ -4528,23 +4609,32 @@ class PipelineEditorProvider {
             }
             
             // Clear current canvas
-            activities.forEach(a => a.remove());
+            activities = [];
+            connections = [];
+            
+            // Clear only activity elements from canvas wrapper (keep canvas element)
+            const canvasWrapper = document.getElementById('canvasWrapper');
+            const activityElements = canvasWrapper.querySelectorAll('.activity-box');
+            console.log('[backToMainPipeline] Found', activityElements.length, 'activity elements to remove');
+            activityElements.forEach(el => {
+                if (el && el.parentNode) {
+                    console.log('[backToMainPipeline] Removing element:', el.dataset.activityId, el.className);
+                    el.parentNode.removeChild(el);
+                }
+            });
+            console.log('[backToMainPipeline] After cleanup, canvasWrapper children:', canvasWrapper.children.length);
             
             // Restore main pipeline state
             activities = editingContext.savedState.activities;
             connections = editingContext.savedState.connections;
             selectedActivity = editingContext.savedState.selectedActivity;
             
+            console.log('[backToMainPipeline] Restoring', activities.length, 'main pipeline activities');
             // Re-render all activities
-            const canvasWrapper = document.getElementById('canvasWrapper');
             activities.forEach(a => {
                 a.container = canvasWrapper;
-                if (a.element && a.element.parentElement) {
-                    // Element already exists, just ensure it's in the right container
-                } else {
-                    a.element = null;
-                    a.createDOMElement();
-                }
+                a.element = null;
+                a.createDOMElement();
             });
             
             // Clear editing context

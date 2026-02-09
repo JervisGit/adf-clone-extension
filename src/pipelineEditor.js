@@ -4689,8 +4689,6 @@ class PipelineEditorProvider {
             if (editingContext) {
                 const branchLabel = editingContext.branch === 'true' ? 'If True' : 'If False';
                 breadcrumb.innerHTML = \`
-                    <span style="color: var(--vscode-descriptionForeground);">Pipeline</span>
-                    <span style="margin: 0 6px; color: var(--vscode-descriptionForeground);">›</span>
                     <span style="color: var(--vscode-descriptionForeground);">\${editingContext.parentActivity.name}</span>
                     <span style="margin: 0 6px; color: var(--vscode-descriptionForeground);">›</span>
                     <span style="font-weight: 600;">\${branchLabel}</span>

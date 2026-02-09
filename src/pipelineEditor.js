@@ -4193,6 +4193,27 @@ class PipelineEditorProvider {
             }
         }
 
+        // Function to update sidebar activity restrictions when editing branches
+        function updateSidebarForBranchEditing(isInBranch) {
+            const restrictedTypes = ['Validation', 'IfCondition', 'ForEach', 'Until', 'Switch'];
+            document.querySelectorAll('.activity-item').forEach(item => {
+                const activityType = item.getAttribute('data-type');
+                const isRestricted = isInBranch && restrictedTypes.includes(activityType);
+                
+                if (isRestricted) {
+                    item.style.opacity = '0.4';
+                    item.style.cursor = 'not-allowed';
+                    item.style.pointerEvents = 'none';
+                    item.setAttribute('draggable', 'false');
+                } else {
+                    item.style.opacity = '1';
+                    item.style.cursor = 'grab';
+                    item.style.pointerEvents = 'auto';
+                    item.setAttribute('draggable', 'true');
+                }
+            });
+        }
+
         // Event handlers
         document.querySelectorAll('.activity-item').forEach(item => {
             item.addEventListener('dragstart', (e) => {
@@ -4535,6 +4556,9 @@ class PipelineEditorProvider {
             // Update breadcrumb
             updateBreadcrumb();
             
+            // Update sidebar to grey out restricted activities
+            updateSidebarForBranchEditing(true);
+            
             // Show back button
             document.getElementById('backToMainBtn').style.display = 'flex';
             
@@ -4644,6 +4668,9 @@ class PipelineEditorProvider {
             
             // Update breadcrumb
             updateBreadcrumb();
+            
+            // Restore sidebar to normal (remove restrictions)
+            updateSidebarForBranchEditing(false);
             
             // Hide back button
             document.getElementById('backToMainBtn').style.display = 'none';

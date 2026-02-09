@@ -7292,16 +7292,84 @@ class PipelineEditorProvider {
 
         // Toolbar buttons
         document.getElementById('saveBtn').addEventListener('click', () => {
-            // Check if we're inside a branch editor
+            // If we're inside a branch editor, temporarily save branch data to parent
             if (editingContext) {
+                // Save current branch activities to parent activity
+                const branchData = activities.map(a => {
+                    const cleaned = {
+                        name: a.name,
+                        type: a.type,
+                        x: a.x,
+                        y: a.y,
+                        dependsOn: connections
+                            .filter(c => c.to === a)
+                            .map(c => ({
+                                activity: c.from.name,
+                                dependencyConditions: [c.condition || 'Succeeded']
+                            })),
+                        userProperties: a.userProperties || []
+                    };
+                    
+                    if (a.description) cleaned.description = a.description;
+                    if (a.state) cleaned.state = a.state;
+                    
+                    // Build typeProperties - exclude UI and system properties
+                    const tp = {};
+                    const excludedProps = ['id', 'type', 'x', 'y', 'width', 'height', 'name', 'description', 
+                                          'color', 'container', 'element', 'userProperties', 'state', 
+                                          'dependsOn', 'isContainer', 'ifTrueActivities', 'ifFalseActivities', 'expression',
+                                          'typeProperties'];
+                    
+                    for (const key in a) {
+                        if (!excludedProps.includes(key) && a.hasOwnProperty(key) && typeof a[key] !== 'function') {
+                            tp[key] = a[key];
+                        }
+                    }
+                    
+                    cleaned.typeProperties = tp;
+                    return cleaned;
+                });
+                
+                // Update parent activity's branch
+                if (editingContext.branch === 'true') {
+                    editingContext.parentActivity.ifTrueActivities = branchData;
+                } else {
+                    editingContext.parentActivity.ifFalseActivities = branchData;
+                }
+                
+                // Temporarily switch to main pipeline context for validation and save
+                const savedActivities = activities;
+                const savedConnections = connections;
+                activities = editingContext.savedState.activities;
+                connections = editingContext.savedState.connections;
+                
+                // Validate main pipeline activities
+                const validation = validateActivities();
+                if (!validation.valid) {
+                    // Restore branch context
+                    activities = savedActivities;
+                    connections = savedConnections;
+                    vscode.postMessage({ type: 'error', text: validation.message });
+                    return;
+                }
+                
+                // Build save data from main pipeline
+                const data = buildPipelineDataForSave("pipeline1", false);
+                
+                // Restore branch context
+                activities = savedActivities;
+                connections = savedConnections;
+                
+                console.log('[Webview] Sending save message (from branch) with filePath:', currentFilePath);
                 vscode.postMessage({ 
-                    type: 'validationError', 
-                    message: 'Cannot save while editing branch activities. Please return to the main pipeline first using the "← Back to Main Pipeline" button, then save.' 
+                    type: 'save', 
+                    data: data,
+                    filePath: currentFilePath 
                 });
                 return;
             }
             
-            // Validate activities
+            // Normal save from main pipeline
             const validation = validateActivities();
             if (!validation.valid) {
                 vscode.postMessage({ type: 'error', text: validation.message });

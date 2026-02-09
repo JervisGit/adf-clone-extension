@@ -137,6 +137,25 @@
       "condition": { "type": "expression", "label": "Condition", "required": true, "placeholder": "This property should be parameterized." }
     }
   },
+  "IfCondition": {
+    "name": "If Condition",
+    "isContainer": true,
+    "tabs": ["General", "Activities", "User Properties"],
+    "commonProperties": {
+      "name": { "type": "string", "label": "Name", "required": true },
+      "description": { "type": "string", "label": "Description", "multiline": true },
+      "state": { "type": "radio", "label": "Activity state", "options": ["Activated", "Deactivated"], "default": "Activated" }
+    },
+    "typeProperties": {
+      "expression": { 
+        "type": "expression", 
+        "label": "Expression", 
+        "required": true,
+        "placeholder": "@equals(pipeline().parameters.value, 'expected')",
+        "helpText": "Boolean expression to evaluate"
+      }
+    }
+  },
   "Lookup": {
     "name": "Lookup",
     "tabs": ["General", "Settings", "User Properties"],

@@ -1301,6 +1301,97 @@ class PipelineEditorProvider {
             font-size: 13px;
         }
 
+        /* Container Activities */
+        .container-activity {
+            min-height: 100px;
+            width: 240px;
+            background: #faf9f8;
+            border: 2px solid var(--activity-color, #0078d4);
+            border-style: solid;
+        }
+
+        .container-activity:hover {
+            background: #f3f2f1;
+        }
+
+        .container-activity.selected {
+            background: #ffffff;
+            border-width: 2px;
+        }
+
+        .container-info {
+            padding: 8px 12px;
+            font-size: 11px;
+            color: #605e5c;
+            border-top: 1px solid rgba(0, 0, 0, 0.08);
+        }
+
+        .container-stat {
+            padding: 2px 0;
+        }
+
+        /* Activities Tab - Branch Editor */
+        .branch-editor {
+            border: 1px solid var(--vscode-panel-border);
+            border-radius: 4px;
+            margin-bottom: 16px;
+            overflow: hidden;
+        }
+
+        .branch-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 12px;
+            background: var(--vscode-sideBar-background);
+            border-bottom: 1px solid var(--vscode-panel-border);
+            font-weight: 600;
+            font-size: 12px;
+        }
+
+        .branch-content {
+            padding: 12px;
+            background: var(--vscode-editor-background);
+            min-height: 80px;
+        }
+
+        .activity-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            background: var(--vscode-button-secondaryBackground);
+            border: 1px solid var(--vscode-button-border);
+            border-radius: 12px;
+            font-size: 12px;
+            margin: 4px 4px 4px 0;
+        }
+
+        .activity-pill-icon {
+            font-size: 14px;
+        }
+
+        .edit-activities-btn {
+            padding: 6px 12px;
+            background: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .edit-activities-btn:hover {
+            background: var(--vscode-button-hoverBackground);
+        }
+
+        .empty-branch {
+            color: var(--vscode-descriptionForeground);
+            font-style: italic;
+            font-size: 12px;
+        }
+
         /* Context Menu */
         .context-menu {
             position: absolute;
@@ -2095,7 +2186,8 @@ class PipelineEditorProvider {
                     }
                     
                     if (a.description) activity.description = a.description;
-                    if (a.state) activity.state = a.state;
+                    // Don't add state for container activities (IfCondition, ForEach, Until, Switch)
+                    if (a.state && !a.isContainer) activity.state = a.state;
                     if (a.onInactiveMarkAs) activity.onInactiveMarkAs = a.onInactiveMarkAs;
                     
                     // For SqlServerStoredProcedure, preserve linked service metadata for extension processing
@@ -2125,7 +2217,8 @@ class PipelineEditorProvider {
                                          'writeBatchSize', 'writeBatchTimeout', 'preCopyScript', 'maxConcurrentConnections', 'writeBehavior', 
                                          'sqlWriterUseTableLock', 'disableMetricsCollection', '_sourceObject', '_sinkObject', '_sourceDatasetType', '_sinkDatasetType',
                                          'typeProperties', 'inputs', 'outputs', 'sink', 'linkedServiceName', '_selectedLinkedServiceType', 'linkedServiceProperties',
-                                         'storedProcedureName', 'storedProcedureParameters'];
+                                         'storedProcedureName', 'storedProcedureParameters',
+                                         'isContainer', 'ifTrueActivities', 'ifFalseActivities', 'expression', 'activities', 'cases', 'defaultActivities'];
                     
                     for (const key in a) {
                         if (!commonProps.includes(key) && a.hasOwnProperty(key) && typeof a[key] !== 'function') {
@@ -3209,6 +3302,33 @@ class PipelineEditorProvider {
                         }
                     }
                     
+                    // Handle IfCondition activity
+                    if (a.type === 'IfCondition') {
+                        // Remove internal properties that shouldn't be serialized
+                        delete typeProperties.isContainer;
+                        delete typeProperties.ifTrueActivities;
+                        delete typeProperties.ifFalseActivities;
+                        
+                        // Convert expression from string to Expression object format
+                        if (a.expression !== undefined) {
+                            typeProperties.expression = {
+                                value: a.expression || '',
+                                type: 'Expression'
+                            };
+                        }
+                        
+                        // Add nested activities only if they exist
+                        // Note: Nested activities need full serialization, but for now we'll add the arrays
+                        // TODO: Implement recursive serialization when context switching is complete
+                        if (a.ifTrueActivities && a.ifTrueActivities.length > 0) {
+                            typeProperties.ifTrueActivities = a.ifTrueActivities;
+                        }
+                        
+                        if (a.ifFalseActivities && a.ifFalseActivities.length > 0) {
+                            typeProperties.ifFalseActivities = a.ifFalseActivities;
+                        }
+                    }
+                    
                     activity.typeProperties = typeProperties;
                     return activity;
                 })
@@ -3427,6 +3547,15 @@ class PipelineEditorProvider {
                     this.reportStatusOnCallBack = false;
                 }
                 
+                // Set default values for IfCondition
+                if (type === 'IfCondition') {
+                    this.isContainer = true;
+                    this.expression = '';
+                    this.ifTrueActivities = [];
+                    this.ifFalseActivities = [];
+                    this.state = 'Activated';
+                }
+                
                 this.createDOMElement();
             }
 
@@ -3447,6 +3576,12 @@ class PipelineEditorProvider {
             }
 
             createDOMElement() {
+                // For container activities (IfCondition, ForEach, Until, Switch), use special rendering
+                if (this.isContainer) {
+                    this.createContainerElement();
+                    return;
+                }
+                
                 // Create the main activity box element
                 this.element = document.createElement('div');
                 this.element.className = 'activity-box';
@@ -3546,6 +3681,161 @@ class PipelineEditorProvider {
                     draw();
                 }
             }
+            
+            createContainerElement() {
+                // Create container activity element (larger, shows info about nested activities)
+                this.element = document.createElement('div');
+                this.element.className = 'activity-box container-activity';
+                this.element.style.left = this.x + 'px';
+                this.element.style.top = this.y + 'px';
+                this.element.style.setProperty('--activity-color', this.color);
+                this.element.dataset.activityId = this.id;
+                
+                // Create header
+                const header = document.createElement('div');
+                header.className = 'activity-header';
+                const typeLabel = document.createElement('span');
+                typeLabel.className = 'activity-type-label';
+                typeLabel.textContent = this.getTypeLabel();
+                header.appendChild(typeLabel);
+                
+                // Create body with icon and label
+                const body = document.createElement('div');
+                body.className = 'activity-body';
+                
+                const icon = document.createElement('div');
+                icon.className = 'activity-icon-large';
+                icon.textContent = this.getIcon();
+                
+                const label = document.createElement('div');
+                label.className = 'activity-label';
+                label.textContent = this.name;
+                
+                body.appendChild(icon);
+                body.appendChild(label);
+                
+                // Create info section for container-specific information
+                const infoSection = document.createElement('div');
+                infoSection.className = 'container-info';
+                
+                // Different info display logic based on container type
+                if (this.type === 'IfCondition') {
+                    const trueCount = this.ifTrueActivities ? this.ifTrueActivities.length : 0;
+                    const falseCount = this.ifFalseActivities ? this.ifFalseActivities.length : 0;
+                    
+                    infoSection.innerHTML = \`
+                        <div class="container-stat">
+                            <span class="branch-label">✓ True:</span> 
+                            <span class="count">\${trueCount}</span> 
+                            <span class="label">\${trueCount === 1 ? 'activity' : 'activities'}</span>
+                        </div>
+                        <div class="container-stat">
+                            <span class="branch-label">✗ False:</span> 
+                            <span class="count">\${falseCount}</span> 
+                            <span class="label">\${falseCount === 1 ? 'activity' : 'activities'}</span>
+                        </div>
+                    \`;
+                } else if (this.type === 'ForEach') {
+                    const itemsCount = this.activities ? this.activities.length : 0;
+                    infoSection.innerHTML = \`
+                        <div class="container-stat">
+                            <span class="label">Items:</span> 
+                            <span class="count">\${itemsCount}</span> 
+                            <span class="label">\${itemsCount === 1 ? 'activity' : 'activities'}</span>
+                        </div>
+                    \`;
+                } else if (this.type === 'Until') {
+                    const loopCount = this.activities ? this.activities.length : 0;
+                    infoSection.innerHTML = \`
+                        <div class="container-stat">
+                            <span class="label">Loop:</span> 
+                            <span class="count">\${loopCount}</span> 
+                            <span class="label">\${loopCount === 1 ? 'activity' : 'activities'}</span>
+                        </div>
+                    \`;
+                } else if (this.type === 'Switch') {
+                    // Count activities across all cases
+                    let totalCount = 0;
+                    if (this.cases) {
+                        Object.values(this.cases).forEach(caseActivities => {
+                            totalCount += caseActivities.length;
+                        });
+                    }
+                    if (this.defaultActivities) {
+                        totalCount += this.defaultActivities.length;
+                    }
+                    const caseCount = this.cases ? Object.keys(this.cases).length : 0;
+                    infoSection.innerHTML = \`
+                        <div class="container-stat">
+                            <span class="label">Cases:</span> <span class="count">\${caseCount}</span>
+                        </div>
+                        <div class="container-stat">
+                            <span class="label">Total:</span> 
+                            <span class="count">\${totalCount}</span> 
+                            <span class="label">\${totalCount === 1 ? 'activity' : 'activities'}</span>
+                        </div>
+                    \`;
+                }
+                
+                // Create action buttons section
+                const actions = document.createElement('div');
+                actions.className = 'activity-actions';
+                
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'action-icon-btn';
+                deleteBtn.innerHTML = '×';
+                deleteBtn.title = 'Delete';
+                deleteBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    this.handleDelete();
+                };
+                
+                const editBtn = document.createElement('button');
+                editBtn.className = 'action-icon-btn';
+                editBtn.innerHTML = '{}';
+                editBtn.title = 'Edit JSON';
+                editBtn.onclick = (e) => e.stopPropagation();
+                
+                const copyBtn = document.createElement('button');
+                copyBtn.className = 'action-icon-btn';
+                copyBtn.innerHTML = '⎘';
+                copyBtn.title = 'Copy';
+                copyBtn.onclick = (e) => e.stopPropagation();
+                
+                const infoBtn = document.createElement('button');
+                infoBtn.className = 'action-icon-btn info';
+                infoBtn.innerHTML = 'i';
+                infoBtn.title = 'Info';
+                infoBtn.onclick = (e) => e.stopPropagation();
+                
+                actions.appendChild(deleteBtn);
+                actions.appendChild(editBtn);
+                actions.appendChild(copyBtn);
+                actions.appendChild(infoBtn);
+                
+                // Add connection points
+                const positions = ['top', 'right', 'bottom', 'left'];
+                positions.forEach(pos => {
+                    const point = document.createElement('div');
+                    point.className = 'connection-point ' + pos;
+                    point.dataset.position = pos;
+                    point.dataset.activityId = this.id;
+                    this.element.appendChild(point);
+                });
+                
+                // Assemble element
+                this.element.appendChild(header);
+                this.element.appendChild(body);
+                this.element.appendChild(infoSection);
+                this.element.appendChild(actions);
+                
+                // Add to container
+                this.container.appendChild(this.element);
+                
+                // Set up event listeners
+                this.setupEventListeners();
+            }
+
             
             setupEventListeners() {
                 // Click to select
@@ -4070,6 +4360,100 @@ class PipelineEditorProvider {
                 };
                 document.addEventListener('click', closeHandler);
             }, 100);
+        }
+
+        // Helper function to get icon for activity type
+        function getIconForType(type) {
+            const iconMap = {
+                'Copy': '📋',
+                'ExecutePipeline': '▶',
+                'IfCondition': '❓',
+                'ForEach': '🔄',
+                'Until': '⟳',
+                'Switch': '🔀',
+                'Wait': '⏱',
+                'WebActivity': '🌐',
+                'WebHook': '🔔',
+                'Lookup': '🔍',
+                'GetMetadata': 'ℹ',
+                'Delete': '🗑',
+                'Validation': '✓',
+                'Filter': '⊲',
+                'SetVariable': '📝',
+                'AppendVariable': '➕',
+                'Script': '📜',
+                'SqlServerStoredProcedure': '⚡',
+                'AzureFunctionActivity': 'ƒ',
+                'DatabricksNotebook': '📓',
+                'DataLakeAnalyticsU-SQL': '📊',
+                'HDInsightSpark': '⚡',
+                'HDInsightHive': '🐝',
+                'HDInsightPig': '🐷',
+                'HDInsightMapReduce': '🗺',
+                'HDInsightStreaming': '〰',
+                'ExecuteDataFlow': '📈',
+                'ExecuteSSISPackage': '📦',
+                'Custom': '⚙'
+            };
+            return iconMap[type] || '📦';
+        }
+
+        // Generate Activities tab content for IfCondition
+        function generateIfConditionActivitiesTab(activity) {
+            const trueActivities = activity.ifTrueActivities || [];
+            const falseActivities = activity.ifFalseActivities || [];
+            
+            const renderActivitiesList = (activities) => {
+                if (activities.length === 0) {
+                    return '<div class="empty-branch">No activities</div>';
+                }
+                return activities.map(act => {
+                    const icon = getIconForType(act.type);
+                    return \`<div class="activity-pill">
+                        <span class="activity-pill-icon">\${icon}</span>
+                        <span>\${act.name}</span>
+                    </div>\`;
+                }).join('');
+            };
+            
+            return \`
+                <div style="padding: 4px 0;">
+                    <div class="property-group" style="margin-bottom: 20px;">
+                        <div class="property-label">Expression <span style="color: #d13438;">*</span></div>
+                        <textarea class="property-input" id="propExpression" rows="3" placeholder="@equals(pipeline().parameters.value, 'expected')">\${activity.expression || ''}</textarea>
+                    </div>
+                    
+                    <div class="branch-editor">
+                        <div class="branch-header">
+                            <span>True</span>
+                            <button class="edit-activities-btn" onclick="openIfConditionEditor('\${activity.id}', 'true')">
+                                ✏️ Edit Activities
+                            </button>
+                        </div>
+                        <div class="branch-content">
+                            \${renderActivitiesList(trueActivities)}
+                            <div style="margin-top: 8px; font-size: 11px; color: var(--vscode-descriptionForeground);">
+                                \${trueActivities.length} \${trueActivities.length === 1 ? 'activity' : 'activities'}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="branch-editor">
+                        <div class="branch-header">
+                            <span>False</span>
+                            <button class="edit-activities-btn" onclick="openIfConditionEditor('\${activity.id}', 'false')">
+                                ✏️ Edit Activities
+                            </button>
+                        </div>
+                        <div class="branch-content">
+                            \${renderActivitiesList(falseActivities)}
+                            <div style="margin-top: 8px; font-size: 11px; color: var(--vscode-descriptionForeground);">
+                                \${falseActivities.length} \${falseActivities.length === 1 ? 'activity' : 'activities'}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            \`;
         }
 
         // Configuration panel
@@ -5154,6 +5538,9 @@ class PipelineEditorProvider {
                 else if (tabId === 'mapping') tabContent = mappingContent;
                 else if (tabId === 'advanced') tabContent = advancedContent;
                 else if (tabId === 'user-properties') tabContent = userPropsContent;
+                else if (tabId === 'activities' && activity.type === 'IfCondition') {
+                    tabContent = generateIfConditionActivitiesTab(activity);
+                }
                 
                 console.log(\`Tab \${tabName} (id: \${tabId}) content length: \${tabContent.length}\`);
                 

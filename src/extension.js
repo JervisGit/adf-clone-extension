@@ -1,5 +1,6 @@
 const vscode = require('vscode');
 const { PipelineEditorProvider } = require('./pipelineEditor');
+const { TriggerEditorProvider } = require('./triggerEditor');
 const { PipelineTreeDataProvider } = require('./pipelineTreeProvider');
 
 function activate(context) {
@@ -10,6 +11,23 @@ function activate(context) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand('adf-pipeline-clone.openPipeline', () => {
 			editorProvider.createOrShow();
+		})
+	);
+
+	// Register the trigger editor provider
+	const triggerEditorProvider = new TriggerEditorProvider(context);
+	context.subscriptions.push(
+		vscode.commands.registerCommand('adf-pipeline-clone.openTrigger', () => {
+			triggerEditorProvider.createOrShow();
+		})
+	);
+
+	// Register command to open trigger file
+	context.subscriptions.push(
+		vscode.commands.registerCommand('adf-pipeline-clone.openTriggerFile', (item) => {
+			if (item && item.filePath) {
+				triggerEditorProvider.loadTriggerFile(item.filePath);
+			}
 		})
 	);
 
@@ -134,10 +152,10 @@ function activate(context) {
 						type: "ScheduleTrigger",
 						typeProperties: {
 							recurrence: {
-								frequency: "Day",
-								interval: 1,
-								startTime: new Date().toISOString(),
-								timeZone: "UTC"
+								frequency: "Minute",
+								interval: 15,
+								startTime: new Date().toISOString().slice(0, 19),
+								timeZone: "Singapore Standard Time"
 							}
 						}
 					}
@@ -145,7 +163,8 @@ function activate(context) {
 				
 				fs.writeFileSync(filePath, JSON.stringify(triggerTemplate, null, 2));
 				pipelineTreeProvider.refresh();
-				vscode.window.showInformationMessage(`Trigger ${name} created`);
+				// Open the newly created trigger in the editor
+				triggerEditorProvider.loadTriggerFile(filePath);
 			}
 		})
 	);

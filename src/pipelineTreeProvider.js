@@ -100,11 +100,28 @@ class FileItem extends vscode.TreeItem {
 		this.fileType = fileType;
 		this.contextValue = fileType;
 		this.iconPath = new vscode.ThemeIcon('json');
-		this.command = {
-			command: 'adf-pipeline-clone.openPipelineFile',
-			title: 'Open Pipeline',
-			arguments: [this]
-		};
+		
+		// Use different commands based on file type
+		if (fileType === 'trigger') {
+			this.command = {
+				command: 'adf-pipeline-clone.openTriggerFile',
+				title: 'Open Trigger',
+				arguments: [this]
+			};
+		} else if (fileType === 'pipeline') {
+			this.command = {
+				command: 'adf-pipeline-clone.openPipelineFile',
+				title: 'Open Pipeline',
+				arguments: [this]
+			};
+		} else {
+			// For datasets, just navigate to the file
+			this.command = {
+				command: 'vscode.open',
+				title: 'Open Dataset',
+				arguments: [vscode.Uri.file(filePath)]
+			};
+		}
 	}
 }
 

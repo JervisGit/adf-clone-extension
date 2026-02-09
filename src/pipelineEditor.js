@@ -2111,16 +2111,18 @@ class PipelineEditorProvider {
         }
         
         // Shared function to build pipeline data for saving (used by both save button and cache)
-        function buildPipelineDataForSave(pipelineName) {
-            // Validate required fields before saving
-            for (const a of activities) {
-                if (a.type === 'IfCondition') {
-                    if (!a.expression || a.expression.trim() === '') {
-                        vscode.postMessage({
-                            type: 'validationError',
-                            message: 'Activity "' + a.name + '" requires an Expression. Please set the expression in the Activities tab before saving.'
-                        });
-                        throw new Error('IfCondition activity "' + a.name + '" is missing required Expression field');
+        function buildPipelineDataForSave(pipelineName, skipValidation = false) {
+            // Validate required fields before saving (only when actually saving, not caching)
+            if (!skipValidation) {
+                for (const a of activities) {
+                    if (a.type === 'IfCondition') {
+                        if (!a.expression || a.expression.trim() === '') {
+                            vscode.postMessage({
+                                type: 'validationError',
+                                message: 'Activity "' + a.name + '" requires an Expression. Please set the expression in the Activities tab before saving.'
+                            });
+                            throw new Error('IfCondition activity "' + a.name + '" is missing required Expression field');
+                        }
                     }
                 }
             }
@@ -3439,8 +3441,8 @@ class PipelineEditorProvider {
                 pipelineName = filename.replace('.json', '');
             }
             
-            // Use shared function to build pipeline data
-            const data = buildPipelineDataForSave(pipelineName);
+            // Use shared function to build pipeline data (skip validation for caching)
+            const data = buildPipelineDataForSave(pipelineName, true);
             vscode.postMessage({ type: 'cacheState', data: data, filePath: currentFilePath });
         }
         
@@ -7290,6 +7292,15 @@ class PipelineEditorProvider {
 
         // Toolbar buttons
         document.getElementById('saveBtn').addEventListener('click', () => {
+            // Check if we're inside a branch editor
+            if (editingContext) {
+                vscode.postMessage({ 
+                    type: 'validationError', 
+                    message: 'Cannot save while editing branch activities. Please return to the main pipeline first using the "← Back to Main Pipeline" button, then save.' 
+                });
+                return;
+            }
+            
             // Validate activities
             const validation = validateActivities();
             if (!validation.valid) {
@@ -7297,7 +7308,7 @@ class PipelineEditorProvider {
                 return;
             }
             
-            const data = buildPipelineDataForSave("pipeline1");
+            const data = buildPipelineDataForSave("pipeline1", false);
             
             console.log('[Webview] Sending save message with filePath:', currentFilePath);
             vscode.postMessage({ 

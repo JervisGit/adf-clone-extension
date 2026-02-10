@@ -18,6 +18,9 @@ class PipelineRunsTreeDataProvider {
         this.storageAccountName = 'testadlsjervis123';
         this.selectedContainer = null;
         this.pipelineRunsFolder = 'pipeline-runs';
+        this.dateFilter = '24h'; // Default to last 24 hours. Options: 'all', '24h', '7d', '30d', 'custom'
+        this.customStartDate = null;
+        this.customEndDate = null;
         
         // Cache
         this.pipelineRuns = [];
@@ -114,7 +117,8 @@ class PipelineRunsTreeDataProvider {
                     const folderName = path.name.split('/').pop();
                     return this.parsePipelineRunFolder(folderName, path);
                 })
-                .filter(run => run !== null);
+                .filter(run => run !== null)
+                .filter(run => this.filterByDateRange(run)); // Apply date filter
             
             // Sort by timestamp (latest first)
             runFolders.sort((a, b) => b.timestamp - a.timestamp);
@@ -167,6 +171,112 @@ class PipelineRunsTreeDataProvider {
             console.error(`Error parsing folder name ${folderName}:`, error);
             return null;
         }
+    }
+
+    /**
+     * Filter pipeline runs by date range
+     * All filtering is done in UTC since run.timestamp is in UTC
+     */
+    filterByDateRange(run) {
+        if (this.dateFilter === 'all') {
+            return true;
+        }
+
+        const runTime = run.timestamp;
+        const now = new Date();
+
+        if (this.dateFilter === '24h') {
+            const cutoff = new Date(now.getTime() - (24 * 60 * 60 * 1000));
+            return runTime >= cutoff;
+        } else if (this.dateFilter === '7d') {
+            const cutoff = new Date(now.getTime() - (7 * 24 * 60 * 60 * 1000));
+            return runTime >= cutoff;
+        } else if (this.dateFilter === '30d') {
+            const cutoff = new Date(now.getTime() - (30 * 24 * 60 * 60 * 1000));
+            return runTime >= cutoff;
+        } else if (this.dateFilter === 'custom' && this.customStartDate && this.customEndDate) {
+            // customStartDate and customEndDate are already in UTC (parsed from SGT with +08:00)
+            return runTime >= this.customStartDate && runTime <= this.customEndDate;
+        }
+
+        return true;
+    }
+
+    /**
+     * Select date filter
+     */
+    async selectDateFilter() {
+        const options = [
+            { label: '$(calendar) All Time', description: 'Show all pipeline runs', value: 'all' },
+            { label: '$(clock) Last 24 Hours', description: 'Show runs from the last 24 hours', value: '24h' },
+            { label: '$(calendar) Last 7 Days', description: 'Show runs from the last 7 days', value: '7d' },
+            { label: '$(calendar) Last 30 Days', description: 'Show runs from the last 30 days', value: '30d' },
+            { label: '$(calendar) Custom Range', description: 'Select a custom date range', value: 'custom' }
+        ];
+
+        const selected = await vscode.window.showQuickPick(options, {
+            placeHolder: 'Select date range filter'
+        });
+
+        if (!selected) {
+            return;
+        }
+
+        if (selected.value === 'custom') {
+            // Prompt for start date and time (Singapore timezone)
+            const startDateTimeStr = await vscode.window.showInputBox({
+                prompt: 'Enter start date and time (Singapore timezone, UTC+8)',
+                placeHolder: 'YYYY-MM-DD HH:MM (e.g., 2026-02-01 00:00)',
+                validateInput: (value) => {
+                    if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(value)) {
+                        return 'Please enter date and time in YYYY-MM-DD HH:MM format';
+                    }
+                    return null;
+                }
+            });
+
+            if (!startDateTimeStr) {
+                return;
+            }
+
+            // Prompt for end date and time
+            const nowSGT = new Date(Date.now() + (8 * 60 * 60 * 1000));
+            const defaultEndTime = `${nowSGT.getUTCFullYear()}-${String(nowSGT.getUTCMonth() + 1).padStart(2, '0')}-${String(nowSGT.getUTCDate()).padStart(2, '0')} ${String(nowSGT.getUTCHours()).padStart(2, '0')}:${String(nowSGT.getUTCMinutes()).padStart(2, '0')}`;
+            
+            const endDateTimeStr = await vscode.window.showInputBox({
+                prompt: 'Enter end date and time (Singapore timezone, UTC+8)',
+                placeHolder: 'YYYY-MM-DD HH:MM (e.g., 2026-02-10 23:59)',
+                value: defaultEndTime,
+                validateInput: (value) => {
+                    if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(value)) {
+                        return 'Please enter date and time in YYYY-MM-DD HH:MM format';
+                    }
+                    return null;
+                }
+            });
+
+            if (!endDateTimeStr) {
+                return;
+            }
+
+            // Parse dates and times in Singapore timezone (convert to UTC for storage)
+            // Input is in SGT (UTC+8), so we subtract 8 hours to get UTC
+            const startParts = startDateTimeStr.split(' ');
+            const startDate = startParts[0];
+            const startTime = startParts[1];
+            this.customStartDate = new Date(`${startDate}T${startTime}:00+08:00`);
+            
+            const endParts = endDateTimeStr.split(' ');
+            const endDate = endParts[0];
+            const endTime = endParts[1];
+            this.customEndDate = new Date(`${endDate}T${endTime}:59+08:00`);
+        }
+
+        this.dateFilter = selected.value;
+        await this.refresh();
+        
+        const filterLabel = selected.label.replace(/\$\([^)]+\)\s*/g, '');
+        vscode.window.showInformationMessage(`Date filter set to: ${filterLabel}`);
     }
 
     /**
@@ -238,13 +348,24 @@ class PipelineRunItem extends vscode.TreeItem {
         this.contextValue = 'pipeline-run';
         this.iconPath = new vscode.ThemeIcon('play-circle');
         
-        // Format timestamp for description
-        const date = run.timestamp;
-        const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-        const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        // Format timestamp in Singapore timezone (UTC+8)
+        // run.timestamp is in UTC, so we add 8 hours to display in SGT
+        const utcDate = run.timestamp;
+        const sgtTime = new Date(utcDate.getTime() + (8 * 60 * 60 * 1000));
         
-        this.description = `${dateStr} ${timeStr}`;
-        this.tooltip = `Pipeline: ${run.pipelineName}\nRun ID: ${run.runId}\nTimestamp: ${date.toISOString()}\nFolder: ${run.folderName}`;
+        // Format manually to avoid timezone confusion
+        const year = sgtTime.getUTCFullYear();
+        const month = String(sgtTime.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(sgtTime.getUTCDate()).padStart(2, '0');
+        const hours = String(sgtTime.getUTCHours()).padStart(2, '0');
+        const minutes = String(sgtTime.getUTCMinutes()).padStart(2, '0');
+        const seconds = String(sgtTime.getUTCSeconds()).padStart(2, '0');
+        
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const monthName = monthNames[sgtTime.getUTCMonth()];
+        
+        this.description = `${monthName} ${day}, ${year} ${hours}:${minutes}:${seconds}`;
+        this.tooltip = `Pipeline: ${run.pipelineName}\nRun ID: ${run.runId}\nTimestamp (SGT): ${year}-${month}-${day} ${hours}:${minutes}:${seconds}\nFolder: ${run.folderName}`;
         
         // Command to view details when clicked
         this.command = {

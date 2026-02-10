@@ -92,6 +92,13 @@ function activate(context) {
 		})
 	);
 
+	// Register command to select date filter
+	context.subscriptions.push(
+		vscode.commands.registerCommand('adf-pipeline-clone.selectDateFilter', () => {
+			pipelineRunsTreeProvider.selectDateFilter();
+		})
+	);
+
 	// Register create commands
 	context.subscriptions.push(
 		vscode.commands.registerCommand('adf-pipeline-clone.createPipeline', async (folderItem) => {

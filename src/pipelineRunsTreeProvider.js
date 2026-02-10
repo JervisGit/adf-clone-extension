@@ -60,12 +60,12 @@ class PipelineRunsTreeDataProvider {
         const isLoggedIn = await this.checkAzLogin();
         
         if (!isLoggedIn) {
-            return [new MessageItem('⚠️ Please login using "az login"', 'not-logged-in')];
+            return [new MessageItem('Please login using "az login"', 'not-logged-in')];
         }
 
         // If no container is selected, prompt to select one
         if (!this.selectedContainer) {
-            return [new MessageItem('📦 Click to select a container', 'select-container')];
+            return [new MessageItem('Click to select a container', 'select-container')];
         }
 
         // Root level - show pipeline runs
@@ -80,7 +80,7 @@ class PipelineRunsTreeDataProvider {
                 return this.pipelineRuns.map(run => new PipelineRunItem(run));
             } catch (error) {
                 console.error('Error loading pipeline runs:', error);
-                return [new MessageItem(`❌ Error: ${error.message}`, 'error')];
+                return [new MessageItem(`Error: ${error.message}`, 'error')];
             }
         }
         

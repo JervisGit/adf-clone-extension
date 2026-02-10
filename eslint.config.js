@@ -12,7 +12,8 @@ module.exports = {
 			__filename: "readonly",
 			setImmediate: "readonly",
 			suite: "readonly",
-			test: "readonly"
+			test: "readonly",
+			fetch: "readonly"
 		}
 	},
 	rules: {

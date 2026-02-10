@@ -32,6 +32,11 @@
           "id": "adf-pipelines",
           "name": "Synapse Resources",
           "contextualTitle": "Synapse Resources"
+        },
+        {
+          "id": "adf-pipeline-runs",
+          "name": "Pipeline Run Logs",
+          "contextualTitle": "Pipeline Run Logs"
         }
       ]
     },
@@ -65,6 +70,20 @@
         "command": "adf-pipeline-clone.createTrigger",
         "title": "New Trigger",
         "icon": "$(add)"
+      },
+      {
+        "command": "adf-pipeline-clone.refreshPipelineRuns",
+        "title": "Refresh Pipeline Runs",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "adf-pipeline-clone.selectContainer",
+        "title": "Select Container",
+        "icon": "$(symbol-namespace)"
+      },
+      {
+        "command": "adf-pipeline-clone.viewPipelineRun",
+        "title": "View Pipeline Run Details"
       }
     ],
     "menus": {
@@ -72,6 +91,16 @@
         {
           "command": "adf-pipeline-clone.refreshPipelines",
           "when": "view == adf-pipelines",
+          "group": "navigation"
+        },
+        {
+          "command": "adf-pipeline-clone.refreshPipelineRuns",
+          "when": "view == adf-pipeline-runs",
+          "group": "navigation"
+        },
+        {
+          "command": "adf-pipeline-clone.selectContainer",
+          "when": "view == adf-pipeline-runs",
           "group": "navigation"
         }
       ],

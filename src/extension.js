@@ -2,6 +2,7 @@ const vscode = require('vscode');
 const { PipelineEditorProvider } = require('./pipelineEditor');
 const { TriggerEditorProvider } = require('./triggerEditor');
 const { PipelineTreeDataProvider } = require('./pipelineTreeProvider');
+const { PipelineRunsTreeDataProvider } = require('./pipelineRunsTreeProvider');
 
 function activate(context) {
 	console.log('ADF Pipeline Clone extension is now active!');
@@ -59,6 +60,35 @@ function activate(context) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand('adf-pipeline-clone.refreshPipelines', () => {
 			pipelineTreeProvider.refresh();
+		})
+	);
+
+	// Register the pipeline runs tree view
+	const pipelineRunsTreeProvider = new PipelineRunsTreeDataProvider(context);
+	const pipelineRunsTreeView = vscode.window.createTreeView('adf-pipeline-runs', {
+		treeDataProvider: pipelineRunsTreeProvider,
+		showCollapseAll: true
+	});
+	context.subscriptions.push(pipelineRunsTreeView);
+
+	// Register command to refresh pipeline runs
+	context.subscriptions.push(
+		vscode.commands.registerCommand('adf-pipeline-clone.refreshPipelineRuns', () => {
+			pipelineRunsTreeProvider.refresh();
+		})
+	);
+
+	// Register command to select container
+	context.subscriptions.push(
+		vscode.commands.registerCommand('adf-pipeline-clone.selectContainer', () => {
+			pipelineRunsTreeProvider.selectContainer();
+		})
+	);
+
+	// Register command to view pipeline run details
+	context.subscriptions.push(
+		vscode.commands.registerCommand('adf-pipeline-clone.viewPipelineRun', (run) => {
+			pipelineRunsTreeProvider.viewPipelineRun(run);
 		})
 	);
 

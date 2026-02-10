@@ -109,5 +109,8 @@
     "@vscode/vsce": "^3.7.1",
     "esbuild": "^0.27.2",
     "eslint": "^9.39.2"
+  },
+  "dependencies": {
+    "@azure/identity": "^4.0.0"
   }
 }

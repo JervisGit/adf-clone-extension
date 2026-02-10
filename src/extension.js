@@ -3,6 +3,7 @@ const { PipelineEditorProvider } = require('./pipelineEditor');
 const { TriggerEditorProvider } = require('./triggerEditor');
 const { PipelineTreeDataProvider } = require('./pipelineTreeProvider');
 const { PipelineRunsTreeDataProvider } = require('./pipelineRunsTreeProvider');
+const { PipelineRunViewerProvider } = require('./pipelineRunViewer');
 
 function activate(context) {
 	console.log('ADF Pipeline Clone extension is now active!');
@@ -70,6 +71,10 @@ function activate(context) {
 		showCollapseAll: true
 	});
 	context.subscriptions.push(pipelineRunsTreeView);
+
+	// Register the pipeline run viewer provider
+	const pipelineRunViewerProvider = new PipelineRunViewerProvider(context);
+	pipelineRunsTreeProvider.setViewerProvider(pipelineRunViewerProvider);
 
 	// Register command to refresh pipeline runs
 	context.subscriptions.push(

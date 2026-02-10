@@ -84,6 +84,11 @@
       {
         "command": "adf-pipeline-clone.viewPipelineRun",
         "title": "View Pipeline Run Details"
+      },
+      {
+        "command": "adf-pipeline-clone.selectDateFilter",
+        "title": "Filter by Date Range",
+        "icon": "$(filter)"
       }
     ],
     "menus": {
@@ -95,6 +100,11 @@
         },
         {
           "command": "adf-pipeline-clone.refreshPipelineRuns",
+          "when": "view == adf-pipeline-runs",
+          "group": "navigation"
+        },
+        {
+          "command": "adf-pipeline-clone.selectDateFilter",
           "when": "view == adf-pipeline-runs",
           "group": "navigation"
         },

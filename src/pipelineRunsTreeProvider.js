@@ -25,6 +25,7 @@ class PipelineRunsTreeDataProvider {
         // Cache
         this.pipelineRuns = [];
         this.isAzLoggedIn = false;
+        this.viewerProvider = null;
     }
 
     /**
@@ -39,6 +40,13 @@ class PipelineRunsTreeDataProvider {
             this.isAzLoggedIn = false;
             return false;
         }
+    }
+
+    /**
+     * Set the viewer provider
+     */
+    setViewerProvider(viewerProvider) {
+        this.viewerProvider = viewerProvider;
     }
 
     /**
@@ -306,30 +314,18 @@ class PipelineRunsTreeDataProvider {
      * View pipeline run details
      */
     async viewPipelineRun(run) {
+        if (!this.viewerProvider) {
+            vscode.window.showErrorMessage('Pipeline run viewer is not initialized');
+            return;
+        }
+
         try {
-            await vscode.window.withProgress({
-                location: vscode.ProgressLocation.Notification,
-                title: `Loading pipeline run: ${run.pipelineName}`,
-                cancellable: false
-            }, async (progress) => {
-                const client = new ADLSRestClient(this.storageAccountName);
-                
-                progress.report({ increment: 30, message: "Reading activity runs..." });
-                
-                // Read activity_runs.json
-                const activityRunsPath = `${this.pipelineRunsFolder}/${run.folderName}/activity_runs.json`;
-                const content = await client.readFile(this.selectedContainer, activityRunsPath);
-                const activityRuns = JSON.parse(content);
-                
-                progress.report({ increment: 70, message: "Formatting output..." });
-                
-                // Show the content in a new document
-                const doc = await vscode.workspace.openTextDocument({
-                    content: JSON.stringify(activityRuns, null, 2),
-                    language: 'json'
-                });
-                await vscode.window.showTextDocument(doc);
-            });
+            await this.viewerProvider.openPipelineRun(
+                this.storageAccountName,
+                this.selectedContainer,
+                run.folderName,
+                run
+            );
         } catch (error) {
             vscode.window.showErrorMessage(`Failed to load pipeline run: ${error.message}`);
         }

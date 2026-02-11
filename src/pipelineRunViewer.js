@@ -113,91 +113,322 @@ class PipelineRunViewerProvider {
         }
 
         body {
-            font-family: var(--vscode-font-family);
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
             color: var(--vscode-foreground);
             background-color: var(--vscode-editor-background);
-            padding: 20px;
-            overflow-x: auto;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
         }
 
         .header {
-            margin-bottom: 20px;
-            padding-bottom: 15px;
+            padding: 16px 20px;
             border-bottom: 1px solid var(--vscode-panel-border);
+            background: var(--vscode-sideBar-background);
         }
 
         .header h1 {
-            font-size: 20px;
-            margin-bottom: 10px;
+            font-size: 18px;
+            margin-bottom: 8px;
+            font-weight: 600;
         }
 
         .header-info {
             display: flex;
-            gap: 30px;
+            gap: 24px;
             color: var(--vscode-descriptionForeground);
-            font-size: 13px;
+            font-size: 12px;
         }
 
         .header-info-item {
             display: flex;
-            gap: 5px;
+            gap: 6px;
         }
 
         .header-info-label {
             font-weight: 600;
         }
 
-        .canvas-container {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
+        .canvas-wrapper {
+            flex: 1;
+            overflow: auto;
+            background: var(--vscode-editor-background);
+            border-bottom: 1px solid var(--vscode-panel-border);
             padding: 20px;
-            background-color: var(--vscode-editor-background);
-            border: 1px solid var(--vscode-panel-border);
-            border-radius: 4px;
-            min-height: 200px;
-            overflow-x: auto;
         }
 
+        .canvas-container {
+            display: flex;
+            gap: 16px;
+            min-height: 150px;
+        }
+
+        /* Activity Box - Matching pipeline editor style */
         .activity-box {
-            background-color: var(--vscode-input-background);
-            border: 2px solid var(--vscode-input-border);
-            border-radius: 6px;
-            padding: 12px;
-            min-width: 180px;
-            max-width: 220px;
+            width: 180px;
+            min-height: 56px;
+            background: #f0f0f0;
+            border: 1px solid #c8c8c8;
+            border-radius: 3px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
             cursor: pointer;
-            transition: all 0.2s;
             flex-shrink: 0;
+            user-select: none;
+            transition: all 0.2s;
         }
 
         .activity-box:hover {
-            border-color: var(--vscode-focusBorder);
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+            background: #e8e8e8;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12);
         }
 
         .activity-box.selected {
-            border-color: var(--vscode-focusBorder);
-            background-color: var(--vscode-list-activeSelectionBackground);
-        }
-
-        .activity-box.status-succeeded {
-            border-left: 4px solid #4caf50;
+            background: #ffffff;
+            border: 1px solid #0078d4;
+            box-shadow: 0 4px 12px rgba(0, 120, 212, 0.2);
+            min-height: 88px;
         }
 
         .activity-box.status-failed {
-            border-left: 4px solid #f44336;
+            border-left: 3px solid #f44336;
         }
 
-        .activity-box.status-inprogress,
-        .activity-box.status-queued {
-            border-left: 4px solid #2196f3;
+        .activity-box.status-succeeded {
+            border-left: 3px solid #4caf50;
         }
 
-        .activity-icon {
-            font-size: 24px;
-            margin-bottom: 8px;
+        .activity-header {
+            padding: 4px 8px;
+            background: rgba(0, 0, 0, 0.05);
+            border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+            border-radius: 3px 3px 0 0;
+        }
+
+        .activity-box.selected .activity-header {
+            background: #0078d4;
+            border-bottom: none;
+        }
+
+        .activity-type-label {
+            font-size: 11px;
+            color: #605e5c;
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        .activity-box.selected .activity-type-label {
+            color: #ffffff;
+        }
+
+        .activity-body {
+            display: flex;
+            align-items: center;
+            padding: 8px;
+            gap: 8px;
+        }
+
+        .activity-icon-large {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            flex-shrink: 0;
+            font-size: 20px;
+            color: var(--activity-color, #0078d4);
+        }
+
+        .activity-label {
+            font-size: 13px;
+            font-weight: 400;
+            color: #323130;
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        .activity-status-badge {
+            display: none;
+        }
+
+        .activity-box.selected .activity-status-badge {
+            display: block;
+            padding: 4px 8px;
+            border-top: 1px solid #edebe9;
+            font-size: 11px;
             text-align: center;
+        }
+
+        .activity-status-badge.succeeded {
+            background: rgba(76, 175, 80, 0.1);
+            color: #4caf50;
+        }
+
+        .activity-status-badge.failed {
+            background: rgba(244, 67, 54, 0.1);
+            color: #f44336;
+        }
+
+        /* Configuration Panel (Bottom) - Matching pipeline editor */
+        .config-panel {
+            height: 300px;
+            min-height: 300px;
+            max-height: 300px;
+            background: var(--vscode-panel-background);
+            border-top: 1px solid var(--vscode-panel-border);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            flex-shrink: 0;
+            transition: height 0.2s ease;
+        }
+
+        .config-panel.minimized {
+            height: 40px !important;
+            min-height: 40px !important;
+            max-height: 40px !important;
+        }
+
+        .config-panel.minimized .config-content {
+            display: none;
+        }
+
+        .config-tabs {
+            display: flex;
+            background: var(--vscode-sideBar-background);
+            border-bottom: 1px solid var(--vscode-panel-border);
+            padding: 0 16px;
+            gap: 4px;
+            height: 40px;
+            align-items: center;
+        }
+
+        .config-header-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--vscode-foreground);
+        }
+
+        .config-collapse-btn {
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            color: var(--vscode-foreground);
+            padding: 4px 8px;
+            margin-left: auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s ease;
+            border-radius: 4px;
+        }
+
+        .config-collapse-btn:hover {
+            background: var(--vscode-list-hoverBackground);
+        }
+
+        .config-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            background: var(--vscode-editor-background);
+        }
+
+        .config-tab-pane {
+            display: none;
+        }
+
+        .config-tab-pane.active {
+            display: block;
+        }
+
+        .property-grid {
+            display: grid;
+            grid-template-columns: 150px 1fr;
+            gap: 12px 16px;
+            align-items: center;
+        }
+
+        .property-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--vscode-descriptionForeground);
+        }
+
+        .property-value {
+            font-size: 13px;
+            padding: 6px 8px;
+            background: var(--vscode-input-background);
+            border: 1px solid var(--vscode-input-border);
+            border-radius: 3px;
+            color: var(--vscode-input-foreground);
+            word-break: break-all;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 8px;
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid var(--vscode-panel-border);
+        }
+
+        .btn {
+            padding: 6px 14px;
+            font-size: 13px;
+            border: none;
+            border-radius: 2px;
+            cursor: pointer;
+            background-color: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            transition: background-color 0.2s;
+        }
+
+        .btn:hover {
+            background-color: var(--vscode-button-hoverBackground);
+        }
+
+        .btn-secondary {
+            background-color: var(--vscode-button-secondaryBackground);
+            color: var(--vscode-button-secondaryForeground);
+        }
+
+        .btn-secondary:hover {
+            background-color: var(--vscode-button-secondaryHoverBackground);
+        }
+
+        .error-section {
+            margin-top: 16px;
+            padding: 12px;
+            background: rgba(244, 67, 54, 0.1);
+            border-left: 3px solid #f44336;
+            border-radius: 3px;
+        }
+
+        .error-title {
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #f44336;
+            font-size: 13px;
+        }
+
+        .error-detail {
+            font-size: 12px;
+            margin-bottom: 4px;
+        }
+
+        .error-detail strong {
+            font-weight: 600;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: var(--vscode-descriptionForeground);
+            font-size: 13px;
         }
 
         .activity-name {
@@ -362,25 +593,39 @@ class PipelineRunViewerProvider {
         </div>
     </div>
 
-    <div class="canvas-container">
-        ${activities.length === 0 
-            ? '<div class="empty-state">No activities found in this pipeline run</div>'
-            : activities.map((activity, index) => this.renderActivityBox(activity, index)).join('')
-        }
+    <div class="canvas-wrapper">
+        <div class="canvas-container">
+            ${activities.length === 0 
+                ? '<div class="empty-state">No activities found in this pipeline run</div>'
+                : activities.map((activity, index) => this.renderActivityBox(activity, index)).join('')
+            }
+        </div>
     </div>
 
-    <div class="bottom-panel">
-        <div class="panel-title">Activity Details</div>
-        ${activities.map((activity, index) => this.renderActivityDetails(activity, index)).join('')}
-        ${activities.length === 0 
-            ? '<div class="empty-state">Select an activity to view details</div>'
-            : ''
-        }
+    <div class="config-panel">
+        <div class="config-tabs">
+            <span class="config-header-title">Activity Details</span>
+            <button class="config-collapse-btn" id="configCollapseBtn" onclick="toggleConfig()" title="Collapse Configuration Panel">»</button>
+        </div>
+        <div class="config-content">
+            ${activities.map((activity, index) => this.renderActivityDetails(activity, index)).join('')}
+            ${activities.length === 0 
+                ? '<div class="empty-state">Select an activity to view details</div>'
+                : ''
+            }
+        </div>
     </div>
 
     <script>
         const vscode = acquireVsCodeApi();
         let selectedActivityIndex = null;
+
+        function toggleConfig() {
+            const panel = document.querySelector('.config-panel');
+            const btn = document.getElementById('configCollapseBtn');
+            panel.classList.toggle('minimized');
+            btn.textContent = panel.classList.contains('minimized') ? '«' : '»';
+        }
 
         function selectActivity(index) {
             // Remove previous selection
@@ -438,66 +683,63 @@ class PipelineRunViewerProvider {
     renderActivityBox(activity, index) {
         const statusClass = activity.status.toLowerCase().replace(/\s+/g, '');
         const icon = this.getActivityIcon(activity.activityType);
+        const color = this.getActivityColor(activity.activityType);
         
         return `
-        <div class="activity-box status-${statusClass}" data-index="${index}" onclick="selectActivity(${index})">
-            <div class="activity-icon">${icon}</div>
-            <div class="activity-name">${activity.activityName}</div>
-            <div class="activity-type">${activity.activityType}</div>
-            <div class="activity-status ${statusClass}">${activity.status}</div>
+        <div class="activity-box status-${statusClass}" data-index="${index}" onclick="selectActivity(${index})" style="--activity-color: ${color}">
+            <div class="activity-header">
+                <span class="activity-type-label">${activity.activityType}</span>
+            </div>
+            <div class="activity-body">
+                <div class="activity-icon-large">${icon}</div>
+                <div class="activity-label">${activity.activityName}</div>
+            </div>
+            <div class="activity-status-badge ${statusClass}">${activity.status}</div>
         </div>`;
     }
 
     renderActivityDetails(activity, index) {
-        const hasError = activity.status === 'Failed' && activity.error && activity.error.message;
+        const hasError =activity.status === 'Failed' && activity.error && activity.error.message;
         const durationSec = activity.durationInMs ? (activity.durationInMs / 1000).toFixed(2) : 'N/A';
 
         return `
-        <div class="activity-details" data-index="${index}">
-            <div class="details-grid">
-                <div class="detail-item">
-                    <div class="detail-label">Activity Name</div>
-                    <div class="detail-value">${activity.activityName}</div>
-                </div>
-                <div class="detail-item">
-                    <div class="detail-label">Activity Type</div>
-                    <div class="detail-value">${activity.activityType}</div>
-                </div>
-                <div class="detail-item">
-                    <div class="detail-label">Status</div>
-                    <div class="detail-value">${activity.status}</div>
-                </div>
-                <div class="detail-item">
-                    <div class="detail-label">Run Start</div>
-                    <div class="detail-value">${this.formatTimestamp(new Date(activity.activityRunStart))}</div>
-                </div>
-                <div class="detail-item">
-                    <div class="detail-label">Run End</div>
-                    <div class="detail-value">${this.formatTimestamp(new Date(activity.activityRunEnd))}</div>
-                </div>
-                <div class="detail-item">
-                    <div class="detail-label">Duration</div>
-                    <div class="detail-value">${durationSec} seconds</div>
-                </div>
-                <div class="detail-item">
-                    <div class="detail-label">Activity Run ID</div>
-                    <div class="detail-value">${activity.activityRunId}</div>
-                </div>
+        <div class="config-tab-pane activity-details" data-index="${index}">
+            <div class="property-grid">
+                <div class="property-label">Activity Name</div>
+                <div class="property-value">${activity.activityName}</div>
+                
+                <div class="property-label">Activity Type</div>
+                <div class="property-value">${activity.activityType}</div>
+                
+                <div class="property-label">Status</div>
+                <div class="property-value">${activity.status}</div>
+                
+                <div class="property-label">Run Start</div>
+                <div class="property-value">${this.formatTimestamp(new Date(activity.activityRunStart))}</div>
+                
+                <div class="property-label">Run End</div>
+                <div class="property-value">${this.formatTimestamp(new Date(activity.activityRunEnd))}</div>
+                
+                <div class="property-label">Duration</div>
+                <div class="property-value">${durationSec} seconds</div>
+                
+                <div class="property-label">Activity Run ID</div>
+                <div class="property-value">${activity.activityRunId}</div>
             </div>
 
             ${hasError ? `
-            <div class="error-info">
+            <div class="error-section">
                 <div class="error-title">❌ Error Details</div>
-                <div class="error-message"><strong>Error Code:</strong> ${activity.error.errorCode || 'N/A'}</div>
-                <div class="error-message"><strong>Message:</strong> ${activity.error.message || 'N/A'}</div>
-                <div class="error-message"><strong>Failure Type:</strong> ${activity.error.failureType || 'N/A'}</div>
+                <div class="error-detail"><strong>Error Code:</strong> ${activity.error.errorCode || 'N/A'}</div>
+                <div class="error-detail"><strong>Message:</strong> ${activity.error.message || 'N/A'}</div>
+                <div class="error-detail"><strong>Failure Type:</strong> ${activity.error.failureType || 'N/A'}</div>
             </div>
             ` : ''}
 
             <div class="action-buttons">
-                <button class="btn" onclick="showInput(${index})">📥 View Input</button>
-                <button class="btn" onclick="showOutput(${index})">📤 View Output</button>
-                <button class="btn btn-secondary" onclick="showDetails(${index})">📋 View Full Details</button>
+                <button class="btn" onclick="showInput(${index})">View Input</button>
+                <button class="btn" onclick="showOutput(${index})">View Output</button>
+                <button class="btn btn-secondary" onclick="showDetails(${index})">View Full JSON</button>
             </div>
         </div>`;
     }
@@ -527,6 +769,35 @@ class PipelineRunViewerProvider {
         };
         
         return icons[activityType] || '⚡';
+    }
+
+    getActivityColor(activityType) {
+        const colors = {
+            'Copy': '#0078d4',
+            'SynapseNotebook': '#7719aa',
+            'Notebook': '#7719aa',
+            'ExecutePipeline': '#00b294',
+            'IfCondition': '#ff8c00',
+            'ForEach': '#d83b01',
+            'Wait': '#00bcf2',
+            'Until': '#d83b01',
+            'Switch': '#ff8c00',
+            'Lookup': '#847545',
+            'GetMetadata': '#e3008c',
+            'Delete': '#d13438',
+            'SqlServerStoredProcedure': '#0078d4',
+            'Script': '#00bcf2',
+            'WebActivity': '#8661c5',
+            'Validation': '#10893e',
+            'Filter': '#e3008c',
+            'Fail': '#d13438',
+            'SetVariable': '#0078d4',
+            'AppendVariable': '#0078d4',
+            'WebHook': '#9b59b6',
+            'StoredProcedure': '#847545'
+        };
+        
+        return colors[activityType] || '#0078d4';
     }
 
     formatTimestamp(date) {

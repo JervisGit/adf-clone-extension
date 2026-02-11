@@ -161,13 +161,11 @@ class PipelineRunViewerProvider {
         .canvas-container {
             display: flex;
             gap: 16px;
-            min-height: 150px;
         }
 
         /* Activity Box - Matching pipeline editor style */
         .activity-box {
             width: 180px;
-            min-height: 56px;
             background: #f0f0f0;
             border: 1px solid #c8c8c8;
             border-radius: 3px;
@@ -187,7 +185,6 @@ class PipelineRunViewerProvider {
             background: #ffffff;
             border: 1px solid #0078d4;
             box-shadow: 0 4px 12px rgba(0, 120, 212, 0.2);
-            min-height: 88px;
         }
 
         .activity-box.status-failed {
@@ -223,7 +220,7 @@ class PipelineRunViewerProvider {
         .activity-body {
             display: flex;
             align-items: center;
-            padding: 8px;
+            padding: 6px 8px;
             gap: 8px;
         }
 
@@ -258,6 +255,7 @@ class PipelineRunViewerProvider {
             padding: 4px 8px;
             border-top: 1px solid #edebe9;
             font-size: 11px;
+            line-height: 1.2;
             text-align: center;
         }
 

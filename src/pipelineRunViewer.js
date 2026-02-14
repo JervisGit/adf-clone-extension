@@ -119,9 +119,93 @@ class PipelineRunViewerProvider {
                     throw new Error('Invalid notebook snapshot format - missing cells');
                 }
 
+                // Process cells to improve display
+                const processedCells = notebookContent.cells.map(cell => {
+                    const processedCell = { ...cell };
+                    
+                    // Process outputs to show execution timing
+                    if (processedCell.outputs && Array.isArray(processedCell.outputs)) {
+                        // Check if cell has error output
+                        const hasError = processedCell.outputs.some(output => output.output_type === 'error');
+                        
+                        processedCell.outputs = processedCell.outputs.map(output => {
+                            // Look for statement metadata
+                            if (output.output_type === 'display_data' && 
+                                output.data?.['application/vnd.livy.statement-meta+json']) {
+                                
+                                const meta = output.data['application/vnd.livy.statement-meta+json'];
+                                const startTime = meta.execution_start_time;
+                                const finishTime = meta.execution_finish_time;
+                                
+                                // Calculate duration
+                                let durationText = '';
+                                if (startTime && finishTime) {
+                                    const start = new Date(startTime);
+                                    const finish = new Date(finishTime);
+                                    const durationMs = finish - start;
+                                    
+                                    if (durationMs < 1000) {
+                                        durationText = `${durationMs} ms`;
+                                    } else {
+                                        durationText = `${(durationMs / 1000).toFixed(2)} s`;
+                                    }
+                                }
+                                
+                                // Create readable status message based on whether cell has error
+                                const statusText = hasError ? 'Command failed' : 'Command executed';
+                                const timing = durationText ? ` in ${durationText}` : '';
+                                
+                                // Replace the text/plain output
+                                return {
+                                    ...output,
+                                    data: {
+                                        ...output.data,
+                                        'text/plain': `${statusText}${timing}`
+                                    }
+                                };
+                            }
+                            
+                            return output;
+                        });
+                        
+                        // Add parameter indicator as output (not modifying source)
+                        if (cell.metadata?.tags?.includes('parameters') || 
+                            cell.metadata?.tags?.includes('parameters_overwritten')) {
+                            const paramType = cell.metadata.tags.includes('parameters') ? 'Parameters' : 'Pipeline Parameters';
+                            
+                            // Insert parameter indicator at the beginning of outputs
+                            processedCell.outputs.unshift({
+                                output_type: 'display_data',
+                                data: {
+                                    'text/plain': `[${paramType}]`,
+                                    'text/html': `<div style="color: #888; font-size: 0.9em; font-style: italic; margin-bottom: 4px;">${paramType}</div>`
+                                },
+                                metadata: {}
+                            });
+                        }
+                    } else {
+                        // If no outputs but has parameter tag, create outputs array with indicator
+                        if (cell.metadata?.tags?.includes('parameters') || 
+                            cell.metadata?.tags?.includes('parameters_overwritten')) {
+                            const paramType = cell.metadata.tags.includes('parameters') ? 'Parameters' : 'Pipeline Parameters';
+                            
+                            processedCell.outputs = [{
+                                output_type: 'display_data',
+                                data: {
+                                    'text/plain': `[${paramType}]`,
+                                    'text/html': `<div style="color: #888; font-size: 0.9em; font-style: italic; margin-bottom: 4px;">${paramType}</div>`
+                                },
+                                metadata: {}
+                            }];
+                        }
+                    }
+                    
+                    return processedCell;
+                });
+
                 // Create .ipynb format
                 const notebook = {
-                    cells: notebookContent.cells,
+                    cells: processedCells,
                     metadata: notebookContent.metadata || {
                         language_info: {
                             name: 'python'
@@ -822,7 +906,7 @@ class PipelineRunViewerProvider {
 
             ${hasError ? `
             <div class="error-section">
-                <div class="error-title">❌ Error Details</div>
+                <div class="error-title">Error Details</div>
                 <div class="error-detail"><strong>Error Code:</strong> ${activity.error.errorCode || 'N/A'}</div>
                 <div class="error-detail"><strong>Message:</strong> ${activity.error.message || 'N/A'}</div>
                 <div class="error-detail"><strong>Failure Type:</strong> ${activity.error.failureType || 'N/A'}</div>
@@ -833,7 +917,7 @@ class PipelineRunViewerProvider {
                 <button class="btn" onclick="showInput(${index})">View Input</button>
                 <button class="btn" onclick="showOutput(${index})">View Output</button>
                 <button class="btn btn-secondary" onclick="showDetails(${index})">View Full JSON</button>
-                ${isNotebook ? `<button class="btn" onclick="viewNotebook(${index})" style="background-color: #7719aa;">View Notebook</button>` : ''}
+                ${isNotebook ? `<button class="btn" onclick="viewNotebook(${index})">View Notebook</button>` : ''}
             </div>
         </div>`;
     }

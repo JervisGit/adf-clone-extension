@@ -64,6 +64,9 @@ class PipelineRunViewerProvider {
                         case 'showOutput':
                             this.showActivityDetails(message.activity, 'output');
                             break;
+                        case 'viewNotebook':
+                            this.openNotebookSnapshot(storageAccountName, containerName, runFolder, message.activity);
+                            break;
                     }
                 },
                 undefined,
@@ -78,16 +81,12 @@ class PipelineRunViewerProvider {
 
     async showActivityDetails(activity, section) {
         let content = '';
-        let title = '';
 
         if (section === 'input') {
-            title = `${activity.activityName} - Input`;
             content = JSON.stringify(activity.input || {}, null, 2);
         } else if (section === 'output') {
-            title = `${activity.activityName} - Output`;
             content = JSON.stringify(activity.output || {}, null, 2);
         } else {
-            title = `${activity.activityName} - Full Details`;
             content = JSON.stringify(activity, null, 2);
         }
 
@@ -96,6 +95,93 @@ class PipelineRunViewerProvider {
             language: 'json'
         });
         await vscode.window.showTextDocument(doc, { preview: false });
+    }
+
+    async openNotebookSnapshot(storageAccountName, containerName, runFolder, activity) {
+        try {
+            const client = new ADLSRestClient(storageAccountName);
+            
+            // Show progress
+            await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: `Loading notebook snapshot for ${activity.activityName}...`,
+                cancellable: false
+            }, async (progress) => {
+                progress.report({ increment: 30, message: 'Fetching from ADLS...' });
+                
+                const snapshot = await client.getNotebookSnapshot(containerName, runFolder, activity.activityRunId);
+                
+                progress.report({ increment: 30, message: 'Processing notebook...' });
+                
+                // Extract notebook content from snapshot
+                const notebookContent = snapshot.result?.snapshot?.notebookContent?.properties;
+                if (!notebookContent || !notebookContent.cells) {
+                    throw new Error('Invalid notebook snapshot format - missing cells');
+                }
+
+                // Create .ipynb format
+                const notebook = {
+                    cells: notebookContent.cells,
+                    metadata: notebookContent.metadata || {
+                        language_info: {
+                            name: 'python'
+                        }
+                    },
+                    nbformat: notebookContent.nbformat || 4,
+                    nbformat_minor: notebookContent.nbformat_minor || 2
+                };
+
+                progress.report({ increment: 30, message: 'Opening notebook...' });
+
+                // Create a unique filename
+                const notebookName = snapshot.result?.snapshot?.notebook || activity.activityName;
+                const timestamp = new Date().getTime();
+                
+                // Use workspace folder or temp directory
+                const os = require('os');
+                const path = require('path');
+                const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+                const baseDir = workspaceFolder || os.tmpdir();
+                const fileName = `${notebookName}_${activity.activityRunId.substring(0, 8)}_${timestamp}.ipynb`;
+                const tempPath = vscode.Uri.file(path.join(baseDir, fileName));
+
+                // Write notebook to a temporary file
+                // eslint-disable-next-line no-undef
+                const notebookData = Buffer.from(JSON.stringify(notebook, null, 2));
+                await vscode.workspace.fs.writeFile(tempPath, notebookData);
+                
+                // Open as notebook
+                const notebookDoc = await vscode.workspace.openNotebookDocument(tempPath);
+                await vscode.window.showNotebookDocument(notebookDoc, { preview: false });
+                
+                progress.report({ increment: 10, message: 'Done!' });
+                
+                // Show info message
+                vscode.window.showInformationMessage(
+                    `Notebook snapshot loaded: ${notebookName}. Note: This is a read-only snapshot from the pipeline run.`
+                );
+            });
+
+        } catch (error) {
+            const errorMsg = error.message || 'Unknown error';
+            
+            // Provide helpful error messages
+            if (errorMsg.includes('Notebooks folder not found')) {
+                vscode.window.showErrorMessage(
+                    `Notebook snapshot not available: The notebooks folder was not found for this pipeline run. ` +
+                    `This usually means the notebook activity didn't complete successfully or snapshots weren't captured.`,
+                    'OK'
+                );
+            } else if (errorMsg.includes('PathNotFound') || errorMsg.includes('does not exist')) {
+                vscode.window.showErrorMessage(
+                    `Notebook snapshot file not found: ${activity.activityRunId}.json. ` +
+                    `The snapshot may not have been saved for this activity run.`,
+                    'OK'
+                );
+            } else {
+                vscode.window.showErrorMessage(`Failed to load notebook snapshot: ${errorMsg}`, 'OK');
+            }
+        }
     }
 
     getHtmlContent(webview, activities, runInfo) {
@@ -669,6 +755,14 @@ class PipelineRunViewerProvider {
             });
         }
 
+        function viewNotebook(index) {
+            const activity = ${JSON.stringify(activities)}[index];
+            vscode.postMessage({
+                command: 'viewNotebook',
+                activity: activity
+            });
+        }
+
         // Select first activity by default
         if (${activities.length} > 0) {
             selectActivity(0);
@@ -699,6 +793,7 @@ class PipelineRunViewerProvider {
     renderActivityDetails(activity, index) {
         const hasError =activity.status === 'Failed' && activity.error && activity.error.message;
         const durationSec = activity.durationInMs ? (activity.durationInMs / 1000).toFixed(2) : 'N/A';
+        const isNotebook = activity.activityType === 'SynapseNotebook' || activity.activityType === 'Notebook';
 
         return `
         <div class="config-tab-pane activity-details" data-index="${index}">
@@ -738,6 +833,7 @@ class PipelineRunViewerProvider {
                 <button class="btn" onclick="showInput(${index})">View Input</button>
                 <button class="btn" onclick="showOutput(${index})">View Output</button>
                 <button class="btn btn-secondary" onclick="showDetails(${index})">View Full JSON</button>
+                ${isNotebook ? `<button class="btn" onclick="viewNotebook(${index})" style="background-color: #7719aa;">View Notebook</button>` : ''}
             </div>
         </div>`;
     }

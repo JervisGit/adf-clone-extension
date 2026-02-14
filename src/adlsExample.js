@@ -117,7 +117,7 @@ function registerADLSCommands(context) {
                         const parsed = JSON.parse(content);
                         displayContent = JSON.stringify(parsed, null, 2);
                         language = 'json';
-                    } catch (e) {
+                    } catch {
                         // Not JSON, display as text
                     }
                     

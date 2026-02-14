@@ -27,7 +27,7 @@ class TriggerEditorProvider {
 			try {
 				panel.reveal(column);
 				return panel;
-			} catch (error) {
+			} catch {
 				// Panel was disposed, remove it from the map
 				TriggerEditorProvider.panels.delete(filePath);
 				TriggerEditorProvider.dirtyStates.delete(filePath);

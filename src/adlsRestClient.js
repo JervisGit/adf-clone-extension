@@ -65,7 +65,9 @@ class ADLSRestClient {
     async readFile(containerName, filePath) {
         const token = await this.getAccessToken();
         
-        const url = `${this.baseUrl}/${containerName}/${encodeURIComponent(filePath)}`;
+        // Encode each path segment separately to preserve slashes
+        const encodedPath = filePath.split('/').map(segment => encodeURIComponent(segment)).join('/');
+        const url = `${this.baseUrl}/${containerName}/${encodedPath}`;
 
         const response = await fetch(url, {
             method: 'GET',
@@ -150,6 +152,47 @@ class ADLSRestClient {
             return results;
         } catch (error) {
             console.error('Error getting pipeline run files:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get notebook snapshot from pipeline run
+     * @param {string} containerName - The container name
+     * @param {string} runFolder - Pipeline run folder name
+     * @param {string} activityRunId - Activity run ID
+     */
+    async getNotebookSnapshot(containerName, runFolder, activityRunId) {
+        try {
+            // First, check if notebooks folder exists
+            const notebooksFolder = `pipeline-runs/${runFolder}/notebooks`;
+            
+            const notebookFiles = await this.listPaths(containerName, notebooksFolder, false);
+            console.log(`Found ${notebookFiles.length} files in notebooks folder:`);
+            notebookFiles.forEach(file => {
+                console.log(`  - ${file.name}`);
+            });
+            
+            if (notebookFiles.length === 0) {
+                throw new Error(`Notebooks folder is empty. Path: ${notebooksFolder}`);
+            }
+            
+            // Find the file that contains the activityRunId
+            // The filename pattern is: {NotebookName}_{activityRunId}.json
+            const matchingFile = notebookFiles.find(file => {
+                const fileName = file.name.split('/').pop();
+                return fileName.includes(activityRunId) && fileName.endsWith('.json');
+            });
+            
+            if (!matchingFile) {
+                throw new Error(`Notebook snapshot file not found for activity run ID: ${activityRunId}. Available files: ${notebookFiles.map(f => f.name.split('/').pop()).join(', ')}`);
+            }
+            
+            console.log(`Reading notebook file: ${matchingFile.name}`);
+            const content = await this.readFile(containerName, matchingFile.name);
+            return JSON.parse(content);
+        } catch (error) {
+            console.error(`Failed to read notebook snapshot: ${error.message}`);
             throw error;
         }
     }

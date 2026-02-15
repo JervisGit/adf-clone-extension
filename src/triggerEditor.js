@@ -589,18 +589,19 @@ class TriggerEditorProvider {
 				</select>
 			</div>
 
-			<div class="form-group">
-				<label for="startDate">Start date <span class="required">*</span> <span class="info-icon" title="The date and time when the trigger starts">?</span></label>
-				<input type="datetime-local" id="startDate" required>
-			</div>
+			<div id="scheduleFields" style="display: block;">
+				<div class="form-group">
+					<label for="startDate">Start date <span class="required">*</span> <span class="info-icon" title="The date and time when the trigger starts">?</span></label>
+					<input type="datetime-local" id="startDate" required>
+				</div>
 
-			<div class="form-group">
-				<label for="timeZone">Time zone <span class="required">*</span></label>
-				<input type="text" id="timeZone" value="Kuala Lumpur, Singapore (UTC+8)" readonly>
-			</div>
+				<div class="form-group">
+					<label for="timeZone">Time zone <span class="required">*</span></label>
+					<input type="text" id="timeZone" value="Kuala Lumpur, Singapore (UTC+8)" readonly>
+				</div>
 
-			<div class="form-group">
-				<label>Recurrence <span class="required">*</span> <span class="info-icon" title="How often the trigger runs">?</span></label>
+				<div class="form-group">
+					<label>Recurrence <span class="required">*</span> <span class="info-icon" title="How often the trigger runs">?</span></label>
 				<div class="form-row">
 					<div class="form-group" style="flex: 0 0 150px;">
 						<label for="recurrenceInterval">Every</label>
@@ -705,6 +706,63 @@ class TriggerEditorProvider {
 							</div>
 						</div>
 					</div>
+				</div>
+			</div>
+		</div>
+		</div>
+
+		<div id="blobEventsFields" style="display: none;">
+			<div class="form-group">
+				<label for="azureSubscription">Azure subscription <span class="required">*</span></label>
+				<input type="text" id="azureSubscription" placeholder="Enter subscription ID">
+			</div>
+
+			<div class="form-group">
+				<label for="resourceGroup">Resource group <span class="required">*</span></label>
+				<input type="text" id="resourceGroup" placeholder="Enter resource group name">
+			</div>
+
+			<div class="form-group">
+				<label for="storageAccountName">Storage account name <span class="required">*</span></label>
+				<input type="text" id="storageAccountName" placeholder="Enter storage account name">
+			</div>
+
+			<div class="form-group">
+				<label for="containerName">Container name <span class="required">*</span></label>
+				<input type="text" id="containerName" placeholder="Enter container name">
+			</div>
+
+			<div class="form-group">
+				<label for="blobPathBeginsWith">Blob path begins with</label>
+				<input type="text" id="blobPathBeginsWith" placeholder="Enter blob path prefix">
+			</div>
+
+			<div class="form-group">
+				<label for="blobPathEndsWith">Blob path ends with</label>
+				<input type="text" id="blobPathEndsWith" placeholder="Enter blob path suffix">
+			</div>
+
+			<div class="form-group">
+				<label>Event <span class="required">*</span></label>
+				<div class="checkbox-group">
+					<input type="checkbox" id="eventBlobCreated" value="Microsoft.Storage.BlobCreated">
+					<label for="eventBlobCreated">Blob created</label>
+				</div>
+				<div class="checkbox-group">
+					<input type="checkbox" id="eventBlobDeleted" value="Microsoft.Storage.BlobDeleted">
+					<label for="eventBlobDeleted">Blob deleted</label>
+				</div>
+			</div>
+
+			<div class="form-group">
+				<label>Ignore empty blobs <span class="required">*</span></label>
+				<div class="radio-group">
+					<label>
+						<input type="radio" name="ignoreEmptyBlobs" value="true" checked> Yes
+					</label>
+					<label>
+						<input type="radio" name="ignoreEmptyBlobs" value="false"> No
+					</label>
 				</div>
 			</div>
 		</div>
@@ -875,23 +933,36 @@ class TriggerEditorProvider {
 			const section = document.getElementById('advancedRecurrenceSection');
 			const weekDaysGroup = document.getElementById('weekDaysGroup');
 			const monthScheduleGroup = document.getElementById('monthScheduleGroup');
+			const scheduleFields = document.getElementById('scheduleFields');
+			const blobEventsFields = document.getElementById('blobEventsFields');
 			
-			if (triggerType === 'ScheduleTrigger' && (frequency === 'Day' || frequency === 'Week' || frequency === 'Month')) {
-				section.style.display = 'block';
-				
-				// Show appropriate group based on frequency
-				if (frequency === 'Week') {
-					weekDaysGroup.style.display = 'block';
-					monthScheduleGroup.style.display = 'none';
-				} else if (frequency === 'Month') {
-					weekDaysGroup.style.display = 'none';
-					monthScheduleGroup.style.display = 'block';
-				} else {
-					weekDaysGroup.style.display = 'none';
-					monthScheduleGroup.style.display = 'none';
-				}
-			} else {
+			// Show/hide fields based on trigger type
+			if (triggerType === 'BlobEventsTrigger') {
+				scheduleFields.style.display = 'none';
+				blobEventsFields.style.display = 'block';
 				section.style.display = 'none';
+			} else {
+				scheduleFields.style.display = 'block';
+				blobEventsFields.style.display = 'none';
+				
+				// Handle advanced recurrence for Schedule trigger
+				if (triggerType === 'ScheduleTrigger' && (frequency === 'Day' || frequency === 'Week' || frequency === 'Month')) {
+					section.style.display = 'block';
+					
+					// Show appropriate group based on frequency
+					if (frequency === 'Week') {
+						weekDaysGroup.style.display = 'block';
+						monthScheduleGroup.style.display = 'none';
+					} else if (frequency === 'Month') {
+						weekDaysGroup.style.display = 'none';
+						monthScheduleGroup.style.display = 'block';
+					} else {
+						weekDaysGroup.style.display = 'none';
+						monthScheduleGroup.style.display = 'none';
+					}
+				} else {
+					section.style.display = 'none';
+				}
 			}
 		}
 
@@ -1293,6 +1364,57 @@ class TriggerEditorProvider {
 				document.getElementById('advancedRecurrenceArrow').textContent = '▼';
 			}
 
+			// BlobEventsTrigger fields
+			if (triggerData.properties.type === 'BlobEventsTrigger') {
+				const typeProps = triggerData.properties.typeProperties || {};
+				
+				// Parse scope to extract subscription, resource group, and storage account
+				if (typeProps.scope) {
+					const scopeParts = typeProps.scope.split('/');
+					const subscriptionIndex = scopeParts.indexOf('subscriptions');
+					if (subscriptionIndex >= 0 && subscriptionIndex + 1 < scopeParts.length) {
+						document.getElementById('azureSubscription').value = scopeParts[subscriptionIndex + 1];
+					}
+					const resourceGroupIndex = scopeParts.indexOf('resourceGroups');
+					if (resourceGroupIndex >= 0 && resourceGroupIndex + 1 < scopeParts.length) {
+						document.getElementById('resourceGroup').value = scopeParts[resourceGroupIndex + 1];
+					}
+					const storageAccountIndex = scopeParts.indexOf('storageAccounts');
+					if (storageAccountIndex >= 0 && storageAccountIndex + 1 < scopeParts.length) {
+						document.getElementById('storageAccountName').value = scopeParts[storageAccountIndex + 1];
+					}
+				}
+				
+				// Parse container name from blobPathBeginsWith
+				if (typeProps.blobPathBeginsWith) {
+					const pathParts = typeProps.blobPathBeginsWith.split('/').filter(p => p);
+					if (pathParts.length > 0) {
+						document.getElementById('containerName').value = pathParts[0];
+					}
+					document.getElementById('blobPathBeginsWith').value = typeProps.blobPathBeginsWith;
+				}
+				
+				if (typeProps.blobPathEndsWith) {
+					document.getElementById('blobPathEndsWith').value = typeProps.blobPathEndsWith;
+				}
+				
+				// Events
+				if (typeProps.events && Array.isArray(typeProps.events)) {
+					if (typeProps.events.includes('Microsoft.Storage.BlobCreated')) {
+						document.getElementById('eventBlobCreated').checked = true;
+					}
+					if (typeProps.events.includes('Microsoft.Storage.BlobDeleted')) {
+						document.getElementById('eventBlobDeleted').checked = true;
+					}
+				}
+				
+				// Ignore empty blobs
+				if (typeProps.ignoreEmptyBlobs !== undefined) {
+					const value = typeProps.ignoreEmptyBlobs.toString();
+					document.querySelector(\`input[name="ignoreEmptyBlobs"][value="\${value}"]\`).checked = true;
+				}
+			}
+
 			// Update visibility of advanced recurrence section
 			updateAdvancedRecurrenceVisibility();
 		}
@@ -1308,34 +1430,7 @@ class TriggerEditorProvider {
 				return;
 			}
 
-			const startDate = document.getElementById('startDate').value;
-			if (!startDate) {
-				vscode.postMessage({
-					command: 'showError',
-					message: 'Please select a start date'
-				});
-				return;
-			}
-
-			// Validate interval based on frequency
-			const frequency = document.getElementById('recurrenceFrequency').value;
-			const interval = parseInt(document.getElementById('recurrenceInterval').value);
-			
-			const intervalRanges = {
-				'Minute': { min: 1, max: 720000 },
-				'Hour': { min: 1, max: 12000 },
-				'Day': { min: 1, max: 500 },
-				'Week': { min: 1, max: 71 },
-				'Month': { min: 1, max: 16 }
-			};
-			
-			if (isNaN(interval) || interval < intervalRanges[frequency].min || interval > intervalRanges[frequency].max) {
-				vscode.postMessage({
-					command: 'showError',
-					message: 'Interval must be between ' + intervalRanges[frequency].min + ' and ' + intervalRanges[frequency].max + ' for ' + frequency + ' frequency.'
-				});
-				return;
-			}
+			const triggerType = document.getElementById('triggerType').value;
 
 			// Build trigger object
 			const triggerData = {
@@ -1345,43 +1440,144 @@ class TriggerEditorProvider {
 					annotations: [],
 					runtimeState: document.querySelector('input[name="status"]:checked').value,
 					pipelines: [],
-					type: document.getElementById('triggerType').value,
-					typeProperties: {
-						recurrence: {
-							frequency: document.getElementById('recurrenceFrequency').value,
-							interval: parseInt(document.getElementById('recurrenceInterval').value) || 1,
-							startTime: startDate.replace('T', 'T') + ':00', // Format: YYYY-MM-DDTHH:mm:ss
-							timeZone: "Singapore Standard Time"
-						}
-					}
+					type: triggerType,
+					typeProperties: {}
 				}
 			};
 
-			// Add end time if specified
-			if (document.getElementById('specifyEndDate').checked) {
-				const endDate = document.getElementById('endDate').value;
-				if (endDate) {
-					triggerData.properties.typeProperties.recurrence.endTime = endDate.replace('T', 'T') + ':00';
+			// Handle BlobEventsTrigger
+			if (triggerType === 'BlobEventsTrigger') {
+				const azureSubscription = document.getElementById('azureSubscription').value.trim();
+				if (!azureSubscription) {
+					vscode.postMessage({
+						command: 'showError',
+						message: 'Please enter an Azure subscription ID'
+					});
+					return;
 				}
-			}
 
-			// Add schedule if trigger is Schedule type and frequency is Day, Week, or Month
-			const triggerType = document.getElementById('triggerType').value;
-			if (triggerType === 'ScheduleTrigger' && (frequency === 'Day' || frequency === 'Week' || frequency === 'Month')) {
-				const hoursInput = document.getElementById('scheduleHours').value.trim();
-				const minutesInput = document.getElementById('scheduleMinutes').value.trim();
+				const resourceGroup = document.getElementById('resourceGroup').value.trim();
+				if (!resourceGroup) {
+					vscode.postMessage({
+						command: 'showError',
+						message: 'Please enter a resource group name'
+					});
+					return;
+				}
+
+				const storageAccountName = document.getElementById('storageAccountName').value.trim();
+				if (!storageAccountName) {
+					vscode.postMessage({
+						command: 'showError',
+						message: 'Please enter a storage account name'
+					});
+					return;
+				}
+
+				const containerName = document.getElementById('containerName').value.trim();
+				if (!containerName) {
+					vscode.postMessage({
+						command: 'showError',
+						message: 'Please enter a container name'
+					});
+					return;
+				}
+
+				// Collect events
+				const events = [];
+				if (document.getElementById('eventBlobCreated').checked) {
+					events.push('Microsoft.Storage.BlobCreated');
+				}
+				if (document.getElementById('eventBlobDeleted').checked) {
+					events.push('Microsoft.Storage.BlobDeleted');
+				}
 				
-				// Validate hours input
-				if (hoursInput) {
-					const invalidHours = validateNumberList(hoursInput, 0, 23);
-					if (invalidHours.length > 0) {
-						vscode.postMessage({
-							command: 'showError',
-							message: 'Invalid hour values: ' + invalidHours.join(', ') + '. Hours must be in the range 0-23.'
-						});
-						return;
+				if (events.length === 0) {
+					vscode.postMessage({
+						command: 'showError',
+						message: 'Please select at least one event'
+					});
+					return;
+				}
+
+				// Build scope
+				const scope = '/subscriptions/' + azureSubscription + '/resourceGroups/' + resourceGroup + '/providers/Microsoft.Storage/storageAccounts/' + storageAccountName;
+
+				// Build blob path
+				const blobPathBeginsWith = document.getElementById('blobPathBeginsWith').value.trim();
+				const blobPathEndsWith = document.getElementById('blobPathEndsWith').value.trim();
+
+				triggerData.properties.typeProperties = {
+					blobPathBeginsWith: blobPathBeginsWith || (containerName ? '/' + containerName + '/blobs/' : ''),
+					blobPathEndsWith: blobPathEndsWith,
+					ignoreEmptyBlobs: document.querySelector('input[name="ignoreEmptyBlobs"]:checked').value === 'true',
+					scope: scope,
+					events: events
+				};
+			} else {
+				// Handle ScheduleTrigger and other types
+				const startDate = document.getElementById('startDate').value;
+				if (!startDate) {
+					vscode.postMessage({
+						command: 'showError',
+						message: 'Please select a start date'
+					});
+					return;
+				}
+
+				// Validate interval based on frequency
+				const frequency = document.getElementById('recurrenceFrequency').value;
+				const interval = parseInt(document.getElementById('recurrenceInterval').value);
+				
+				const intervalRanges = {
+					'Minute': { min: 1, max: 720000 },
+					'Hour': { min: 1, max: 12000 },
+					'Day': { min: 1, max: 500 },
+					'Week': { min: 1, max: 71 },
+					'Month': { min: 1, max: 16 }
+				};
+				
+				if (isNaN(interval) || interval < intervalRanges[frequency].min || interval > intervalRanges[frequency].max) {
+					vscode.postMessage({
+						command: 'showError',
+						message: 'Interval must be between ' + intervalRanges[frequency].min + ' and ' + intervalRanges[frequency].max + ' for ' + frequency + ' frequency.'
+					});
+					return;
+				}
+
+				triggerData.properties.typeProperties = {
+					recurrence: {
+						frequency: document.getElementById('recurrenceFrequency').value,
+						interval: parseInt(document.getElementById('recurrenceInterval').value) || 1,
+						startTime: startDate.replace('T', 'T') + ':00', // Format: YYYY-MM-DDTHH:mm:ss
+						timeZone: "Singapore Standard Time"
+					}
+				};
+
+				// Add end time if specified
+				if (document.getElementById('specifyEndDate').checked) {
+					const endDate = document.getElementById('endDate').value;
+					if (endDate) {
+						triggerData.properties.typeProperties.recurrence.endTime = endDate.replace('T', 'T') + ':00';
 					}
 				}
+
+				// Add schedule if trigger is Schedule type and frequency is Day, Week, or Month
+				if (triggerType === 'ScheduleTrigger' && (frequency === 'Day' || frequency === 'Week' || frequency === 'Month')) {
+					const hoursInput = document.getElementById('scheduleHours').value.trim();
+					const minutesInput = document.getElementById('scheduleMinutes').value.trim();
+				
+					// Validate hours input
+					if (hoursInput) {
+						const invalidHours = validateNumberList(hoursInput, 0, 23);
+						if (invalidHours.length > 0) {
+							vscode.postMessage({
+								command: 'showError',
+								message: 'Invalid hour values: ' + invalidHours.join(', ') + '. Hours must be in the range 0-23.'
+							});
+							return;
+						}
+					}
 				
 				// Validate minutes input
 				if (minutesInput) {
@@ -1441,6 +1637,7 @@ class TriggerEditorProvider {
 							triggerData.properties.typeProperties.recurrence.schedule.monthlyOccurrences = monthlyOccurrences;
 						}
 					}
+				}
 				}
 			}
 

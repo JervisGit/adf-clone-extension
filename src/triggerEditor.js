@@ -1010,6 +1010,26 @@ class TriggerEditorProvider {
 				return;
 			}
 
+			// Validate interval based on frequency
+			const frequency = document.getElementById('recurrenceFrequency').value;
+			const interval = parseInt(document.getElementById('recurrenceInterval').value);
+			
+			const intervalRanges = {
+				'Minute': { min: 1, max: 720000 },
+				'Hour': { min: 1, max: 12000 },
+				'Day': { min: 1, max: 500 },
+				'Week': { min: 1, max: 71 },
+				'Month': { min: 1, max: 16 }
+			};
+			
+			if (isNaN(interval) || interval < intervalRanges[frequency].min || interval > intervalRanges[frequency].max) {
+				vscode.postMessage({
+					command: 'showError',
+					message: 'Interval must be between ' + intervalRanges[frequency].min + ' and ' + intervalRanges[frequency].max + ' for ' + frequency + ' frequency.'
+				});
+				return;
+			}
+
 			// Build trigger object
 			const triggerData = {
 				name: name,
@@ -1040,7 +1060,6 @@ class TriggerEditorProvider {
 
 			// Add schedule if trigger is Schedule type and frequency is Day or Week
 			const triggerType = document.getElementById('triggerType').value;
-			const frequency = document.getElementById('recurrenceFrequency').value;
 			if (triggerType === 'ScheduleTrigger' && (frequency === 'Day' || frequency === 'Week')) {
 				const hoursInput = document.getElementById('scheduleHours').value.trim();
 				const minutesInput = document.getElementById('scheduleMinutes').value.trim();

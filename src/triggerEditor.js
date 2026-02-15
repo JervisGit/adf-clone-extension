@@ -767,6 +767,91 @@ class TriggerEditorProvider {
 			</div>
 		</div>
 
+		<div id="tumblingWindowFields" style="display: none;">
+			<div class="form-group">
+				<label for="tumblingStartDate">Start date (UTC) <span class="required">*</span></label>
+				<input type="datetime-local" id="tumblingStartDate" required>
+			</div>
+
+			<div class="form-group">
+				<label>Recurrence <span class="required">*</span></label>
+				<div class="form-row">
+					<div class="form-group" style="flex: 0 0 150px;">
+						<label for="tumblingInterval">Every</label>
+						<input type="number" id="tumblingInterval" min="1" value="15" required>
+					</div>
+					<div class="form-group">
+						<label for="tumblingFrequency">&nbsp;</label>
+						<select id="tumblingFrequency">
+							<option value="Minute">Minute(s)</option>
+							<option value="Hour">Hour(s)</option>
+							<option value="Day">Day(s)</option>
+							<option value="Week">Week(s)</option>
+							<option value="Month">Month(s)</option>
+						</select>
+					</div>
+				</div>
+			</div>
+
+			<div class="form-group">
+				<div class="checkbox-group">
+					<input type="checkbox" id="tumblingSpecifyEndDate">
+					<label for="tumblingSpecifyEndDate">Specify an end date</label>
+				</div>
+			</div>
+
+			<div class="form-group" id="tumblingEndDateGroup" style="display: none;">
+				<label for="tumblingEndDate">End date (UTC)</label>
+				<input type="datetime-local" id="tumblingEndDate">
+			</div>
+
+			<div class="form-group">
+				<div style="font-weight: 500; margin-bottom: 12px; cursor: pointer; user-select: none;" id="advancedToggle">
+					<span id="advancedArrow">▶</span> Advanced
+				</div>
+				<div id="advancedContent" style="display: none; margin-left: 16px;">
+					<div class="form-group">
+						<label for="delay">Delay</label>
+						<input type="text" id="delay" value="00:00:00" placeholder="00:00:00">
+					</div>
+
+					<div class="form-group">
+						<label for="maxConcurrency">Max concurrency <span class="required">*</span></label>
+						<input type="number" id="maxConcurrency" min="1" value="50" required>
+					</div>
+
+					<div class="form-group">
+						<label for="retryCount">Retry policy: count</label>
+						<input type="number" id="retryCount" min="0" value="0">
+					</div>
+
+					<div class="form-group">
+						<label for="retryIntervalInSeconds">Retry policy: interval in seconds</label>
+						<input type="number" id="retryIntervalInSeconds" min="1" value="30">
+					</div>
+
+					<div class="form-group">
+						<label>Add dependencies</label>
+						<button class="secondary" id="addDependencyBtn" style="margin-bottom: 8px;">+ New</button>
+						<button class="secondary" id="deleteDependencyBtn" style="margin-bottom: 8px; margin-left: 8px;">🗑 Delete</button>
+						<table class="annotations-table" id="dependenciesTable">
+							<thead>
+								<tr>
+									<th style="width: 30px;"></th>
+									<th>Trigger</th>
+									<th>Offset</th>
+									<th>Window size</th>
+								</tr>
+							</thead>
+							<tbody id="dependenciesBody">
+								<!-- Dependencies will be added here -->
+							</tbody>
+						</table>
+					</div>
+				</div>
+			</div>
+		</div>
+
 		<div class="form-section">
 			<div class="section-title">Annotations</div>
 			<table class="annotations-table" id="annotationsTable">
@@ -830,6 +915,7 @@ class TriggerEditorProvider {
 		document.addEventListener('DOMContentLoaded', () => {
 			initializeEventListeners();
 			setDefaultStartDate();
+			setDefaultTumblingStartDate();
 			initializeMonthDaysGrid();
 			// Add initial monthly occurrence row
 			addMonthlyOccurrenceRow();
@@ -915,6 +1001,35 @@ class TriggerEditorProvider {
 				addMonthlyOccurrenceRow();
 			});
 
+			// Tumbling window specify end date checkbox
+			document.getElementById('tumblingSpecifyEndDate').addEventListener('change', (e) => {
+				document.getElementById('tumblingEndDateGroup').style.display = e.target.checked ? 'block' : 'none';
+			});
+
+			// Tumbling window advanced toggle
+			document.getElementById('advancedToggle').addEventListener('click', () => {
+				const content = document.getElementById('advancedContent');
+				const arrow = document.getElementById('advancedArrow');
+				if (content.style.display === 'none') {
+					content.style.display = 'block';
+					arrow.textContent = '▼';
+				} else {
+					content.style.display = 'none';
+					arrow.textContent = '▶';
+				}
+			});
+
+			// Add/delete dependency buttons
+			document.getElementById('addDependencyBtn').addEventListener('click', (e) => {
+				e.preventDefault();
+				addDependencyRow();
+			});
+
+			document.getElementById('deleteDependencyBtn').addEventListener('click', (e) => {
+				e.preventDefault();
+				deleteSelectedDependencies();
+			});
+
 			// Track changes to mark as dirty
 			const inputs = document.querySelectorAll('input, select, textarea');
 			inputs.forEach(input => {
@@ -935,42 +1050,49 @@ class TriggerEditorProvider {
 			const monthScheduleGroup = document.getElementById('monthScheduleGroup');
 			const scheduleFields = document.getElementById('scheduleFields');
 			const blobEventsFields = document.getElementById('blobEventsFields');
+		const tumblingWindowFields = document.getElementById('tumblingWindowFields');
+		
+		// Show/hide fields based on trigger type
+		if (triggerType === 'BlobEventsTrigger') {
+			scheduleFields.style.display = 'none';
+			blobEventsFields.style.display = 'block';
+			tumblingWindowFields.style.display = 'none';
+			section.style.display = 'none';
+		} else if (triggerType === 'TumblingWindowTrigger') {
+			scheduleFields.style.display = 'none';
+			blobEventsFields.style.display = 'none';
+			tumblingWindowFields.style.display = 'block';
+			section.style.display = 'none';
+		} else {
+			scheduleFields.style.display = 'block';
+			blobEventsFields.style.display = 'none';
+			tumblingWindowFields.style.display = 'none';
+		
+		// Handle advanced recurrence for Schedule trigger
+		if (triggerType === 'ScheduleTrigger' && (frequency === 'Day' || frequency === 'Week' || frequency === 'Month')) {
+			section.style.display = 'block';
 			
-			// Show/hide fields based on trigger type
-			if (triggerType === 'BlobEventsTrigger') {
-				scheduleFields.style.display = 'none';
-				blobEventsFields.style.display = 'block';
-				section.style.display = 'none';
+			// Show appropriate group based on frequency
+			if (frequency === 'Week') {
+				weekDaysGroup.style.display = 'block';
+				monthScheduleGroup.style.display = 'none';
+			} else if (frequency === 'Month') {
+				weekDaysGroup.style.display = 'none';
+				monthScheduleGroup.style.display = 'block';
 			} else {
-				scheduleFields.style.display = 'block';
-				blobEventsFields.style.display = 'none';
-				
-				// Handle advanced recurrence for Schedule trigger
-				if (triggerType === 'ScheduleTrigger' && (frequency === 'Day' || frequency === 'Week' || frequency === 'Month')) {
-					section.style.display = 'block';
-					
-					// Show appropriate group based on frequency
-					if (frequency === 'Week') {
-						weekDaysGroup.style.display = 'block';
-						monthScheduleGroup.style.display = 'none';
-					} else if (frequency === 'Month') {
-						weekDaysGroup.style.display = 'none';
-						monthScheduleGroup.style.display = 'block';
-					} else {
-						weekDaysGroup.style.display = 'none';
-						monthScheduleGroup.style.display = 'none';
-					}
-				} else {
-					section.style.display = 'none';
-				}
+				weekDaysGroup.style.display = 'none';
+				monthScheduleGroup.style.display = 'none';
 			}
+		} else {
+			section.style.display = 'none';
 		}
+	}
+}
 
 		function initializeMonthDaysGrid() {
 			const grid = document.getElementById('monthDaysGrid');
-			if (!grid) return;
 			
-			// Create day cells 1-31
+			// Create checkboxes for days 1-31
 			for (let day = 1; day <= 31; day++) {
 				const cell = document.createElement('div');
 				cell.className = 'month-day-cell';
@@ -1104,6 +1226,69 @@ class TriggerEditorProvider {
 			});
 		}
 
+		function addDependencyRow(triggerName = '', offset = '', windowSize = '') {
+			const tbody = document.getElementById('dependenciesBody');
+			const row = document.createElement('tr');
+			
+			const checkboxCell = document.createElement('td');
+			const checkbox = document.createElement('input');
+			checkbox.type = 'checkbox';
+			checkbox.className = 'dependency-checkbox';
+			checkboxCell.appendChild(checkbox);
+			
+			const triggerCell = document.createElement('td');
+			const triggerInput = document.createElement('input');
+			triggerInput.type = 'text';
+			triggerInput.className = 'trigger-input';
+			triggerInput.placeholder = 'Trigger 5';
+			triggerInput.value = triggerName;
+			triggerCell.appendChild(triggerInput);
+			
+			const offsetCell = document.createElement('td');
+			const offsetInput = document.createElement('input');
+			offsetInput.type = 'text';
+			offsetInput.className = 'offset-input';
+			offsetInput.placeholder = '-0.00:16:00';
+			offsetInput.value = offset;
+			offsetCell.appendChild(offsetInput);
+			
+			const windowSizeCell = document.createElement('td');
+			const windowSizeInput = document.createElement('input');
+			windowSizeInput.type = 'text';
+			windowSizeInput.className = 'window-size-input';
+			windowSizeInput.placeholder = '0.00:00:00';
+			windowSizeInput.value = windowSize;
+			windowSizeCell.appendChild(windowSizeInput);
+			
+			row.appendChild(checkboxCell);
+			row.appendChild(triggerCell);
+			row.appendChild(offsetCell);
+			row.appendChild(windowSizeCell);
+			tbody.appendChild(row);
+			
+			// Add change listeners
+			[triggerInput, offsetInput, windowSizeInput].forEach(el => {
+				el.addEventListener('input', () => {
+					vscode.postMessage({
+						command: 'triggerModified',
+						filePath: currentFilePath
+					});
+				});
+			});
+		}
+
+		function deleteSelectedDependencies() {
+			const checkboxes = document.querySelectorAll('.dependency-checkbox:checked');
+			checkboxes.forEach(checkbox => {
+				checkbox.closest('tr').remove();
+			});
+			
+			vscode.postMessage({
+				command: 'triggerModified',
+				filePath: currentFilePath
+			});
+		}
+
 		function parseNumberList(input, min, max) {
 			if (!input || input.trim() === '') return [];
 			
@@ -1168,6 +1353,17 @@ class TriggerEditorProvider {
 			const minutes = String(now.getMinutes()).padStart(2, '0');
 			
 			document.getElementById('startDate').value = \`\${year}-\${month}-\${day}T\${hours}:\${minutes}\`;
+		}
+
+		function setDefaultTumblingStartDate() {
+			const now = new Date();
+			const year = now.getFullYear();
+			const month = String(now.getMonth() + 1).padStart(2, '0');
+			const day = String(now.getDate()).padStart(2, '0');
+			const hours = String(now.getHours()).padStart(2, '0');
+			const minutes = String(now.getMinutes()).padStart(2, '0');
+			
+			document.getElementById('tumblingStartDate').value = \`\${year}-\${month}-\${day}T\${hours}:\${minutes}\`;
 		}
 
 		function addAnnotationRow(name = '') {
@@ -1415,13 +1611,78 @@ class TriggerEditorProvider {
 				}
 			}
 
-			// Update visibility of advanced recurrence section
+		// TumblingWindowTrigger fields
+		if (triggerData.properties.type === 'TumblingWindowTrigger') {
+			const typeProps = triggerData.properties.typeProperties || {};
+			
+			// Start date/time
+			if (typeProps.startTime) {
+				const startTimeStr = typeProps.startTime.replace('Z', '').slice(0, 16);
+				document.getElementById('tumblingStartDate').value = startTimeStr;
+			}
+			
+			// End date/time
+			if (typeProps.endTime) {
+				document.getElementById('tumblingSpecifyEndDate').checked = true;
+				document.getElementById('tumblingEndDateGroup').style.display = 'block';
+				const endTimeStr = typeProps.endTime.replace('Z', '').slice(0, 16);
+				document.getElementById('tumblingEndDate').value = endTimeStr;
+			}
+			
+			// Frequency and interval
+			if (typeProps.frequency) {
+				document.getElementById('tumblingFrequency').value = typeProps.frequency;
+			}
+			if (typeProps.interval) {
+				document.getElementById('tumblingInterval').value = typeProps.interval;
+			}
+			
+			// Delay
+			if (typeProps.delay) {
+				document.getElementById('delay').value = typeProps.delay;
+			}
+			
+			// Max concurrency
+			if (typeProps.maxConcurrency !== undefined) {
+				document.getElementById('maxConcurrency').value = typeProps.maxConcurrency;
+			}
+			
+			// Retry policy
+			if (typeProps.retryPolicy) {
+				if (typeProps.retryPolicy.count !== undefined) {
+					document.getElementById('retryCount').value = typeProps.retryPolicy.count;
+				}
+				if (typeProps.retryPolicy.intervalInSeconds !== undefined) {
+					document.getElementById('retryIntervalInSeconds').value = typeProps.retryPolicy.intervalInSeconds;
+				}
+			}
+			
+			// Dependencies
+			if (typeProps.dependsOn && Array.isArray(typeProps.dependsOn)) {
+				typeProps.dependsOn.forEach(dep => {
+					if (dep.type === 'TumblingWindowTriggerDependencyReference') {
+						const triggerName = dep.referenceTrigger?.referenceName || '';
+						const offset = dep.offset || '';
+						const windowSize = dep.size || '';
+						addDependencyRow(triggerName, offset, windowSize);
+					}
+				});
+				
+				// Expand advanced section if dependencies exist
+				if (typeProps.dependsOn.length > 0) {
+					document.getElementById('advancedContent').style.display = 'block';
+					document.getElementById('advancedArrow').textContent = '▼';
+				}
+			}
+		}
+
+			// Update visibility based on current values
 			updateAdvancedRecurrenceVisibility();
 		}
 
 		function saveTrigger() {
-			// Collect form data
 			const name = document.getElementById('triggerName').value.trim();
+
 			if (!name) {
 				vscode.postMessage({
 					command: 'showError',
@@ -1514,6 +1775,88 @@ class TriggerEditorProvider {
 					scope: scope,
 					events: events
 				};
+			} else if (triggerType === 'TumblingWindowTrigger') {
+				// Handle TumblingWindowTrigger
+				const startDate = document.getElementById('tumblingStartDate').value;
+				if (!startDate) {
+					vscode.postMessage({
+						command: 'showError',
+						message: 'Please select a start date'
+					});
+					return;
+				}
+
+				const frequency = document.getElementById('tumblingFrequency').value;
+				const interval = parseInt(document.getElementById('tumblingInterval').value);
+				
+				// Validate interval
+				const intervalRanges = {
+					'Minute': { min: 1, max: 720000 },
+					'Hour': { min: 1, max: 12000 },
+					'Day': { min: 1, max: 500 },
+					'Week': { min: 1, max: 71 },
+					'Month': { min: 1, max: 16 }
+				};
+				
+				if (isNaN(interval) || interval < intervalRanges[frequency].min || interval > intervalRanges[frequency].max) {
+					vscode.postMessage({
+						command: 'showError',
+						message: 'Interval must be between ' + intervalRanges[frequency].min + ' and ' + intervalRanges[frequency].max + ' for ' + frequency + ' frequency.'
+					});
+					return;
+				}
+
+				triggerData.properties.typeProperties = {
+					frequency: frequency,
+					interval: interval,
+					startTime: startDate + ':00Z',
+					delay: document.getElementById('delay').value.trim() || '00:00:00',
+					maxConcurrency: parseInt(document.getElementById('maxConcurrency').value) || 50,
+					retryPolicy: {
+						intervalInSeconds: parseInt(document.getElementById('retryIntervalInSeconds').value) || 30
+					},
+					dependsOn: []
+				};
+
+				// Add end time if specified
+				if (document.getElementById('tumblingSpecifyEndDate').checked) {
+					const endDate = document.getElementById('tumblingEndDate').value;
+					if (endDate) {
+						triggerData.properties.typeProperties.endTime = endDate + ':00Z';
+					}
+				}
+				
+				// Add retry count if specified
+				const retryCount = parseInt(document.getElementById('retryCount').value);
+				if (retryCount > 0) {
+					triggerData.properties.typeProperties.retryPolicy.count = retryCount;
+				}
+				
+				// Add dependencies
+				const dependencyRows = document.querySelectorAll('#dependenciesBody tr');
+				dependencyRows.forEach(row => {
+					const triggerInput = row.querySelector('.trigger-input');
+					const offsetInput =  row.querySelector('.offset-input');
+					const windowSizeInput = row.querySelector('.window-size-input');
+					
+					if (triggerInput && triggerInput.value.trim()) {
+						const dependency = {
+							type: 'TumblingWindowTriggerDependencyReference',
+							offset: offsetInput.value.trim() || '0.00:00:00',
+							referenceTrigger: {
+								referenceName: triggerInput.value.trim(),
+								type: 'TriggerReference'
+							}
+						};
+						
+						// Add size if provided
+						if (windowSizeInput.value.trim()) {
+							dependency.size = windowSizeInput.value.trim();
+						}
+						
+						triggerData.properties.typeProperties.dependsOn.push(dependency);
+					}
+				});
 			} else {
 				// Handle ScheduleTrigger and other types
 				const startDate = document.getElementById('startDate').value;

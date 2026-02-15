@@ -473,6 +473,47 @@ class TriggerEditorProvider {
 			margin: 0;
 			font-weight: normal;
 		}
+
+		.month-days-grid {
+			display: grid;
+			grid-template-columns: repeat(7, 1fr);
+			gap: 8px;
+			margin-top: 8px;
+		}
+
+		.month-day-cell {
+			position: relative;
+		}
+
+		.month-day-cell input[type="checkbox"] {
+			position: absolute;
+			opacity: 0;
+			cursor: pointer;
+		}
+
+		.month-day-label {
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			height: 36px;
+			border: 1px solid var(--vscode-input-border);
+			background-color: var(--vscode-input-background);
+			color: var(--vscode-input-foreground);
+			cursor: pointer;
+			border-radius: 2px;
+			font-size: 13px;
+			transition: all 0.2s;
+		}
+
+		.month-day-cell input[type="checkbox"]:checked + .month-day-label {
+			background-color: var(--vscode-button-background);
+			color: var(--vscode-button-foreground);
+			border-color: var(--vscode-button-background);
+		}
+
+		.month-day-label:hover {
+			border-color: var(--vscode-focusBorder);
+		}
 	</style>
 </head>
 <body>
@@ -572,6 +613,25 @@ class TriggerEditorProvider {
 								</label>
 							</div>
 						</div>
+						<div class="form-group" id="monthScheduleGroup" style="display: none;">
+							<div class="radio-group" style="padding: 0 0 12px 0;">
+								<label>
+									<input type="radio" name="monthScheduleType" value="monthDays" checked> Month days
+								</label>
+								<label>
+									<input type="radio" name="monthScheduleType" value="weekDays"> Week days
+								</label>
+							</div>
+							<div id="monthDaysSelection">
+								<label>Select day(s) of the month to execute</label>
+								<div class="month-days-grid" id="monthDaysGrid">
+									<!-- Days 1-31 will be generated here -->
+								</div>
+							</div>
+							<div id="monthWeekDaysSelection" style="display: none;">
+								<label>Select week days (not yet implemented)</label>
+							</div>
+						</div>
 						<div class="form-group">
 							<label>Execute at these times <span class="info-icon" title="Hours must be in the range 0-23 and minutes in the range 0-59. The time specified follows the timezone setting above.">?</span></label>
 							<div class="form-row">
@@ -655,6 +715,7 @@ class TriggerEditorProvider {
 		document.addEventListener('DOMContentLoaded', () => {
 			initializeEventListeners();
 			setDefaultStartDate();
+			initializeMonthDaysGrid();
 		});
 
 		function initializeEventListeners() {
@@ -714,6 +775,23 @@ class TriggerEditorProvider {
 				});
 			});
 
+			// Month schedule type radio buttons
+			document.querySelectorAll('input[name="monthScheduleType"]').forEach(radio => {
+				radio.addEventListener('change', (e) => {
+					if (e.target.value === 'monthDays') {
+						document.getElementById('monthDaysSelection').style.display = 'block';
+						document.getElementById('monthWeekDaysSelection').style.display = 'none';
+					} else {
+						document.getElementById('monthDaysSelection').style.display = 'none';
+						document.getElementById('monthWeekDaysSelection').style.display = 'block';
+					}
+					vscode.postMessage({
+						command: 'triggerModified',
+						filePath: currentFilePath
+					});
+				});
+			});
+
 			// Track changes to mark as dirty
 			const inputs = document.querySelectorAll('input, select, textarea');
 			inputs.forEach(input => {
@@ -731,19 +809,86 @@ class TriggerEditorProvider {
 			const frequency = document.getElementById('recurrenceFrequency').value;
 			const section = document.getElementById('advancedRecurrenceSection');
 			const weekDaysGroup = document.getElementById('weekDaysGroup');
+			const monthScheduleGroup = document.getElementById('monthScheduleGroup');
 			
-			if (triggerType === 'ScheduleTrigger' && (frequency === 'Day' || frequency === 'Week')) {
+			if (triggerType === 'ScheduleTrigger' && (frequency === 'Day' || frequency === 'Week' || frequency === 'Month')) {
 				section.style.display = 'block';
 				
-				// Show weekDays only for Week frequency
+				// Show appropriate group based on frequency
 				if (frequency === 'Week') {
 					weekDaysGroup.style.display = 'block';
+					monthScheduleGroup.style.display = 'none';
+				} else if (frequency === 'Month') {
+					weekDaysGroup.style.display = 'none';
+					monthScheduleGroup.style.display = 'block';
 				} else {
 					weekDaysGroup.style.display = 'none';
+					monthScheduleGroup.style.display = 'none';
 				}
 			} else {
 				section.style.display = 'none';
 			}
+		}
+
+		function initializeMonthDaysGrid() {
+			const grid = document.getElementById('monthDaysGrid');
+			if (!grid) return;
+			
+			// Create day cells 1-31
+			for (let day = 1; day <= 31; day++) {
+				const cell = document.createElement('div');
+				cell.className = 'month-day-cell';
+				
+				const checkbox = document.createElement('input');
+				checkbox.type = 'checkbox';
+				checkbox.className = 'month-day-checkbox';
+				checkbox.value = day;
+				checkbox.id = 'monthDay' + day;
+				
+				const label = document.createElement('label');
+				label.className = 'month-day-label';
+				label.htmlFor = 'monthDay' + day;
+				label.textContent = day;
+				
+				cell.appendChild(checkbox);
+				cell.appendChild(label);
+				grid.appendChild(cell);
+				
+				// Add change listener
+				checkbox.addEventListener('change', () => {
+					vscode.postMessage({
+						command: 'triggerModified',
+						filePath: currentFilePath
+					});
+				});
+			}
+			
+			// Add "Last" day cell
+			const lastCell = document.createElement('div');
+			lastCell.className = 'month-day-cell';
+			
+			const lastCheckbox = document.createElement('input');
+			lastCheckbox.type = 'checkbox';
+			lastCheckbox.className = 'month-day-checkbox';
+			lastCheckbox.value = -1;  // -1 represents "Last" day
+			lastCheckbox.id = 'monthDayLast';
+			
+			const lastLabel = document.createElement('label');
+			lastLabel.className = 'month-day-label';
+			lastLabel.htmlFor = 'monthDayLast';
+			lastLabel.textContent = 'Last';
+			
+			lastCell.appendChild(lastCheckbox);
+			lastCell.appendChild(lastLabel);
+			grid.appendChild(lastCell);
+			
+			// Add change listener for Last
+			lastCheckbox.addEventListener('change', () => {
+				vscode.postMessage({
+					command: 'triggerModified',
+					filePath: currentFilePath
+				});
+			});
 		}
 
 		function parseNumberList(input, min, max) {
@@ -979,6 +1124,14 @@ class TriggerEditorProvider {
 						}
 					});
 				}
+				if (schedule.monthDays && Array.isArray(schedule.monthDays)) {
+					document.querySelectorAll('.month-day-checkbox').forEach(checkbox => {
+						const dayValue = parseInt(checkbox.value);
+						if (schedule.monthDays.includes(dayValue)) {
+							checkbox.checked = true;
+						}
+					});
+				}
 				updateScheduleExecutionTimes();
 				
 				// Expand advanced recurrence section if schedule data exists
@@ -1058,9 +1211,9 @@ class TriggerEditorProvider {
 				}
 			}
 
-			// Add schedule if trigger is Schedule type and frequency is Day or Week
+			// Add schedule if trigger is Schedule type and frequency is Day, Week, or Month
 			const triggerType = document.getElementById('triggerType').value;
-			if (triggerType === 'ScheduleTrigger' && (frequency === 'Day' || frequency === 'Week')) {
+			if (triggerType === 'ScheduleTrigger' && (frequency === 'Day' || frequency === 'Week' || frequency === 'Month')) {
 				const hoursInput = document.getElementById('scheduleHours').value.trim();
 				const minutesInput = document.getElementById('scheduleMinutes').value.trim();
 				
@@ -1091,8 +1244,9 @@ class TriggerEditorProvider {
 				const hours = parseNumberList(hoursInput, 0, 23);
 				const minutes = parseNumberList(minutesInput, 0, 59);
 				const selectedWeekDays = Array.from(document.querySelectorAll('.weekday-checkbox:checked')).map(cb => cb.value);
+				const selectedMonthDays = Array.from(document.querySelectorAll('.month-day-checkbox:checked')).map(cb => parseInt(cb.value));
 				
-				if (hours.length > 0 || minutes.length > 0 || selectedWeekDays.length > 0) {
+				if (hours.length > 0 || minutes.length > 0 || selectedWeekDays.length > 0 || selectedMonthDays.length > 0) {
 					triggerData.properties.typeProperties.recurrence.schedule = {};
 					
 					if (hours.length > 0) {
@@ -1105,6 +1259,10 @@ class TriggerEditorProvider {
 					
 					if (frequency === 'Week' && selectedWeekDays.length > 0) {
 						triggerData.properties.typeProperties.recurrence.schedule.weekDays = selectedWeekDays;
+					}
+					
+					if (frequency === 'Month' && selectedMonthDays.length > 0) {
+						triggerData.properties.typeProperties.recurrence.schedule.monthDays = selectedMonthDays;
 					}
 				}
 			}

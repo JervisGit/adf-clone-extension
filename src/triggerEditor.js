@@ -546,6 +546,32 @@ class TriggerEditorProvider {
 						<span id="advancedRecurrenceArrow">▶</span> Advanced recurrence options
 					</div>
 					<div id="advancedRecurrenceContent" style="display: none; margin-left: 16px;">
+						<div class="form-group" id="weekDaysGroup" style="display: none;">
+							<label>Run on these days</label>
+							<div style="display: flex; gap: 12px; padding: 8px 0; flex-wrap: wrap;">
+								<label style="display: flex; align-items: center; gap: 4px; margin: 0; font-weight: normal;">
+									<input type="checkbox" class="weekday-checkbox" value="Sunday"> Sun
+								</label>
+								<label style="display: flex; align-items: center; gap: 4px; margin: 0; font-weight: normal;">
+									<input type="checkbox" class="weekday-checkbox" value="Monday"> Mon
+								</label>
+								<label style="display: flex; align-items: center; gap: 4px; margin: 0; font-weight: normal;">
+									<input type="checkbox" class="weekday-checkbox" value="Tuesday"> Tue
+								</label>
+								<label style="display: flex; align-items: center; gap: 4px; margin: 0; font-weight: normal;">
+									<input type="checkbox" class="weekday-checkbox" value="Wednesday"> Wed
+								</label>
+								<label style="display: flex; align-items: center; gap: 4px; margin: 0; font-weight: normal;">
+									<input type="checkbox" class="weekday-checkbox" value="Thursday"> Thu
+								</label>
+								<label style="display: flex; align-items: center; gap: 4px; margin: 0; font-weight: normal;">
+									<input type="checkbox" class="weekday-checkbox" value="Friday"> Fri
+								</label>
+								<label style="display: flex; align-items: center; gap: 4px; margin: 0; font-weight: normal;">
+									<input type="checkbox" class="weekday-checkbox" value="Saturday"> Sat
+								</label>
+							</div>
+						</div>
 						<div class="form-group">
 							<label>Execute at these times <span class="info-icon" title="Hours must be in the range 0-23 and minutes in the range 0-59. The time specified follows the timezone setting above.">?</span></label>
 							<div class="form-row">
@@ -678,6 +704,16 @@ class TriggerEditorProvider {
 			document.getElementById('scheduleHours').addEventListener('input', updateScheduleExecutionTimes);
 			document.getElementById('scheduleMinutes').addEventListener('input', updateScheduleExecutionTimes);
 
+			// Weekday checkboxes change
+			document.querySelectorAll('.weekday-checkbox').forEach(checkbox => {
+				checkbox.addEventListener('change', () => {
+					vscode.postMessage({
+						command: 'triggerModified',
+						filePath: currentFilePath
+					});
+				});
+			});
+
 			// Track changes to mark as dirty
 			const inputs = document.querySelectorAll('input, select, textarea');
 			inputs.forEach(input => {
@@ -694,9 +730,17 @@ class TriggerEditorProvider {
 			const triggerType = document.getElementById('triggerType').value;
 			const frequency = document.getElementById('recurrenceFrequency').value;
 			const section = document.getElementById('advancedRecurrenceSection');
+			const weekDaysGroup = document.getElementById('weekDaysGroup');
 			
-			if (triggerType === 'ScheduleTrigger' && frequency === 'Day') {
+			if (triggerType === 'ScheduleTrigger' && (frequency === 'Day' || frequency === 'Week')) {
 				section.style.display = 'block';
+				
+				// Show weekDays only for Week frequency
+				if (frequency === 'Week') {
+					weekDaysGroup.style.display = 'block';
+				} else {
+					weekDaysGroup.style.display = 'none';
+				}
 			} else {
 				section.style.display = 'none';
 			}
@@ -928,6 +972,13 @@ class TriggerEditorProvider {
 				if (schedule.minutes && Array.isArray(schedule.minutes)) {
 					document.getElementById('scheduleMinutes').value = schedule.minutes.join(',');
 				}
+				if (schedule.weekDays && Array.isArray(schedule.weekDays)) {
+					document.querySelectorAll('.weekday-checkbox').forEach(checkbox => {
+						if (schedule.weekDays.includes(checkbox.value)) {
+							checkbox.checked = true;
+						}
+					});
+				}
 				updateScheduleExecutionTimes();
 				
 				// Expand advanced recurrence section if schedule data exists
@@ -987,10 +1038,10 @@ class TriggerEditorProvider {
 				}
 			}
 
-			// Add schedule if trigger is Schedule type and frequency is Day
+			// Add schedule if trigger is Schedule type and frequency is Day or Week
 			const triggerType = document.getElementById('triggerType').value;
 			const frequency = document.getElementById('recurrenceFrequency').value;
-			if (triggerType === 'ScheduleTrigger' && frequency === 'Day') {
+			if (triggerType === 'ScheduleTrigger' && (frequency === 'Day' || frequency === 'Week')) {
 				const hoursInput = document.getElementById('scheduleHours').value.trim();
 				const minutesInput = document.getElementById('scheduleMinutes').value.trim();
 				
@@ -1020,8 +1071,9 @@ class TriggerEditorProvider {
 				
 				const hours = parseNumberList(hoursInput, 0, 23);
 				const minutes = parseNumberList(minutesInput, 0, 59);
+				const selectedWeekDays = Array.from(document.querySelectorAll('.weekday-checkbox:checked')).map(cb => cb.value);
 				
-				if (hours.length > 0 || minutes.length > 0) {
+				if (hours.length > 0 || minutes.length > 0 || selectedWeekDays.length > 0) {
 					triggerData.properties.typeProperties.recurrence.schedule = {};
 					
 					if (hours.length > 0) {
@@ -1030,6 +1082,10 @@ class TriggerEditorProvider {
 					
 					if (minutes.length > 0) {
 						triggerData.properties.typeProperties.recurrence.schedule.minutes = minutes;
+					}
+					
+					if (frequency === 'Week' && selectedWeekDays.length > 0) {
+						triggerData.properties.typeProperties.recurrence.schedule.weekDays = selectedWeekDays;
 					}
 				}
 			}

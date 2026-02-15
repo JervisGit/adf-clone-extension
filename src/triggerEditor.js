@@ -127,6 +127,9 @@ class TriggerEditorProvider {
 							this.markPanelAsDirty(message.filePath, true);
 						}
 						break;
+					case 'showError':
+						vscode.window.showErrorMessage(message.message);
+						break;
 				}
 			},
 			undefined,
@@ -536,6 +539,32 @@ class TriggerEditorProvider {
 				<label for="endDate">End date</label>
 				<input type="datetime-local" id="endDate">
 			</div>
+
+			<div id="advancedRecurrenceSection" style="display: none; margin-top: 16px;">
+				<div class="form-group">
+					<div style="font-weight: 500; margin-bottom: 12px; cursor: pointer; user-select: none;" id="advancedRecurrenceToggle">
+						<span id="advancedRecurrenceArrow">▶</span> Advanced recurrence options
+					</div>
+					<div id="advancedRecurrenceContent" style="display: none; margin-left: 16px;">
+						<div class="form-group">
+							<label>Execute at these times <span class="info-icon" title="Hours must be in the range 0-23 and minutes in the range 0-59. The time specified follows the timezone setting above.">?</span></label>
+							<div class="form-row">
+								<div class="form-group">
+									<label for="scheduleHours">Hours</label>
+									<input type="text" id="scheduleHours" placeholder="0,6,12,18" title="Enter hours (0-23) separated by commas">
+								</div>
+								<div class="form-group">
+									<label for="scheduleMinutes">Minutes</label>
+									<input type="text" id="scheduleMinutes" placeholder="0,15,30,45" title="Enter minutes (0-59) separated by commas">
+								</div>
+							</div>
+							<div style="font-size: 11px; color: var(--vscode-descriptionForeground); margin-top: 4px;">
+								<div id="scheduleExecutionTimes" style="margin-top: 4px;"></div>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
 		</div>
 
 		<div class="form-section">
@@ -628,6 +657,27 @@ class TriggerEditorProvider {
 				document.getElementById('endDateGroup').style.display = e.target.checked ? 'block' : 'none';
 			});
 
+			// Trigger type and frequency change
+			document.getElementById('triggerType').addEventListener('change', updateAdvancedRecurrenceVisibility);
+			document.getElementById('recurrenceFrequency').addEventListener('change', updateAdvancedRecurrenceVisibility);
+
+			// Advanced recurrence toggle
+			document.getElementById('advancedRecurrenceToggle').addEventListener('click', () => {
+				const content = document.getElementById('advancedRecurrenceContent');
+				const arrow = document.getElementById('advancedRecurrenceArrow');
+				if (content.style.display === 'none') {
+					content.style.display = 'block';
+					arrow.textContent = '▼';
+				} else {
+					content.style.display = 'none';
+					arrow.textContent = '▶';
+				}
+			});
+
+			// Schedule hours and minutes change
+			document.getElementById('scheduleHours').addEventListener('input', updateScheduleExecutionTimes);
+			document.getElementById('scheduleMinutes').addEventListener('input', updateScheduleExecutionTimes);
+
 			// Track changes to mark as dirty
 			const inputs = document.querySelectorAll('input, select, textarea');
 			inputs.forEach(input => {
@@ -638,6 +688,73 @@ class TriggerEditorProvider {
 					});
 				});
 			});
+		}
+
+		function updateAdvancedRecurrenceVisibility() {
+			const triggerType = document.getElementById('triggerType').value;
+			const frequency = document.getElementById('recurrenceFrequency').value;
+			const section = document.getElementById('advancedRecurrenceSection');
+			
+			if (triggerType === 'ScheduleTrigger' && frequency === 'Day') {
+				section.style.display = 'block';
+			} else {
+				section.style.display = 'none';
+			}
+		}
+
+		function parseNumberList(input, min, max) {
+			if (!input || input.trim() === '') return [];
+			
+			const numbers = input.split(',')
+				.map(s => s.trim())
+				.filter(s => s !== '')
+				.map(s => parseInt(s))
+				.filter(n => !isNaN(n) && n >= min && n <= max);
+			
+			return [...new Set(numbers)].sort((a, b) => a - b);
+		}
+
+		function validateNumberList(input, min, max) {
+			if (!input || input.trim() === '') return [];
+			
+			const invalidValues = [];
+			const parts = input.split(',').map(s => s.trim()).filter(s => s !== '');
+			
+			parts.forEach(part => {
+				const num = parseInt(part);
+				if (isNaN(num)) {
+					invalidValues.push(part);
+				} else if (num < min || num > max) {
+					invalidValues.push(part);
+				}
+			});
+			
+			return invalidValues;
+		}
+
+		function updateScheduleExecutionTimes() {
+			const hoursInput = document.getElementById('scheduleHours').value;
+			const minutesInput = document.getElementById('scheduleMinutes').value;
+			const display = document.getElementById('scheduleExecutionTimes');
+			
+			const hours = parseNumberList(hoursInput, 0, 23);
+			const minutes = parseNumberList(minutesInput, 0, 59);
+			
+			if (hours.length === 0 || minutes.length === 0) {
+				display.textContent = '';
+				return;
+			}
+			
+			const times = [];
+			hours.forEach(h => {
+				minutes.forEach(m => {
+					const hourStr = String(h).padStart(2, '0');
+					const minStr = String(m).padStart(2, '0');
+					times.push(\`\${hourStr}:\${minStr}\`);
+				});
+			});
+			
+			display.textContent = 'Schedule execution times: ' + times.join(', ');
 		}
 
 		function setDefaultStartDate() {
@@ -801,19 +918,44 @@ class TriggerEditorProvider {
 					addPipelineRow(pipelineName);
 				}
 			});
+
+			// Schedule (advanced recurrence)
+			const schedule = recurrence.schedule;
+			if (schedule) {
+				if (schedule.hours && Array.isArray(schedule.hours)) {
+					document.getElementById('scheduleHours').value = schedule.hours.join(',');
+				}
+				if (schedule.minutes && Array.isArray(schedule.minutes)) {
+					document.getElementById('scheduleMinutes').value = schedule.minutes.join(',');
+				}
+				updateScheduleExecutionTimes();
+				
+				// Expand advanced recurrence section if schedule data exists
+				document.getElementById('advancedRecurrenceContent').style.display = 'block';
+				document.getElementById('advancedRecurrenceArrow').textContent = '▼';
+			}
+
+			// Update visibility of advanced recurrence section
+			updateAdvancedRecurrenceVisibility();
 		}
 
 		function saveTrigger() {
 			// Collect form data
 			const name = document.getElementById('triggerName').value.trim();
 			if (!name) {
-				alert('Please enter a trigger name');
+				vscode.postMessage({
+					command: 'showError',
+					message: 'Please enter a trigger name'
+				});
 				return;
 			}
 
 			const startDate = document.getElementById('startDate').value;
 			if (!startDate) {
-				alert('Please select a start date');
+				vscode.postMessage({
+					command: 'showError',
+					message: 'Please select a start date'
+				});
 				return;
 			}
 
@@ -842,6 +984,53 @@ class TriggerEditorProvider {
 				const endDate = document.getElementById('endDate').value;
 				if (endDate) {
 					triggerData.properties.typeProperties.recurrence.endTime = endDate.replace('T', 'T') + ':00';
+				}
+			}
+
+			// Add schedule if trigger is Schedule type and frequency is Day
+			const triggerType = document.getElementById('triggerType').value;
+			const frequency = document.getElementById('recurrenceFrequency').value;
+			if (triggerType === 'ScheduleTrigger' && frequency === 'Day') {
+				const hoursInput = document.getElementById('scheduleHours').value.trim();
+				const minutesInput = document.getElementById('scheduleMinutes').value.trim();
+				
+				// Validate hours input
+				if (hoursInput) {
+					const invalidHours = validateNumberList(hoursInput, 0, 23);
+					if (invalidHours.length > 0) {
+						vscode.postMessage({
+							command: 'showError',
+							message: 'Invalid hour values: ' + invalidHours.join(', ') + '. Hours must be in the range 0-23.'
+						});
+						return;
+					}
+				}
+				
+				// Validate minutes input
+				if (minutesInput) {
+					const invalidMinutes = validateNumberList(minutesInput, 0, 59);
+					if (invalidMinutes.length > 0) {
+						vscode.postMessage({
+							command: 'showError',
+							message: 'Invalid minute values: ' + invalidMinutes.join(', ') + '. Minutes must be in the range 0-59.'
+						});
+						return;
+					}
+				}
+				
+				const hours = parseNumberList(hoursInput, 0, 23);
+				const minutes = parseNumberList(minutesInput, 0, 59);
+				
+				if (hours.length > 0 || minutes.length > 0) {
+					triggerData.properties.typeProperties.recurrence.schedule = {};
+					
+					if (hours.length > 0) {
+						triggerData.properties.typeProperties.recurrence.schedule.hours = hours;
+					}
+					
+					if (minutes.length > 0) {
+						triggerData.properties.typeProperties.recurrence.schedule.minutes = minutes;
+					}
 				}
 			}
 

@@ -514,6 +514,56 @@ class TriggerEditorProvider {
 		.month-day-label:hover {
 			border-color: var(--vscode-focusBorder);
 		}
+
+		.recurrence-row {
+			display: flex;
+			gap: 8px;
+			align-items: center;
+			margin-bottom: 8px;
+		}
+
+		.recurrence-row select {
+			flex: 1;
+			padding: 6px 8px;
+			background-color: var(--vscode-input-background);
+			color: var(--vscode-input-foreground);
+			border: 1px solid var(--vscode-input-border);
+			border-radius: 2px;
+			font-size: 13px;
+		}
+
+		.recurrence-delete-btn {
+			padding: 6px 10px;
+			background-color: transparent;
+			color: var(--vscode-errorForeground);
+			border: 1px solid var(--vscode-input-border);
+			border-radius: 2px;
+			cursor: pointer;
+			font-size: 13px;
+			flex-shrink: 0;
+		}
+
+		.recurrence-delete-btn:hover {
+			background-color: var(--vscode-errorBackground);
+			border-color: var(--vscode-errorForeground);
+		}
+
+		.add-recurrence-btn {
+			display: inline-flex;
+			align-items: center;
+			gap: 4px;
+			padding: 6px 12px;
+			margin-top: 8px;
+			background-color: transparent;
+			color: var(--vscode-textLink-foreground);
+			border: none;
+			cursor: pointer;
+			font-size: 13px;
+		}
+
+		.add-recurrence-btn:hover {
+			color: var(--vscode-textLink-activeForeground);
+		}
 	</style>
 </head>
 <body>
@@ -629,7 +679,13 @@ class TriggerEditorProvider {
 								</div>
 							</div>
 							<div id="monthWeekDaysSelection" style="display: none;">
-								<label>Select week days (not yet implemented)</label>
+								<label>Recur every</label>
+								<div id="monthlyOccurrencesContainer">
+									<!-- Recurrence rows will be added here -->
+								</div>
+								<button class="add-recurrence-btn" id="addMonthlyOccurrenceBtn">
+									<span>+</span> Add new recurrence
+								</button>
 							</div>
 						</div>
 						<div class="form-group">
@@ -710,12 +766,15 @@ class TriggerEditorProvider {
 		let currentFilePath = null;
 		let availablePipelines = [];
 		let annotationIdCounter = 0;
+		let monthlyOccurrenceIdCounter = 0;
 
 		// Initialize
 		document.addEventListener('DOMContentLoaded', () => {
 			initializeEventListeners();
 			setDefaultStartDate();
 			initializeMonthDaysGrid();
+			// Add initial monthly occurrence row
+			addMonthlyOccurrenceRow();
 		});
 
 		function initializeEventListeners() {
@@ -790,6 +849,12 @@ class TriggerEditorProvider {
 						filePath: currentFilePath
 					});
 				});
+			});
+
+			// Add monthly occurrence button
+			document.getElementById('addMonthlyOccurrenceBtn').addEventListener('click', (e) => {
+				e.preventDefault();
+				addMonthlyOccurrenceRow();
 			});
 
 			// Track changes to mark as dirty
@@ -884,6 +949,83 @@ class TriggerEditorProvider {
 			
 			// Add change listener for Last
 			lastCheckbox.addEventListener('change', () => {
+				vscode.postMessage({
+					command: 'triggerModified',
+					filePath: currentFilePath
+				});
+			});
+		}
+
+		function addMonthlyOccurrenceRow(occurrence = 1, day = 'Sunday') {
+			const container = document.getElementById('monthlyOccurrencesContainer');
+			const row = document.createElement('div');
+			row.className = 'recurrence-row';
+			const id = monthlyOccurrenceIdCounter++;
+			row.dataset.id = id;
+			
+			// Occurrence dropdown
+			const occurrenceSelect = document.createElement('select');
+			occurrenceSelect.className = 'occurrence-select';
+			const occurrences = [
+				{ value: 1, label: 'First' },
+				{ value: 2, label: 'Second' },
+				{ value: 3, label: 'Third' },
+				{ value: 4, label: 'Fourth' },
+				{ value: 5, label: 'Fifth' },
+				{ value: -1, label: 'Last' }
+			];
+			occurrences.forEach(occ => {
+				const option = document.createElement('option');
+				option.value = occ.value;
+				option.textContent = occ.label;
+				if (occ.value === occurrence) {
+					option.selected = true;
+				}
+				occurrenceSelect.appendChild(option);
+			});
+			
+			// Day dropdown
+			const daySelect = document.createElement('select');
+			daySelect.className = 'day-select';
+			const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+			days.forEach(d => {
+				const option = document.createElement('option');
+				option.value = d;
+				option.textContent = d;
+				if (d === day) {
+					option.selected = true;
+				}
+				daySelect.appendChild(option);
+			});
+			
+			// Delete button
+			const deleteBtn = document.createElement('button');
+			deleteBtn.className = 'recurrence-delete-btn';
+			deleteBtn.innerHTML = '🗑️';
+			deleteBtn.title = 'Delete';
+			deleteBtn.addEventListener('click', (e) => {
+				e.preventDefault();
+				row.remove();
+				vscode.postMessage({
+					command: 'triggerModified',
+					filePath: currentFilePath
+				});
+			});
+			
+			row.appendChild(occurrenceSelect);
+			row.appendChild(daySelect);
+			row.appendChild(deleteBtn);
+			container.appendChild(row);
+			
+			// Add change listeners
+			occurrenceSelect.addEventListener('change', () => {
+				vscode.postMessage({
+					command: 'triggerModified',
+					filePath: currentFilePath
+				});
+			});
+			
+			daySelect.addEventListener('change', () => {
 				vscode.postMessage({
 					command: 'triggerModified',
 					filePath: currentFilePath
@@ -1132,6 +1274,18 @@ class TriggerEditorProvider {
 						}
 					});
 				}
+				if (schedule.monthlyOccurrences && Array.isArray(schedule.monthlyOccurrences)) {
+					// Clear default row
+					document.getElementById('monthlyOccurrencesContainer').innerHTML = '';
+					// Add loaded occurrences
+					schedule.monthlyOccurrences.forEach(occ => {
+						addMonthlyOccurrenceRow(occ.occurrence, occ.day);
+					});
+					// Switch to week days mode
+					document.querySelector('input[name="monthScheduleType"][value="weekDays"]').checked = true;
+					document.getElementById('monthDaysSelection').style.display = 'none';
+					document.getElementById('monthWeekDaysSelection').style.display = 'block';
+				}
 				updateScheduleExecutionTimes();
 				
 				// Expand advanced recurrence section if schedule data exists
@@ -1246,7 +1400,26 @@ class TriggerEditorProvider {
 				const selectedWeekDays = Array.from(document.querySelectorAll('.weekday-checkbox:checked')).map(cb => cb.value);
 				const selectedMonthDays = Array.from(document.querySelectorAll('.month-day-checkbox:checked')).map(cb => parseInt(cb.value));
 				
-				if (hours.length > 0 || minutes.length > 0 || selectedWeekDays.length > 0 || selectedMonthDays.length > 0) {
+				// Get monthly occurrences (for Week days option)
+				const monthlyOccurrences = [];
+				if (frequency === 'Month') {
+					const monthScheduleType = document.querySelector('input[name="monthScheduleType"]:checked').value;
+					if (monthScheduleType === 'weekDays') {
+						const rows = document.querySelectorAll('#monthlyOccurrencesContainer .recurrence-row');
+						rows.forEach(row => {
+							const occurrenceSelect = row.querySelector('.occurrence-select');
+							const daySelect = row.querySelector('.day-select');
+							if (occurrenceSelect && daySelect) {
+								monthlyOccurrences.push({
+									day: daySelect.value,
+									occurrence: parseInt(occurrenceSelect.value)
+								});
+							}
+						});
+					}
+				}
+				
+				if (hours.length > 0 || minutes.length > 0 || selectedWeekDays.length > 0 || selectedMonthDays.length > 0 || monthlyOccurrences.length > 0) {
 					triggerData.properties.typeProperties.recurrence.schedule = {};
 					
 					if (hours.length > 0) {
@@ -1261,8 +1434,12 @@ class TriggerEditorProvider {
 						triggerData.properties.typeProperties.recurrence.schedule.weekDays = selectedWeekDays;
 					}
 					
-					if (frequency === 'Month' && selectedMonthDays.length > 0) {
-						triggerData.properties.typeProperties.recurrence.schedule.monthDays = selectedMonthDays;
+					if (frequency === 'Month') {
+						if (selectedMonthDays.length > 0) {
+							triggerData.properties.typeProperties.recurrence.schedule.monthDays = selectedMonthDays;
+						} else if (monthlyOccurrences.length > 0) {
+							triggerData.properties.typeProperties.recurrence.schedule.monthlyOccurrences = monthlyOccurrences;
+						}
 					}
 				}
 			}

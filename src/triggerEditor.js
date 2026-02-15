@@ -585,7 +585,6 @@ class TriggerEditorProvider {
 					<option value="ScheduleTrigger">Schedule</option>
 					<option value="TumblingWindowTrigger">Tumbling window</option>
 					<option value="BlobEventsTrigger">Storage events</option>
-					<option value="CustomEventsTrigger">Custom events</option>
 				</select>
 			</div>
 

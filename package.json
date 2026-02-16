@@ -48,6 +48,21 @@
         "icon": "$(edit)"
       },
       {
+        "command": "adf-pipeline-clone.openDataset",
+        "title": "Synapse: Open Dataset Editor",
+        "category": "Dataset",
+        "icon": "$(database)"
+      },
+      {
+        "command": "adf-pipeline-clone.openDatasetFile",
+        "title": "Open Dataset File"
+      },
+      {
+        "command": "adf-pipeline-clone.refreshDatasets",
+        "title": "Refresh Datasets",
+        "icon": "$(refresh)"
+      },
+      {
         "command": "adf-pipeline-clone.refreshPipelines",
         "title": "Refresh",
         "icon": "$(refresh)"
@@ -98,6 +113,7 @@
           "when": "view == adf-pipelines",
           "group": "navigation"
         },
+
         {
           "command": "adf-pipeline-clone.refreshPipelineRuns",
           "when": "view == adf-pipeline-runs",
@@ -125,6 +141,7 @@
           "when": "view == adf-pipelines && viewItem == folder-dataset",
           "group": "inline"
         },
+
         {
           "command": "adf-pipeline-clone.createTrigger",
           "when": "view == adf-pipelines && viewItem == folder-trigger",

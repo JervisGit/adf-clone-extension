@@ -1,7 +1,9 @@
 const vscode = require('vscode');
 const { PipelineEditorProvider } = require('./pipelineEditor');
 const { TriggerEditorProvider } = require('./triggerEditor');
+const { DatasetEditorProvider } = require('./datasetEditor');
 const { PipelineTreeDataProvider } = require('./pipelineTreeProvider');
+const { DatasetTreeDataProvider } = require('./datasetTreeProvider');
 const { PipelineRunsTreeDataProvider } = require('./pipelineRunsTreeProvider');
 const { PipelineRunViewerProvider } = require('./pipelineRunViewer');
 
@@ -24,11 +26,28 @@ function activate(context) {
 		})
 	);
 
+	// Register the dataset editor provider
+	const datasetEditorProvider = new DatasetEditorProvider(context);
+	context.subscriptions.push(
+		vscode.commands.registerCommand('adf-pipeline-clone.openDataset', () => {
+			datasetEditorProvider.createOrShow();
+		})
+	);
+
 	// Register command to open trigger file
 	context.subscriptions.push(
 		vscode.commands.registerCommand('adf-pipeline-clone.openTriggerFile', (item) => {
 			if (item && item.filePath) {
 				triggerEditorProvider.loadTriggerFile(item.filePath);
+			}
+		})
+	);
+
+	// Register command to open dataset file
+	context.subscriptions.push(
+		vscode.commands.registerCommand('adf-pipeline-clone.openDatasetFile', (item) => {
+			if (item && item.filePath) {
+				datasetEditorProvider.loadDatasetFile(item.filePath);
 			}
 		})
 	);
@@ -48,6 +67,9 @@ function activate(context) {
 	});
 	context.subscriptions.push(pipelineTreeView);
 
+	// Dataset tree provider no longer needed as a separate view
+	// Datasets are now shown in the main pipelines view
+
 	// Register command to open pipeline file
 	context.subscriptions.push(
 		vscode.commands.registerCommand('adf-pipeline-clone.openPipelineFile', (item) => {
@@ -63,6 +85,9 @@ function activate(context) {
 			pipelineTreeProvider.refresh();
 		})
 	);
+
+	// Refresh datasets through main pipeline tree provider
+	// No separate refresh command needed
 
 	// Register the pipeline runs tree view
 	const pipelineRunsTreeProvider = new PipelineRunsTreeDataProvider(context);
@@ -134,17 +159,61 @@ function activate(context) {
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand('adf-pipeline-clone.createDataset', async (folderItem) => {
+			// Step 1: Ask for dataset name
 			const name = await vscode.window.showInputBox({
 				prompt: 'Enter dataset name',
 				placeHolder: 'MyDataset'
 			});
 			
-			if (name) {
-				const fs = require('fs');
-				const path = require('path');
-				const filePath = path.join(folderItem.folderPath, `${name}.json`);
+			if (!name) return;
+			
+			// Step 2: Ask for dataset source type
+			const datasetTypes = [
+				{ label: 'Azure SQL Database', value: 'AzureSqlTable', requiresFileType: false },
+				{ label: 'Azure Blob Storage', value: 'AzureBlobStorage', requiresFileType: true },
+				{ label: 'Azure Data Lake Storage Gen2', value: 'AzureDataLakeStorageGen2', requiresFileType: true }
+			];
+			
+			const selectedType = await vscode.window.showQuickPick(
+				datasetTypes.map(t => ({ label: t.label, description: t.value, type: t })),
+				{ placeHolder: 'Select dataset source type' }
+			);
+			
+			if (!selectedType) return;
+			
+			let fileType = null;
+			
+			// Step 3: If requires file type, ask for it
+			if (selectedType.type.requiresFileType) {
+				const fileTypes = [
+					{ label: 'Parquet', value: 'Parquet' },
+					{ label: 'Delimited Text (CSV/TSV)', value: 'DelimitedText' },
+					{ label: 'JSON', value: 'Json' },
+					{ label: 'Avro', value: 'Avro' },
+					{ label: 'ORC', value: 'Orc' },
+					{ label: 'XML', value: 'Xml' },
+					{ label: 'Iceberg', value: 'Iceberg' }
+				];
 				
-				const datasetTemplate = {
+				const selectedFileType = await vscode.window.showQuickPick(
+					fileTypes.map(t => ({ label: t.label, description: t.value, fileType: t })),
+					{ placeHolder: 'Select file type' }
+				);
+				
+				if (!selectedFileType) return;
+				fileType = selectedFileType.fileType.value;
+			}
+			
+			// Step 4: Create the dataset file
+			const fs = require('fs');
+			const path = require('path');
+			const filePath = path.join(folderItem.folderPath, `${name}.json`);
+			
+			// Create appropriate template based on type
+			let datasetTemplate;
+			
+			if (selectedType.type.value === 'AzureSqlTable') {
+				datasetTemplate = {
 					name: name,
 					properties: {
 						linkedServiceName: {
@@ -152,24 +221,80 @@ function activate(context) {
 							type: "LinkedServiceReference"
 						},
 						annotations: [],
-						type: "DelimitedText",
+						type: "AzureSqlTable",
+						typeProperties: {
+							schema: "dbo",
+							table: "TableName"
+						},
+						schema: []
+					}
+				};
+			} else if (selectedType.type.value === 'AzureBlobStorage') {
+				const locationType = 'AzureBlobStorageLocation';
+				datasetTemplate = {
+					name: name,
+					properties: {
+						linkedServiceName: {
+							referenceName: "YourLinkedService",
+							type: "LinkedServiceReference"
+						},
+						annotations: [],
+						type: fileType,
 						typeProperties: {
 							location: {
-								type: "AzureBlobFSLocation"
-							},
-							columnDelimiter: ",",
-							escapeChar: "\\\\",
-							firstRowAsHeader: true,
-							quoteChar: "\""
+								type: locationType,
+								container: "mycontainer"
+							}
 						},
 						schema: []
 					}
 				};
 				
-				fs.writeFileSync(filePath, JSON.stringify(datasetTemplate, null, 2));
-				pipelineTreeProvider.refresh();
-				vscode.window.showInformationMessage(`Dataset ${name} created`);
+				// Add file type specific properties
+				if (fileType === 'DelimitedText') {
+					datasetTemplate.properties.typeProperties.columnDelimiter = ",";
+					datasetTemplate.properties.typeProperties.escapeChar = "\\";
+					datasetTemplate.properties.typeProperties.firstRowAsHeader = true;
+					datasetTemplate.properties.typeProperties.quoteChar = "\"";
+				} else if (fileType === 'Parquet' || fileType === 'Avro') {
+					datasetTemplate.properties.typeProperties.compressionCodec = "snappy";
+				}
+			} else if (selectedType.type.value === 'AzureDataLakeStorageGen2') {
+				const locationType = 'AzureBlobFSLocation';
+				datasetTemplate = {
+					name: name,
+					properties: {
+						linkedServiceName: {
+							referenceName: "YourLinkedService",
+							type: "LinkedServiceReference"
+						},
+						annotations: [],
+						type: fileType,
+						typeProperties: {
+							location: {
+								type: locationType,
+								fileSystem: "myfilesystem"
+							}
+						},
+						schema: []
+					}
+				};
+				
+				// Add file type specific properties
+				if (fileType === 'DelimitedText') {
+					datasetTemplate.properties.typeProperties.columnDelimiter = ",";
+					datasetTemplate.properties.typeProperties.escapeChar = "\\";
+					datasetTemplate.properties.typeProperties.firstRowAsHeader = true;
+					datasetTemplate.properties.typeProperties.quoteChar = "\"";
+				} else if (fileType === 'Parquet' || fileType === 'Avro') {
+					datasetTemplate.properties.typeProperties.compressionCodec = "snappy";
+				}
 			}
+			
+			fs.writeFileSync(filePath, JSON.stringify(datasetTemplate, null, 2));
+			pipelineTreeProvider.refresh();
+			// Open the newly created dataset in the editor
+			datasetEditorProvider.loadDatasetFile(filePath);
 		})
 	);
 

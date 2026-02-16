@@ -2,7 +2,7 @@ const vscode = require('vscode');
 const path = require('path');
 const fs = require('fs');
 
-class PipelineTreeDataProvider {
+class DatasetTreeDataProvider {
 	constructor(context) {
 		this.context = context;
 		this._onDidChangeTreeData = new vscode.EventEmitter();
@@ -16,7 +16,7 @@ class PipelineTreeDataProvider {
 		if (vscode.workspace.workspaceFolders) {
 			const pattern = new vscode.RelativePattern(
 				vscode.workspace.workspaceFolders[0],
-				'{pipeline,dataset,trigger}/**/*.json'
+				'dataset/**/*.json'
 			);
 			
 			const watcher = vscode.workspace.createFileSystemWatcher(pattern);
@@ -42,26 +42,14 @@ class PipelineTreeDataProvider {
 		}
 
 		const workspaceRoot = vscode.workspace.workspaceFolders[0].uri.fsPath;
+		const datasetDir = path.join(workspaceRoot, 'dataset');
 
 		if (!element) {
-			// Root level - show three main categories
-			const folders = [];
-			
-			const datasetDir = path.join(workspaceRoot, 'dataset');
-			const pipelineDir = path.join(workspaceRoot, 'pipeline');
-			const triggerDir = path.join(workspaceRoot, 'trigger');
-			
+			// Root level - show the datasets folder
 			if (fs.existsSync(datasetDir) || true) { // Always show even if doesn't exist
-				folders.push(new FolderItem('Datasets', datasetDir, 'dataset'));
+				return [new FolderItem('Datasets', datasetDir, 'dataset')];
 			}
-			if (fs.existsSync(pipelineDir) || true) {
-				folders.push(new FolderItem('Pipelines', pipelineDir, 'pipeline'));
-			}
-			if (fs.existsSync(triggerDir) || true) {
-				folders.push(new FolderItem('Triggers', triggerDir, 'trigger'));
-			}
-			
-			return folders;
+			return [];
 		} else if (element.folderType) {
 			// Show files in the folder
 			if (!fs.existsSync(element.folderPath)) {
@@ -70,10 +58,10 @@ class PipelineTreeDataProvider {
 			
 			const files = fs.readdirSync(element.folderPath)
 				.filter(file => file.endsWith('.json'))
-				.map(file => new FileItem(
+				.sort()
+				.map(file => new DatasetFileItem(
 					file,
-					path.join(element.folderPath, file),
-					element.folderType
+					path.join(element.folderPath, file)
 				));
 			
 			return files;
@@ -93,36 +81,23 @@ class FolderItem extends vscode.TreeItem {
 	}
 }
 
-class FileItem extends vscode.TreeItem {
-	constructor(label, filePath, fileType) {
+class DatasetFileItem extends vscode.TreeItem {
+	constructor(label, filePath) {
 		super(label, vscode.TreeItemCollapsibleState.None);
 		this.filePath = filePath;
-		this.fileType = fileType;
-		this.contextValue = fileType;
-		this.iconPath = new vscode.ThemeIcon('json');
+		this.contextValue = 'dataset';
+		this.iconPath = new vscode.ThemeIcon('database');
 		
-		// Use different commands based on file type
-		if (fileType === 'trigger') {
-			this.command = {
-				command: 'adf-pipeline-clone.openTriggerFile',
-				title: 'Open Trigger',
-				arguments: [this]
-			};
-		} else if (fileType === 'pipeline') {
-			this.command = {
-				command: 'adf-pipeline-clone.openPipelineFile',
-				title: 'Open Pipeline',
-				arguments: [this]
-			};
-		} else if (fileType === 'dataset') {
-			// For datasets, use the dataset editor
-			this.command = {
-				command: 'adf-pipeline-clone.openDatasetFile',
-				title: 'Open Dataset',
-				arguments: [this]
-			};
-		}
+		// Use dataset editor command
+		this.command = {
+			command: 'adf-pipeline-clone.openDatasetFile',
+			title: 'Open Dataset',
+			arguments: [this]
+		};
+		
+		// Add tooltip with file path
+		this.tooltip = filePath;
 	}
 }
 
-module.exports = { PipelineTreeDataProvider };
+module.exports = { DatasetTreeDataProvider };

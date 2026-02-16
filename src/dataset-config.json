@@ -1,0 +1,590 @@
+{
+  "datasetTypes": {
+    "AzureSqlTable": {
+      "name": "Azure SQL Database",
+      "displayName": "Azure SQL Database Table",
+      "category": "database",
+      "supportsSchema": true,
+      "linkedServiceTypes": ["AzureSqlDatabase"],
+      "fields": {
+        "general": {
+          "schema": {
+            "type": "text",
+            "label": "Schema name",
+            "placeholder": "dbo",
+            "jsonPath": "properties.typeProperties.schema",
+            "default": "dbo"
+          },
+          "table": {
+            "type": "text",
+            "label": "Table name",
+            "placeholder": "TableName",
+            "jsonPath": "properties.typeProperties.table",
+            "required": true
+          },
+          "tableName": {
+            "type": "text",
+            "label": "Table name (expression)",
+            "placeholder": "@{item().tableName}",
+            "jsonPath": "properties.typeProperties.tableName",
+            "helpText": "Use when table name is dynamic"
+          }
+        }
+      }
+    },
+    "AzureBlobStorage": {
+      "name": "Azure Blob Storage",
+      "displayName": "Azure Blob Storage",
+      "category": "storage",
+      "requiresFileType": true,
+      "linkedServiceTypes": ["AzureBlobStorage"],
+      "fileTypes": {
+        "Parquet": {
+          "typeValue": "Parquet",
+          "displayName": "Parquet",
+          "fields": {
+            "general": {
+              "folderPath": {
+                "type": "text",
+                "label": "Folder path",
+                "placeholder": "container/folder",
+                "jsonPath": "properties.typeProperties.location.folderPath"
+              },
+              "fileName": {
+                "type": "text",
+                "label": "File name",
+                "placeholder": "file.parquet",
+                "jsonPath": "properties.typeProperties.location.fileName"
+              },
+              "container": {
+                "type": "text",
+                "label": "Container",
+                "placeholder": "mycontainer",
+                "jsonPath": "properties.typeProperties.location.container"
+              },
+              "locationType": {
+                "type": "hidden",
+                "jsonPath": "properties.typeProperties.location.type",
+                "value": "AzureBlobStorageLocation"
+              },
+              "compressionCodec": {
+                "type": "select",
+                "label": "Compression codec",
+                "options": ["none", "snappy", "gzip", "lzo"],
+                "jsonPath": "properties.typeProperties.compressionCodec",
+                "default": "snappy"
+              }
+            }
+          }
+        },
+        "DelimitedText": {
+          "typeValue": "DelimitedText",
+          "displayName": "Delimited Text (CSV/TSV)",
+          "fields": {
+            "general": {
+              "folderPath": {
+                "type": "text",
+                "label": "Folder path",
+                "placeholder": "container/folder",
+                "jsonPath": "properties.typeProperties.location.folderPath"
+              },
+              "fileName": {
+                "type": "text",
+                "label": "File name",
+                "placeholder": "file.csv",
+                "jsonPath": "properties.typeProperties.location.fileName"
+              },
+              "container": {
+                "type": "text",
+                "label": "Container",
+                "placeholder": "mycontainer",
+                "jsonPath": "properties.typeProperties.location.container"
+              },
+              "locationType": {
+                "type": "hidden",
+                "jsonPath": "properties.typeProperties.location.type",
+                "value": "AzureBlobStorageLocation"
+              },
+              "columnDelimiter": {
+                "type": "text",
+                "label": "Column delimiter",
+                "placeholder": ",",
+                "jsonPath": "properties.typeProperties.columnDelimiter",
+                "default": ","
+              },
+              "rowDelimiter": {
+                "type": "text",
+                "label": "Row delimiter",
+                "placeholder": "\\n",
+                "jsonPath": "properties.typeProperties.rowDelimiter",
+                "default": "\\n"
+              },
+              "escapeChar": {
+                "type": "text",
+                "label": "Escape character",
+                "placeholder": "\\",
+                "jsonPath": "properties.typeProperties.escapeChar",
+                "default": "\\"
+              },
+              "quoteChar": {
+                "type": "text",
+                "label": "Quote character",
+                "placeholder": "\"",
+                "jsonPath": "properties.typeProperties.quoteChar",
+                "default": "\""
+              },
+              "firstRowAsHeader": {
+                "type": "boolean",
+                "label": "First row as header",
+                "jsonPath": "properties.typeProperties.firstRowAsHeader",
+                "default": true
+              },
+              "compressionCodec": {
+                "type": "select",
+                "label": "Compression codec",
+                "options": ["none", "gzip", "bzip2", "deflate", "ZipDeflate"],
+                "jsonPath": "properties.typeProperties.compressionCodec",
+                "default": "none"
+              }
+            }
+          }
+        },
+        "Json": {
+          "typeValue": "Json",
+          "displayName": "JSON",
+          "fields": {
+            "general": {
+              "folderPath": {
+                "type": "text",
+                "label": "Folder path",
+                "placeholder": "container/folder",
+                "jsonPath": "properties.typeProperties.location.folderPath"
+              },
+              "fileName": {
+                "type": "text",
+                "label": "File name",
+                "placeholder": "file.json",
+                "jsonPath": "properties.typeProperties.location.fileName"
+              },
+              "container": {
+                "type": "text",
+                "label": "Container",
+                "placeholder": "mycontainer",
+                "jsonPath": "properties.typeProperties.location.container"
+              },
+              "locationType": {
+                "type": "hidden",
+                "jsonPath": "properties.typeProperties.location.type",
+                "value": "AzureBlobStorageLocation"
+              },
+              "compressionCodec": {
+                "type": "select",
+                "label": "Compression codec",
+                "options": ["none", "gzip", "bzip2", "deflate", "ZipDeflate"],
+                "jsonPath": "properties.typeProperties.compressionCodec",
+                "default": "none"
+              }
+            }
+          }
+        },
+        "Avro": {
+          "typeValue": "Avro",
+          "displayName": "Avro",
+          "fields": {
+            "general": {
+              "folderPath": {
+                "type": "text",
+                "label": "Folder path",
+                "placeholder": "container/folder",
+                "jsonPath": "properties.typeProperties.location.folderPath"
+              },
+              "fileName": {
+                "type": "text",
+                "label": "File name",
+                "placeholder": "file.avro",
+                "jsonPath": "properties.typeProperties.location.fileName"
+              },
+              "container": {
+                "type": "text",
+                "label": "Container",
+                "placeholder": "mycontainer",
+                "jsonPath": "properties.typeProperties.location.container"
+              },
+              "locationType": {
+                "type": "hidden",
+                "jsonPath": "properties.typeProperties.location.type",
+                "value": "AzureBlobStorageLocation"
+              }
+            }
+          }
+        },
+        "Orc": {
+          "typeValue": "ORC",
+          "displayName": "ORC",
+          "fields": {
+            "general": {
+              "folderPath": {
+                "type": "text",
+                "label": "Folder path",
+                "placeholder": "container/folder",
+                "jsonPath": "properties.typeProperties.location.folderPath"
+              },
+              "fileName": {
+                "type": "text",
+                "label": "File name",
+                "placeholder": "file.orc",
+                "jsonPath": "properties.typeProperties.location.fileName"
+              },
+              "container": {
+                "type": "text",
+                "label": "Container",
+                "placeholder": "mycontainer",
+                "jsonPath": "properties.typeProperties.location.container"
+              },
+              "locationType": {
+                "type": "hidden",
+                "jsonPath": "properties.typeProperties.location.type",
+                "value": "AzureBlobStorageLocation"
+              },
+              "compressionCodec": {
+                "type": "select",
+                "label": "Compression codec",
+                "options": ["none", "snappy", "zlib"],
+                "jsonPath": "properties.typeProperties.compressionCodec",
+                "default": "none"
+              }
+            }
+          }
+        },
+        "Xml": {
+          "typeValue": "Xml",
+          "displayName": "XML",
+          "fields": {
+            "general": {
+              "folderPath": {
+                "type": "text",
+                "label": "Folder path",
+                "placeholder": "container/folder",
+                "jsonPath": "properties.typeProperties.location.folderPath"
+              },
+              "fileName": {
+                "type": "text",
+                "label": "File name",
+                "placeholder": "file.xml",
+                "jsonPath": "properties.typeProperties.location.fileName"
+              },
+              "container": {
+                "type": "text",
+                "label": "Container",
+                "placeholder": "mycontainer",
+                "jsonPath": "properties.typeProperties.location.container"
+              },
+              "locationType": {
+                "type": "hidden",
+                "jsonPath": "properties.typeProperties.location.type",
+                "value": "AzureBlobStorageLocation"
+              },
+              "compressionCodec": {
+                "type": "select",
+                "label": "Compression codec",
+                "options": ["none", "gzip", "bzip2", "deflate", "ZipDeflate"],
+                "jsonPath": "properties.typeProperties.compressionCodec",
+                "default": "none"
+              }
+            }
+          }
+        }
+      }
+    },
+    "AzureDataLakeStorageGen2": {
+      "name": "Azure Data Lake Storage Gen2",
+      "displayName": "Azure Data Lake Storage Gen2",
+      "category": "storage",
+      "requiresFileType": true,
+      "linkedServiceTypes": ["AzureBlobFS"],
+      "fileTypes": {
+        "Parquet": {
+          "typeValue": "Parquet",
+          "displayName": "Parquet",
+          "fields": {
+            "general": {
+              "fileSystem": {
+                "type": "text",
+                "label": "File system",
+                "placeholder": "myfilesystem",
+                "jsonPath": "properties.typeProperties.location.fileSystem"
+              },
+              "folderPath": {
+                "type": "text",
+                "label": "Folder path",
+                "placeholder": "folder/subfolder",
+                "jsonPath": "properties.typeProperties.location.folderPath"
+              },
+              "fileName": {
+                "type": "text",
+                "label": "File name",
+                "placeholder": "file.parquet",
+                "jsonPath": "properties.typeProperties.location.fileName"
+              },
+              "locationType": {
+                "type": "hidden",
+                "jsonPath": "properties.typeProperties.location.type",
+                "value": "AzureBlobFSLocation"
+              },
+              "compressionCodec": {
+                "type": "select",
+                "label": "Compression codec",
+                "options": ["none", "snappy", "gzip", "lzo"],
+                "jsonPath": "properties.typeProperties.compressionCodec",
+                "default": "snappy"
+              }
+            }
+          }
+        },
+        "DelimitedText": {
+          "typeValue": "DelimitedText",
+          "displayName": "Delimited Text (CSV/TSV)",
+          "fields": {
+            "general": {
+              "fileSystem": {
+                "type": "text",
+                "label": "File system",
+                "placeholder": "myfilesystem",
+                "jsonPath": "properties.typeProperties.location.fileSystem"
+              },
+              "folderPath": {
+                "type": "text",
+                "label": "Folder path",
+                "placeholder": "folder/subfolder",
+                "jsonPath": "properties.typeProperties.location.folderPath"
+              },
+              "fileName": {
+                "type": "text",
+                "label": "File name",
+                "placeholder": "file.csv",
+                "jsonPath": "properties.typeProperties.location.fileName"
+              },
+              "locationType": {
+                "type": "hidden",
+                "jsonPath": "properties.typeProperties.location.type",
+                "value": "AzureBlobFSLocation"
+              },
+              "columnDelimiter": {
+                "type": "text",
+                "label": "Column delimiter",
+                "placeholder": ",",
+                "jsonPath": "properties.typeProperties.columnDelimiter",
+                "default": ","
+              },
+              "rowDelimiter": {
+                "type": "text",
+                "label": "Row delimiter",
+                "placeholder": "\\n",
+                "jsonPath": "properties.typeProperties.rowDelimiter",
+                "default": "\\n"
+              },
+              "escapeChar": {
+                "type": "text",
+                "label": "Escape character",
+                "placeholder": "\\",
+                "jsonPath": "properties.typeProperties.escapeChar",
+                "default": "\\"
+              },
+              "quoteChar": {
+                "type": "text",
+                "label": "Quote character",
+                "placeholder": "\"",
+                "jsonPath": "properties.typeProperties.quoteChar",
+                "default": "\""
+              },
+              "firstRowAsHeader": {
+                "type": "boolean",
+                "label": "First row as header",
+                "jsonPath": "properties.typeProperties.firstRowAsHeader",
+                "default": true
+              }
+            }
+          }
+        },
+        "Json": {
+          "typeValue": "Json",
+          "displayName": "JSON",
+          "fields": {
+            "general": {
+              "fileSystem": {
+                "type": "text",
+                "label": "File system",
+                "placeholder": "myfilesystem",
+                "jsonPath": "properties.typeProperties.location.fileSystem"
+              },
+              "folderPath": {
+                "type": "text",
+                "label": "Folder path",
+                "placeholder": "folder/subfolder",
+                "jsonPath": "properties.typeProperties.location.folderPath"
+              },
+              "fileName": {
+                "type": "text",
+                "label": "File name",
+                "placeholder": "file.json",
+                "jsonPath": "properties.typeProperties.location.fileName"
+              },
+              "locationType": {
+                "type": "hidden",
+                "jsonPath": "properties.typeProperties.location.type",
+                "value": "AzureBlobFSLocation"
+              }
+            }
+          }
+        },
+        "Avro": {
+          "typeValue": "Avro",
+          "displayName": "Avro",
+          "fields": {
+            "general": {
+              "fileSystem": {
+                "type": "text",
+                "label": "File system",
+                "placeholder": "myfilesystem",
+                "jsonPath": "properties.typeProperties.location.fileSystem"
+              },
+              "folderPath": {
+                "type": "text",
+                "label": "Folder path",
+                "placeholder": "folder/subfolder",
+                "jsonPath": "properties.typeProperties.location.folderPath"
+              },
+              "fileName": {
+                "type": "text",
+                "label": "File name",
+                "placeholder": "file.avro",
+                "jsonPath": "properties.typeProperties.location.fileName"
+              },
+              "locationType": {
+                "type": "hidden",
+                "jsonPath": "properties.typeProperties.location.type",
+                "value": "AzureBlobFSLocation"
+              }
+            }
+          }
+        },
+        "Orc": {
+          "typeValue": "ORC",
+          "displayName": "ORC",
+          "fields": {
+            "general": {
+              "fileSystem": {
+                "type": "text",
+                "label": "File system",
+                "placeholder": "myfilesystem",
+                "jsonPath": "properties.typeProperties.location.fileSystem"
+              },
+              "folderPath": {
+                "type": "text",
+                "label": "Folder path",
+                "placeholder": "folder/subfolder",
+                "jsonPath": "properties.typeProperties.location.folderPath"
+              },
+              "fileName": {
+                "type": "text",
+                "label": "File name",
+                "placeholder": "file.orc",
+                "jsonPath": "properties.typeProperties.location.fileName"
+              },
+              "locationType": {
+                "type": "hidden",
+                "jsonPath": "properties.typeProperties.location.type",
+                "value": "AzureBlobFSLocation"
+              }
+            }
+          }
+        },
+        "Xml": {
+          "typeValue": "Xml",
+          "displayName": "XML",
+          "fields": {
+            "general": {
+              "fileSystem": {
+                "type": "text",
+                "label": "File system",
+                "placeholder": "myfilesystem",
+                "jsonPath": "properties.typeProperties.location.fileSystem"
+              },
+              "folderPath": {
+                "type": "text",
+                "label": "Folder path",
+                "placeholder": "folder/subfolder",
+                "jsonPath": "properties.typeProperties.location.folderPath"
+              },
+              "fileName": {
+                "type": "text",
+                "label": "File name",
+                "placeholder": "file.xml",
+                "jsonPath": "properties.typeProperties.location.fileName"
+              },
+              "locationType": {
+                "type": "hidden",
+                "jsonPath": "properties.typeProperties.location.type",
+                "value": "AzureBlobFSLocation"
+              }
+            }
+          }
+        },
+        "Iceberg": {
+          "typeValue": "Iceberg",
+          "displayName": "Iceberg",
+          "fields": {
+            "general": {
+              "fileSystem": {
+                "type": "text",
+                "label": "File system",
+                "placeholder": "myfilesystem",
+                "jsonPath": "properties.typeProperties.location.fileSystem"
+              },
+              "folderPath": {
+                "type": "text",
+                "label": "Folder path",
+                "placeholder": "folder/subfolder",
+                "jsonPath": "properties.typeProperties.location.folderPath"
+              },
+              "fileName": {
+                "type": "text",
+                "label": "File name",
+                "placeholder": "file",
+                "jsonPath": "properties.typeProperties.location.fileName"
+              },
+              "locationType": {
+                "type": "hidden",
+                "jsonPath": "properties.typeProperties.location.type",
+                "value": "AzureBlobFSLocation"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "commonFields": {
+    "name": {
+      "type": "text",
+      "label": "Dataset name",
+      "placeholder": "MyDataset",
+      "jsonPath": "name",
+      "required": true
+    },
+    "linkedService": {
+      "type": "linkedservice",
+      "label": "Linked service",
+      "jsonPath": "properties.linkedServiceName.referenceName",
+      "required": true,
+      "helpText": "Select the linked service for this dataset"
+    },
+    "parameters": {
+      "type": "keyvalue-parameters",
+      "label": "Parameters",
+      "jsonPath": "properties.parameters",
+      "helpText": "Define parameters with name, type, and default value",
+      "valueTypes": ["String", "Int", "Float", "Bool", "Array", "Object"]
+    }
+  }
+}

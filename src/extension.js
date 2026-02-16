@@ -6,6 +6,8 @@ const { PipelineTreeDataProvider } = require('./pipelineTreeProvider');
 const { DatasetTreeDataProvider } = require('./datasetTreeProvider');
 const { PipelineRunsTreeDataProvider } = require('./pipelineRunsTreeProvider');
 const { PipelineRunViewerProvider } = require('./pipelineRunViewer');
+const { buildDatasetJson } = require('./datasetUtils');
+const datasetConfig = require('./dataset-config.json');
 
 function activate(context) {
 	console.log('ADF Pipeline Clone extension is now active!');
@@ -204,92 +206,21 @@ function activate(context) {
 				fileType = selectedFileType.fileType.value;
 			}
 			
-			// Step 4: Create the dataset file
+			// Step 4: Create the dataset file using config-driven approach
 			const fs = require('fs');
 			const path = require('path');
 			const filePath = path.join(folderItem.folderPath, `${name}.json`);
 			
-			// Create appropriate template based on type
-			let datasetTemplate;
+			// Build minimal form data - config will handle defaults
+			const formData = {
+				name: name,
+				datasetType: selectedType.type.value,
+				fileType: fileType,
+				linkedService: 'YourLinkedService'
+			};
 			
-			if (selectedType.type.value === 'AzureSqlTable') {
-				datasetTemplate = {
-					name: name,
-					properties: {
-						linkedServiceName: {
-							referenceName: "YourLinkedService",
-							type: "LinkedServiceReference"
-						},
-						annotations: [],
-						type: "AzureSqlTable",
-						typeProperties: {
-							schema: "dbo",
-							table: "TableName"
-						},
-						schema: []
-					}
-				};
-			} else if (selectedType.type.value === 'AzureBlobStorage') {
-				const locationType = 'AzureBlobStorageLocation';
-				datasetTemplate = {
-					name: name,
-					properties: {
-						linkedServiceName: {
-							referenceName: "YourLinkedService",
-							type: "LinkedServiceReference"
-						},
-						annotations: [],
-						type: fileType,
-						typeProperties: {
-							location: {
-								type: locationType,
-								container: "mycontainer"
-							}
-						},
-						schema: []
-					}
-				};
-				
-				// Add file type specific properties
-				if (fileType === 'DelimitedText') {
-					datasetTemplate.properties.typeProperties.columnDelimiter = ",";
-					datasetTemplate.properties.typeProperties.escapeChar = "\\";
-					datasetTemplate.properties.typeProperties.firstRowAsHeader = true;
-					datasetTemplate.properties.typeProperties.quoteChar = "\"";
-				} else if (fileType === 'Parquet' || fileType === 'Avro') {
-					datasetTemplate.properties.typeProperties.compressionCodec = "snappy";
-				}
-			} else if (selectedType.type.value === 'AzureDataLakeStorageGen2') {
-				const locationType = 'AzureBlobFSLocation';
-				datasetTemplate = {
-					name: name,
-					properties: {
-						linkedServiceName: {
-							referenceName: "YourLinkedService",
-							type: "LinkedServiceReference"
-						},
-						annotations: [],
-						type: fileType,
-						typeProperties: {
-							location: {
-								type: locationType,
-								fileSystem: "myfilesystem"
-							}
-						},
-						schema: []
-					}
-				};
-				
-				// Add file type specific properties
-				if (fileType === 'DelimitedText') {
-					datasetTemplate.properties.typeProperties.columnDelimiter = ",";
-					datasetTemplate.properties.typeProperties.escapeChar = "\\";
-					datasetTemplate.properties.typeProperties.firstRowAsHeader = true;
-					datasetTemplate.properties.typeProperties.quoteChar = "\"";
-				} else if (fileType === 'Parquet' || fileType === 'Avro') {
-					datasetTemplate.properties.typeProperties.compressionCodec = "snappy";
-				}
-			}
+			// Use config-driven JSON builder
+			const datasetTemplate = buildDatasetJson(formData, datasetConfig, selectedType.type.value, fileType);
 			
 			fs.writeFileSync(filePath, JSON.stringify(datasetTemplate, null, 2));
 			pipelineTreeProvider.refresh();

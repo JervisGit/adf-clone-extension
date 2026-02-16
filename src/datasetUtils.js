@@ -154,6 +154,15 @@ function buildDatasetJson(formData, datasetConfig, datasetType, fileType = null)
         }
     }
     
+    // Add hidden fields that aren't in formData (e.g., location type)
+    for (const [fieldKey, fieldConfig] of Object.entries(allFields)) {
+        if (fieldConfig.type === 'hidden' && fieldConfig.value !== undefined && !formData.hasOwnProperty(fieldKey)) {
+            if (fieldConfig.jsonPath) {
+                setValueByPath(result, fieldConfig.jsonPath, fieldConfig.value);
+            }
+        }
+    }
+    
     return result;
 }
 

@@ -584,7 +584,7 @@
       "label": "Parameters",
       "jsonPath": "properties.parameters",
       "helpText": "Define parameters with name, type, and default value",
-      "valueTypes": ["String", "Int", "Float", "Bool", "Array", "Object"]
+      "valueTypes": ["String", "Int", "Float", "Bool", "Array", "Object", "SecureString"]
     }
   }
 }

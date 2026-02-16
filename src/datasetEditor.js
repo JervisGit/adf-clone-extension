@@ -878,7 +878,7 @@ class DatasetEditorProvider {
                 
                 if (name) {
                     parameters[name] = {
-                        type: type,
+                        type: type.toLowerCase(), // Azure expects lowercase: string, int, float, bool, etc.
                         defaultValue: defaultValue
                     };
                 }
@@ -1122,7 +1122,7 @@ class DatasetEditorProvider {
                 if (datasetJson.properties?.parameters) {
                     const parametersContainer = document.getElementById('parameters');
                     if (parametersContainer) {
-                        const valueTypes = JSON.parse(parametersContainer.getAttribute('data-value-types') || '["String"]');
+                        const valueTypes = JSON.parse(parametersContainer.getAttribute('data-value-types') || '["string"]');
                         Object.entries(datasetJson.properties.parameters).forEach(([name, param]) => {
                             addParameterRow('parameters', valueTypes);
                             const rows = document.querySelectorAll('#parameters-table .parameter-row');

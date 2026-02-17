@@ -609,6 +609,18 @@ class DatasetEditorProvider {
         let currentFilePath = null;
         let pendingDatasetLoad = null;
 
+        // Utility function to get value from nested object by path
+        function getValueByPath(obj, path) {
+            if (!path) return undefined;
+            const keys = path.split('.');
+            let current = obj;
+            for (const key of keys) {
+                if (current === null || current === undefined) return undefined;
+                current = current[key];
+            }
+            return current;
+        }
+
         // Initialize
         window.addEventListener('message', event => {
             const message = event.data;
@@ -825,6 +837,16 @@ class DatasetEditorProvider {
             // Add data change listeners to new fields
             container.querySelectorAll('input, select, textarea').forEach(el => {
                 el.addEventListener('input', notifyDataChanged);
+                
+                // Add listener for conditional field visibility
+                el.addEventListener('change', (e) => {
+                    updateFieldVisibility(e.target.id, e.target.value);
+                });
+                
+                // Initial visibility check for select/input fields with values
+                if ((el.tagName === 'SELECT' || el.tagName === 'INPUT') && el.value) {
+                    updateFieldVisibility(el.id, el.value);
+                }
             });
         }
 
@@ -892,6 +914,13 @@ class DatasetEditorProvider {
             group.className = 'form-group';
             group.id = \`field-\${fieldKey}\`;
             
+            // Handle conditional visibility
+            if (fieldConfig.showWhen) {
+                group.setAttribute('data-show-when-field', fieldConfig.showWhen.field);
+                group.setAttribute('data-show-when-value', fieldConfig.showWhen.value);
+                group.style.display = 'none'; // Initially hidden
+            }
+            
             const label = document.createElement('label');
             label.className = 'form-label' + (fieldConfig.required ? ' required' : '');
             label.textContent = fieldConfig.label;
@@ -917,12 +946,19 @@ class DatasetEditorProvider {
                     const emptyOption = document.createElement('option');
                     emptyOption.value = '';
                     emptyOption.textContent = 'Select...';
+                    emptyOption.disabled = true;
                     input.appendChild(emptyOption);
                     
                     (fieldConfig.options || []).forEach(opt => {
                         const option = document.createElement('option');
-                        option.value = opt;
-                        option.textContent = opt;
+                        // Handle both string options and object options {label, value}
+                        if (typeof opt === 'object' && opt.label && opt.value !== undefined) {
+                            option.value = opt.value;
+                            option.textContent = opt.label;
+                        } else {
+                            option.value = opt;
+                            option.textContent = opt;
+                        }
                         input.appendChild(option);
                     });
                     break;
@@ -990,6 +1026,29 @@ class DatasetEditorProvider {
             return group;
         }
 
+        function updateFieldVisibility(triggerFieldId, triggerValue) {
+            console.log('[Webview] Checking field visibility for trigger:', triggerFieldId, 'value:', triggerValue);
+            
+            // Find all fields that depend on this trigger field
+            document.querySelectorAll(\`[data-show-when-field="\${triggerFieldId}"]\`).forEach(dependentField => {
+                const expectedValue = dependentField.getAttribute('data-show-when-value');
+                const shouldShow = (triggerValue === expectedValue);
+                
+                console.log('[Webview] Field', dependentField.id, 'should', shouldShow ? 'show' : 'hide', 
+                    '(trigger value:', triggerValue, 'expected:', expectedValue, ')');
+                
+                dependentField.style.display = shouldShow ? 'block' : 'none';
+                
+                // Clear value if hiding
+                if (!shouldShow) {
+                    const input = dependentField.querySelector('input, select, textarea');
+                    if (input && input.type !== 'checkbox') {
+                        input.value = '';
+                    }
+                }
+            });
+        }
+
         function collectFormData() {
             const data = {
                 name: document.getElementById('name').value,
@@ -1006,6 +1065,12 @@ class DatasetEditorProvider {
             
             // Collect dynamic fields
             document.querySelectorAll('#dynamicFieldsContainer input, #dynamicFieldsContainer select, #dynamicFieldsContainer textarea').forEach(el => {
+                // Skip hidden fields
+                const fieldGroup = el.closest('.form-group');
+                if (fieldGroup && fieldGroup.style.display === 'none') {
+                    return;
+                }
+                
                 if (el.type === 'checkbox') {
                     data[el.id] = el.checked;
                 } else if (!el.closest('.parameters-container')) {
@@ -1117,8 +1182,45 @@ class DatasetEditorProvider {
                 console.log('[Webview] Finished filtering linked services');
             }
             
-            // Load parameters if present (after fields are rendered)
+            // Load field values and parameters (after fields are rendered)
             setTimeout(() => {
+                // Load dynamic field values from JSON
+                const { datasetType: dt, fileType: ft } = detectDatasetTypeFromJson(datasetJson);
+                const config = dt ? currentConfig.datasetTypes[dt] : null;
+                
+                if (config) {
+                    let fieldsConfig = null;
+                    if (ft && config.fileTypes && config.fileTypes[ft]) {
+                        fieldsConfig = config.fileTypes[ft].fields;
+                    } else {
+                        fieldsConfig = config.fields;
+                    }
+                    
+                    // Load values for each field
+                    if (fieldsConfig) {
+                        for (const [sectionName, fields] of Object.entries(fieldsConfig)) {
+                            for (const [fieldKey, fieldConfig] of Object.entries(fields)) {
+                                if (fieldConfig.jsonPath && fieldConfig.type !== 'hidden') {
+                                    const value = getValueByPath(datasetJson, fieldConfig.jsonPath);
+                                    const element = document.getElementById(fieldKey);
+                                    
+                                    if (element && value !== undefined && value !== null) {
+                                        if (fieldConfig.type === 'boolean') {
+                                            element.checked = Boolean(value);
+                                        } else {
+                                            element.value = value;
+                                            
+                                            // Trigger visibility check for fields that others depend on
+                                            updateFieldVisibility(fieldKey, value);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Load parameters if present
                 if (datasetJson.properties?.parameters) {
                     const parametersContainer = document.getElementById('parameters');
                     if (parametersContainer) {

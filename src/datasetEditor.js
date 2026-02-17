@@ -917,7 +917,11 @@ class DatasetEditorProvider {
             // Handle conditional visibility
             if (fieldConfig.showWhen) {
                 group.setAttribute('data-show-when-field', fieldConfig.showWhen.field);
-                group.setAttribute('data-show-when-value', fieldConfig.showWhen.value);
+                if (fieldConfig.showWhen.notEmpty) {
+                    group.setAttribute('data-show-when-not-empty', 'true');
+                } else if (fieldConfig.showWhen.value !== undefined) {
+                    group.setAttribute('data-show-when-value', fieldConfig.showWhen.value);
+                }
                 group.style.display = 'none'; // Initially hidden
             }
             
@@ -947,6 +951,7 @@ class DatasetEditorProvider {
                     emptyOption.value = '';
                     emptyOption.textContent = 'Select...';
                     emptyOption.disabled = true;
+                    emptyOption.selected = true;
                     input.appendChild(emptyOption);
                     
                     (fieldConfig.options || []).forEach(opt => {
@@ -1031,11 +1036,21 @@ class DatasetEditorProvider {
             
             // Find all fields that depend on this trigger field
             document.querySelectorAll(\`[data-show-when-field="\${triggerFieldId}"]\`).forEach(dependentField => {
+                const notEmptyCondition = dependentField.getAttribute('data-show-when-not-empty');
                 const expectedValue = dependentField.getAttribute('data-show-when-value');
-                const shouldShow = (triggerValue === expectedValue);
                 
-                console.log('[Webview] Field', dependentField.id, 'should', shouldShow ? 'show' : 'hide', 
-                    '(trigger value:', triggerValue, 'expected:', expectedValue, ')');
+                let shouldShow = false;
+                if (notEmptyCondition === 'true') {
+                    // Show when trigger field has any non-empty value
+                    shouldShow = (triggerValue !== '' && triggerValue !== null && triggerValue !== undefined);
+                    console.log('[Webview] Field', dependentField.id, 'should', shouldShow ? 'show' : 'hide', 
+                        '(trigger value not empty:', triggerValue, ')');
+                } else {
+                    // Show when trigger field matches expected value
+                    shouldShow = (triggerValue === expectedValue);
+                    console.log('[Webview] Field', dependentField.id, 'should', shouldShow ? 'show' : 'hide', 
+                        '(trigger value:', triggerValue, 'expected:', expectedValue, ')');
+                }
                 
                 dependentField.style.display = shouldShow ? 'block' : 'none';
                 

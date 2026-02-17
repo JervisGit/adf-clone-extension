@@ -323,6 +323,113 @@
               }
             }
           }
+        },
+        "Binary": {
+          "typeValue": "Binary",
+          "displayName": "Binary",
+          "fields": {
+            "general": {
+              "folderPath": {
+                "type": "text",
+                "label": "Folder path",
+                "placeholder": "container/folder",
+                "jsonPath": "properties.typeProperties.location.folderPath"
+              },
+              "fileName": {
+                "type": "text",
+                "label": "File name",
+                "placeholder": "file.bin",
+                "jsonPath": "properties.typeProperties.location.fileName"
+              },
+              "container": {
+                "type": "text",
+                "label": "Container",
+                "placeholder": "mycontainer",
+                "jsonPath": "properties.typeProperties.location.container"
+              },
+              "compressionType": {
+                "type": "select",
+                "label": "Compression type",
+                "options": [
+                  { "label": "No compression", "value": "" },
+                  { "label": "bzip2 (.bz2)", "value": "bzip2" },
+                  { "label": "gzip (.gz)", "value": "gzip" },
+                  { "label": "deflate (.deflate)", "value": "deflate" },
+                  { "label": "ZipDeflate (.zip)", "value": "ZipDeflate" },
+                  { "label": "TarGZip (.tgz/.tar.gz)", "value": "TarGZip" },
+                  { "label": "tar (.tar)", "value": "tar" }
+                ],
+                "jsonPath": "properties.typeProperties.compression.type"
+              },
+              "compressionLevel": {
+                "type": "select",
+                "label": "Compression level",
+                "options": [
+                  { "label": "Fastest", "value": "Fastest" },
+                  { "label": "Optimal", "value": "Optimal" }
+                ],
+                "showWhen": {
+                  "field": "compressionType",
+                  "notEmpty": true
+                },
+                "jsonPath": "properties.typeProperties.compression.level"
+              },
+              "locationType": {
+                "type": "hidden",
+                "jsonPath": "properties.typeProperties.location.type",
+                "value": "AzureBlobStorageLocation"
+              }
+            }
+          }
+        },
+        "Excel": {
+          "typeValue": "Excel",
+          "displayName": "Excel",
+          "fields": {
+            "general": {
+              "folderPath": {
+                "type": "text",
+                "label": "Folder path",
+                "placeholder": "container/folder",
+                "jsonPath": "properties.typeProperties.location.folderPath"
+              },
+              "fileName": {
+                "type": "text",
+                "label": "File name",
+                "placeholder": "file.xlsx",
+                "jsonPath": "properties.typeProperties.location.fileName"
+              },
+              "container": {
+                "type": "text",
+                "label": "Container",
+                "placeholder": "mycontainer",
+                "jsonPath": "properties.typeProperties.location.container"
+              },
+              "sheetName": {
+                "type": "text",
+                "label": "Sheet name",
+                "placeholder": "Sheet1",
+                "jsonPath": "properties.typeProperties.sheetName"
+              },
+              "range": {
+                "type": "text",
+                "label": "Range",
+                "placeholder": "A1:D10",
+                "jsonPath": "properties.typeProperties.range"
+              },
+              "firstRowAsHeader": {
+                "type": "boolean",
+                "label": "First row as header",
+                "jsonPath": "properties.typeProperties.firstRowAsHeader",
+                "default": true
+              },
+              "locationType": {
+                "type": "hidden",
+                "jsonPath": "properties.typeProperties.location.type",
+                "value": "AzureBlobStorageLocation"
+              }
+            }
+          }
         }
       }
     },
@@ -612,6 +719,113 @@
                 "label": "File name",
                 "placeholder": "file",
                 "jsonPath": "properties.typeProperties.location.fileName"
+              },
+              "locationType": {
+                "type": "hidden",
+                "jsonPath": "properties.typeProperties.location.type",
+                "value": "AzureBlobFSLocation"
+              }
+            }
+          }
+        },
+        "Binary": {
+          "typeValue": "Binary",
+          "displayName": "Binary",
+          "fields": {
+            "general": {
+              "fileSystem": {
+                "type": "text",
+                "label": "File system",
+                "placeholder": "myfilesystem",
+                "jsonPath": "properties.typeProperties.location.fileSystem"
+              },
+              "folderPath": {
+                "type": "text",
+                "label": "Folder path",
+                "placeholder": "folder/subfolder",
+                "jsonPath": "properties.typeProperties.location.folderPath"
+              },
+              "fileName": {
+                "type": "text",
+                "label": "File name",
+                "placeholder": "file.bin",
+                "jsonPath": "properties.typeProperties.location.fileName"
+              },
+              "compressionType": {
+                "type": "select",
+                "label": "Compression type",
+                "options": [
+                  { "label": "No compression", "value": "" },
+                  { "label": "bzip2 (.bz2)", "value": "bzip2" },
+                  { "label": "gzip (.gz)", "value": "gzip" },
+                  { "label": "deflate (.deflate)", "value": "deflate" },
+                  { "label": "ZipDeflate (.zip)", "value": "ZipDeflate" },
+                  { "label": "TarGZip (.tgz/.tar.gz)", "value": "TarGZip" },
+                  { "label": "tar (.tar)", "value": "tar" }
+                ],
+                "jsonPath": "properties.typeProperties.compression.type"
+              },
+              "compressionLevel": {
+                "type": "select",
+                "label": "Compression level",
+                "options": [
+                  { "label": "Fastest", "value": "Fastest" },
+                  { "label": "Optimal", "value": "Optimal" }
+                ],
+                "showWhen": {
+                  "field": "compressionType",
+                  "notEmpty": true
+                },
+                "jsonPath": "properties.typeProperties.compression.level"
+              },
+              "locationType": {
+                "type": "hidden",
+                "jsonPath": "properties.typeProperties.location.type",
+                "value": "AzureBlobFSLocation"
+              }
+            }
+          }
+        },
+        "Excel": {
+          "typeValue": "Excel",
+          "displayName": "Excel",
+          "fields": {
+            "general": {
+              "fileSystem": {
+                "type": "text",
+                "label": "File system",
+                "placeholder": "myfilesystem",
+                "jsonPath": "properties.typeProperties.location.fileSystem"
+              },
+              "folderPath": {
+                "type": "text",
+                "label": "Folder path",
+                "placeholder": "folder/subfolder",
+                "jsonPath": "properties.typeProperties.location.folderPath"
+              },
+              "fileName": {
+                "type": "text",
+                "label": "File name",
+                "placeholder": "file.xlsx",
+                "jsonPath": "properties.typeProperties.location.fileName"
+              },
+              "sheetName": {
+                "type": "text",
+                "label": "Sheet name",
+                "placeholder": "Sheet1",
+                "jsonPath": "properties.typeProperties.sheetName"
+              },
+              "range": {
+                "type": "text",
+                "label": "Range",
+                "placeholder": "A1:D10",
+                "jsonPath": "properties.typeProperties.range"
+              },
+              "firstRowAsHeader": {
+                "type": "boolean",
+                "label": "First row as header",
+                "jsonPath": "properties.typeProperties.firstRowAsHeader",
+                "default": true
               },
               "locationType": {
                 "type": "hidden",

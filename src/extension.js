@@ -194,6 +194,8 @@ function activate(context) {
 					{ label: 'Avro', value: 'Avro' },
 					{ label: 'ORC', value: 'Orc' },
 					{ label: 'XML', value: 'Xml' },
+					{ label: 'Binary', value: 'Binary' },
+					{ label: 'Excel', value: 'Excel' },
 					{ label: 'Iceberg', value: 'Iceberg' }
 				];
 				

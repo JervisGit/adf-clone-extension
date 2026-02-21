@@ -465,11 +465,44 @@
                 "placeholder": "file.xlsx",
                 "jsonPath": "properties.typeProperties.location.fileName"
               },
+              "locationType": {
+                "type": "hidden",
+                "jsonPath": "properties.typeProperties.location.type",
+                "value": "AzureBlobStorageLocation"
+              },
+              "worksheetMode": {
+                "type": "radio",
+                "label": "Worksheet",
+                "options": [
+                  { "label": "Name", "value": "name" },
+                  { "label": "Index", "value": "index" }
+                ],
+                "default": "name",
+                "omitFromJson": true,
+                "derivedFrom": [
+                  { "field": "sheetName", "thenValue": "name" },
+                  { "field": "sheetIndex", "thenValue": "index" }
+                ]
+              },
               "sheetName": {
                 "type": "text",
                 "label": "Sheet name",
                 "placeholder": "Sheet1",
-                "jsonPath": "properties.typeProperties.sheetName"
+                "jsonPath": "properties.typeProperties.sheetName",
+                "showWhen": {
+                  "field": "worksheetMode",
+                  "value": "name"
+                }
+              },
+              "sheetIndex": {
+                "type": "number",
+                "label": "Sheet index",
+                "placeholder": "0",
+                "jsonPath": "properties.typeProperties.sheetIndex",
+                "showWhen": {
+                  "field": "worksheetMode",
+                  "value": "index"
+                }
               },
               "range": {
                 "type": "text",
@@ -477,16 +510,48 @@
                 "placeholder": "A1:D10",
                 "jsonPath": "properties.typeProperties.range"
               },
+              "nullValue": {
+                "type": "text",
+                "label": "Null value",
+                "placeholder": "",
+                "jsonPath": "properties.typeProperties.nullValue"
+              },
               "firstRowAsHeader": {
                 "type": "boolean",
                 "label": "First row as header",
                 "jsonPath": "properties.typeProperties.firstRowAsHeader",
-                "default": true
+                "default": false,
+                "omitIfDefault": true
               },
-              "locationType": {
-                "type": "hidden",
-                "jsonPath": "properties.typeProperties.location.type",
-                "value": "AzureBlobStorageLocation"
+              "compressionCodec": {
+                "type": "select",
+                "label": "Compression type",
+                "options": [
+                  { "label": "No compression", "value": "", "omitFromJson": true },
+                  { "label": "bzip2 (.bz2)", "value": "bzip2" },
+                  { "label": "gzip (.gz)", "value": "gzip" },
+                  { "label": "deflate (.deflate)", "value": "deflate" },
+                  { "label": "ZipDeflate (.zip)", "value": "ZipDeflate" },
+                  { "label": "TarGZip (.tgz/.tar.gz)", "value": "TarGZip" },
+                  { "label": "tar (.tar)", "value": "tar" },
+                  { "label": "snappy", "value": "snappy" },
+                  { "label": "lz4", "value": "lz4" }
+                ],
+                "jsonPath": "properties.typeProperties.compression.type",
+                "default": ""
+              },
+              "compressionLevel": {
+                "type": "select",
+                "label": "Compression level",
+                "options": [
+                  { "label": "Fastest", "value": "Fastest" },
+                  { "label": "Optimal", "value": "Optimal" }
+                ],
+                "showWhen": {
+                  "field": "compressionCodec",
+                  "notEmpty": true
+                },
+                "jsonPath": "properties.typeProperties.compression.level"
               }
             }
           }
@@ -509,7 +574,8 @@
                 "type": "text",
                 "label": "Container",
                 "placeholder": "myfilesystem",
-                "jsonPath": "properties.typeProperties.location.fileSystem"
+                "jsonPath": "properties.typeProperties.location.fileSystem",
+                "helpText": "Must be all lowercase (Azure ADLS Gen2 requirement)"
               },
               "folderPath": {
                 "type": "text",
@@ -547,7 +613,8 @@
                 "type": "text",
                 "label": "Container",
                 "placeholder": "myfilesystem",
-                "jsonPath": "properties.typeProperties.location.fileSystem"
+                "jsonPath": "properties.typeProperties.location.fileSystem",
+                "helpText": "Must be all lowercase (Azure ADLS Gen2 requirement)"
               },
               "folderPath": {
                 "type": "text",
@@ -679,7 +746,8 @@
                 "type": "text",
                 "label": "Container",
                 "placeholder": "myfilesystem",
-                "jsonPath": "properties.typeProperties.location.fileSystem"
+                "jsonPath": "properties.typeProperties.location.fileSystem",
+                "helpText": "Must be all lowercase (Azure ADLS Gen2 requirement)"
               },
               "folderPath": {
                 "type": "text",
@@ -710,7 +778,8 @@
                 "type": "text",
                 "label": "Container",
                 "placeholder": "myfilesystem",
-                "jsonPath": "properties.typeProperties.location.fileSystem"
+                "jsonPath": "properties.typeProperties.location.fileSystem",
+                "helpText": "Must be all lowercase (Azure ADLS Gen2 requirement)"
               },
               "folderPath": {
                 "type": "text",
@@ -771,7 +840,8 @@
                 "type": "text",
                 "label": "Container",
                 "placeholder": "myfilesystem",
-                "jsonPath": "properties.typeProperties.location.fileSystem"
+                "jsonPath": "properties.typeProperties.location.fileSystem",
+                "helpText": "Must be all lowercase (Azure ADLS Gen2 requirement)"
               },
               "folderPath": {
                 "type": "text",
@@ -802,7 +872,8 @@
                 "type": "text",
                 "label": "Container",
                 "placeholder": "myfilesystem",
-                "jsonPath": "properties.typeProperties.location.fileSystem"
+                "jsonPath": "properties.typeProperties.location.fileSystem",
+                "helpText": "Must be all lowercase (Azure ADLS Gen2 requirement)"
               },
               "folderPath": {
                 "type": "text",
@@ -833,7 +904,8 @@
                 "type": "text",
                 "label": "Container",
                 "placeholder": "myfilesystem",
-                "jsonPath": "properties.typeProperties.location.fileSystem"
+                "jsonPath": "properties.typeProperties.location.fileSystem",
+                "helpText": "Must be all lowercase (Azure ADLS Gen2 requirement)"
               },
               "folderPath": {
                 "type": "text",
@@ -864,7 +936,8 @@
                 "type": "text",
                 "label": "Container",
                 "placeholder": "myfilesystem",
-                "jsonPath": "properties.typeProperties.location.fileSystem"
+                "jsonPath": "properties.typeProperties.location.fileSystem",
+                "helpText": "Must be all lowercase (Azure ADLS Gen2 requirement)"
               },
               "folderPath": {
                 "type": "text",
@@ -922,7 +995,8 @@
                 "type": "text",
                 "label": "Container",
                 "placeholder": "myfilesystem",
-                "jsonPath": "properties.typeProperties.location.fileSystem"
+                "jsonPath": "properties.typeProperties.location.fileSystem",
+                "helpText": "Must be all lowercase (Azure ADLS Gen2 requirement)"
               },
               "folderPath": {
                 "type": "text",
@@ -936,11 +1010,44 @@
                 "placeholder": "file.xlsx",
                 "jsonPath": "properties.typeProperties.location.fileName"
               },
+              "locationType": {
+                "type": "hidden",
+                "jsonPath": "properties.typeProperties.location.type",
+                "value": "AzureBlobFSLocation"
+              },
+              "worksheetMode": {
+                "type": "radio",
+                "label": "Worksheet",
+                "options": [
+                  { "label": "Name", "value": "name" },
+                  { "label": "Index", "value": "index" }
+                ],
+                "default": "name",
+                "omitFromJson": true,
+                "derivedFrom": [
+                  { "field": "sheetName", "thenValue": "name" },
+                  { "field": "sheetIndex", "thenValue": "index" }
+                ]
+              },
               "sheetName": {
                 "type": "text",
                 "label": "Sheet name",
                 "placeholder": "Sheet1",
-                "jsonPath": "properties.typeProperties.sheetName"
+                "jsonPath": "properties.typeProperties.sheetName",
+                "showWhen": {
+                  "field": "worksheetMode",
+                  "value": "name"
+                }
+              },
+              "sheetIndex": {
+                "type": "number",
+                "label": "Sheet index",
+                "placeholder": "0",
+                "jsonPath": "properties.typeProperties.sheetIndex",
+                "showWhen": {
+                  "field": "worksheetMode",
+                  "value": "index"
+                }
               },
               "range": {
                 "type": "text",
@@ -948,16 +1055,48 @@
                 "placeholder": "A1:D10",
                 "jsonPath": "properties.typeProperties.range"
               },
+              "nullValue": {
+                "type": "text",
+                "label": "Null value",
+                "placeholder": "",
+                "jsonPath": "properties.typeProperties.nullValue"
+              },
               "firstRowAsHeader": {
                 "type": "boolean",
                 "label": "First row as header",
                 "jsonPath": "properties.typeProperties.firstRowAsHeader",
-                "default": true
+                "default": false,
+                "omitIfDefault": true
               },
-              "locationType": {
-                "type": "hidden",
-                "jsonPath": "properties.typeProperties.location.type",
-                "value": "AzureBlobFSLocation"
+              "compressionCodec": {
+                "type": "select",
+                "label": "Compression type",
+                "options": [
+                  { "label": "No compression", "value": "", "omitFromJson": true },
+                  { "label": "bzip2 (.bz2)", "value": "bzip2" },
+                  { "label": "gzip (.gz)", "value": "gzip" },
+                  { "label": "deflate (.deflate)", "value": "deflate" },
+                  { "label": "ZipDeflate (.zip)", "value": "ZipDeflate" },
+                  { "label": "TarGZip (.tgz/.tar.gz)", "value": "TarGZip" },
+                  { "label": "tar (.tar)", "value": "tar" },
+                  { "label": "snappy", "value": "snappy" },
+                  { "label": "lz4", "value": "lz4" }
+                ],
+                "jsonPath": "properties.typeProperties.compression.type",
+                "default": ""
+              },
+              "compressionLevel": {
+                "type": "select",
+                "label": "Compression level",
+                "options": [
+                  { "label": "Fastest", "value": "Fastest" },
+                  { "label": "Optimal", "value": "Optimal" }
+                ],
+                "showWhen": {
+                  "field": "compressionCodec",
+                  "notEmpty": true
+                },
+                "jsonPath": "properties.typeProperties.compression.level"
               }
             }
           }

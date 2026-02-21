@@ -124,6 +124,9 @@ function buildDatasetJson(formData, datasetConfig, datasetType, fileType = null)
         const fieldConfig = allFields[fieldKey];
         
         if (!fieldConfig) continue;
+
+        // Skip fields that should never be written to JSON (UI-only fields like radio mode selectors)
+        if (fieldConfig.omitFromJson) continue;
         
         let valueToSet = fieldValue;
         
@@ -154,6 +157,11 @@ function buildDatasetJson(formData, datasetConfig, datasetType, fileType = null)
             valueToSet = fieldConfig.default;
         }
         
+        // Skip if the value equals the default and omitIfDefault is set
+        if (fieldConfig.omitIfDefault && valueToSet === fieldConfig.default) {
+            continue;
+        }
+
         // Skip empty optional fields (not required, no default, and not an explicit option selection)
         if (!fieldConfig.required && !isExplicitOption && (valueToSet === '' || valueToSet === undefined || valueToSet === null)) {
             continue;

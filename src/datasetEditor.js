@@ -460,6 +460,26 @@ class DatasetEditorProvider {
             margin-right: 8px;
         }
 
+        .radio-group {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-top: 2px;
+        }
+
+        .radio-option {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+
+        .radio-option input[type="radio"] {
+            margin: 0;
+            cursor: pointer;
+        }
+
         .form-help {
             font-size: 11px;
             color: var(--vscode-descriptionForeground);
@@ -844,8 +864,16 @@ class DatasetEditorProvider {
                 });
                 
                 // Initial visibility check for select/input fields with values
-                if ((el.tagName === 'SELECT' || el.tagName === 'INPUT') && el.value) {
+                if ((el.tagName === 'SELECT' || el.tagName === 'INPUT') && el.value && el.type !== 'radio') {
                     updateFieldVisibility(el.id, el.value);
+                }
+            });
+
+            // Initial visibility check for radio groups
+            container.querySelectorAll('.radio-group').forEach(radioContainer => {
+                const checked = radioContainer.querySelector('input[type="radio"]:checked');
+                if (checked) {
+                    updateFieldVisibility(radioContainer.id, checked.value);
                 }
             });
         }
@@ -1053,6 +1081,35 @@ class DatasetEditorProvider {
                     input = container;
                     break;
                     
+                case 'radio': {
+                    const radioContainer = document.createElement('div');
+                    radioContainer.className = 'radio-group';
+                    radioContainer.id = fieldKey;
+                    if (fieldConfig.omitFromJson) {
+                        radioContainer.dataset.omitFromJson = 'true';
+                    }
+                    (fieldConfig.options || []).forEach(opt => {
+                        const radioWrapper = document.createElement('label');
+                        radioWrapper.className = 'radio-option';
+                        const radioInput = document.createElement('input');
+                        radioInput.type = 'radio';
+                        radioInput.name = fieldKey;
+                        radioInput.value = opt.value;
+                        if (fieldConfig.default !== undefined && opt.value === fieldConfig.default) {
+                            radioInput.checked = true;
+                        }
+                        radioInput.addEventListener('change', () => {
+                            updateFieldVisibility(fieldKey, radioInput.value);
+                            notifyDataChanged();
+                        });
+                        radioWrapper.appendChild(radioInput);
+                        radioWrapper.appendChild(document.createTextNode(' ' + opt.label));
+                        radioContainer.appendChild(radioWrapper);
+                    });
+                    input = radioContainer;
+                    break;
+                }
+
                 case 'boolean':
                     input = document.createElement('input');
                     input.type = 'checkbox';
@@ -1097,7 +1154,9 @@ class DatasetEditorProvider {
             }
             
             if (fieldConfig.default !== undefined) {
-                if (fieldConfig.type === 'boolean' && !input.checked) {
+                if (fieldConfig.type === 'radio') {
+                    // defaults are already applied when creating radio inputs above
+                } else if (fieldConfig.type === 'boolean' && !input.checked) {
                     input.checked = fieldConfig.default;
                 } else if (fieldConfig.type === 'select-text') {
                     // For select-text, use querySelector since the element is not yet in the DOM
@@ -1185,6 +1244,17 @@ class DatasetEditorProvider {
                 data.parameters = collectParameters('parameters');
             }
             
+            // Collect radio group values
+            document.querySelectorAll('#dynamicFieldsContainer .radio-group').forEach(radioContainer => {
+                const fieldGroup = radioContainer.closest('.form-group');
+                if (fieldGroup && fieldGroup.style.display === 'none') return;
+                if (radioContainer.dataset.omitFromJson === 'true') return;
+                const checked = radioContainer.querySelector('input[type="radio"]:checked');
+                if (checked) {
+                    data[radioContainer.id] = checked.value;
+                }
+            });
+
             // Collect dynamic fields
             document.querySelectorAll('#dynamicFieldsContainer input, #dynamicFieldsContainer select, #dynamicFieldsContainer textarea').forEach(el => {
                 // Skip hidden fields
@@ -1192,7 +1262,12 @@ class DatasetEditorProvider {
                 if (fieldGroup && fieldGroup.style.display === 'none') {
                     return;
                 }
-                
+
+                // Skip radio inputs (handled above as a group)
+                if (el.type === 'radio') {
+                    return;
+                }
+
                 // Skip if this is part of a select-text control (we'll handle those separately)
                 if (el.id.endsWith('-select') || el.id.endsWith('-text') || el.id.endsWith('-manual')) {
                     return;
@@ -1431,6 +1506,38 @@ class DatasetEditorProvider {
                     }
                 }
                 
+                // Handle derivedFrom: set radio fields based on which sibling fields have values
+                if (fieldsConfig) {
+                    for (const [sectionName, fields] of Object.entries(fieldsConfig)) {
+                        for (const [fieldKey, fieldConfig] of Object.entries(fields)) {
+                            if (fieldConfig.type === 'radio' && fieldConfig.derivedFrom) {
+                                const radioContainer = document.getElementById(fieldKey);
+                                if (!radioContainer) continue;
+                                let matched = false;
+                                for (const rule of fieldConfig.derivedFrom) {
+                                    const checkEl = document.getElementById(rule.field);
+                                    if (checkEl && checkEl.value !== '' && checkEl.value !== undefined) {
+                                        const radioInput = radioContainer.querySelector(\`input[value="\${rule.thenValue}"]\`);
+                                        if (radioInput) {
+                                            radioInput.checked = true;
+                                            updateFieldVisibility(fieldKey, rule.thenValue);
+                                            matched = true;
+                                        }
+                                        break;
+                                    }
+                                }
+                                // If no match found, trigger visibility for the current default
+                                if (!matched) {
+                                    const checkedRadio = radioContainer.querySelector('input[type="radio"]:checked');
+                                    if (checkedRadio) {
+                                        updateFieldVisibility(fieldKey, checkedRadio.value);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Load parameters if present
                 if (datasetJson.properties?.parameters) {
                     const parametersContainer = document.getElementById('parameters');

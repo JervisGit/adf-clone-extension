@@ -44,10 +44,16 @@
           "displayName": "Parquet",
           "fields": {
             "general": {
+              "container": {
+                "type": "text",
+                "label": "Container",
+                "placeholder": "mycontainer",
+                "jsonPath": "properties.typeProperties.location.container"
+              },
               "folderPath": {
                 "type": "text",
-                "label": "Folder path",
-                "placeholder": "container/folder",
+                "label": "Directory",
+                "placeholder": "folder/subfolder",
                 "jsonPath": "properties.typeProperties.location.folderPath"
               },
               "fileName": {
@@ -55,12 +61,6 @@
                 "label": "File name",
                 "placeholder": "file.parquet",
                 "jsonPath": "properties.typeProperties.location.fileName"
-              },
-              "container": {
-                "type": "text",
-                "label": "Container",
-                "placeholder": "mycontainer",
-                "jsonPath": "properties.typeProperties.location.container"
               },
               "locationType": {
                 "type": "hidden",
@@ -82,10 +82,16 @@
           "displayName": "Delimited Text (CSV/TSV)",
           "fields": {
             "general": {
+              "container": {
+                "type": "text",
+                "label": "Container",
+                "placeholder": "mycontainer",
+                "jsonPath": "properties.typeProperties.location.container"
+              },
               "folderPath": {
                 "type": "text",
-                "label": "Folder path",
-                "placeholder": "container/folder",
+                "label": "Directory",
+                "placeholder": "folder/subfolder",
                 "jsonPath": "properties.typeProperties.location.folderPath"
               },
               "fileName": {
@@ -93,12 +99,6 @@
                 "label": "File name",
                 "placeholder": "file.csv",
                 "jsonPath": "properties.typeProperties.location.fileName"
-              },
-              "container": {
-                "type": "text",
-                "label": "Container",
-                "placeholder": "mycontainer",
-                "jsonPath": "properties.typeProperties.location.container"
               },
               "locationType": {
                 "type": "hidden",
@@ -214,10 +214,16 @@
           "displayName": "JSON",
           "fields": {
             "general": {
+              "container": {
+                "type": "text",
+                "label": "Container",
+                "placeholder": "mycontainer",
+                "jsonPath": "properties.typeProperties.location.container"
+              },
               "folderPath": {
                 "type": "text",
-                "label": "Folder path",
-                "placeholder": "container/folder",
+                "label": "Directory",
+                "placeholder": "folder/subfolder",
                 "jsonPath": "properties.typeProperties.location.folderPath"
               },
               "fileName": {
@@ -225,12 +231,6 @@
                 "label": "File name",
                 "placeholder": "file.json",
                 "jsonPath": "properties.typeProperties.location.fileName"
-              },
-              "container": {
-                "type": "text",
-                "label": "Container",
-                "placeholder": "mycontainer",
-                "jsonPath": "properties.typeProperties.location.container"
               },
               "locationType": {
                 "type": "hidden",
@@ -252,10 +252,16 @@
           "displayName": "Avro",
           "fields": {
             "general": {
+              "container": {
+                "type": "text",
+                "label": "Container",
+                "placeholder": "mycontainer",
+                "jsonPath": "properties.typeProperties.location.container"
+              },
               "folderPath": {
                 "type": "text",
-                "label": "Folder path",
-                "placeholder": "container/folder",
+                "label": "Directory",
+                "placeholder": "folder/subfolder",
                 "jsonPath": "properties.typeProperties.location.folderPath"
               },
               "fileName": {
@@ -263,12 +269,6 @@
                 "label": "File name",
                 "placeholder": "file.avro",
                 "jsonPath": "properties.typeProperties.location.fileName"
-              },
-              "container": {
-                "type": "text",
-                "label": "Container",
-                "placeholder": "mycontainer",
-                "jsonPath": "properties.typeProperties.location.container"
               },
               "avroCompressionCodec": {
                 "type": "select",
@@ -313,10 +313,16 @@
           "displayName": "ORC",
           "fields": {
             "general": {
+              "container": {
+                "type": "text",
+                "label": "Container",
+                "placeholder": "mycontainer",
+                "jsonPath": "properties.typeProperties.location.container"
+              },
               "folderPath": {
                 "type": "text",
-                "label": "Folder path",
-                "placeholder": "container/folder",
+                "label": "Directory",
+                "placeholder": "folder/subfolder",
                 "jsonPath": "properties.typeProperties.location.folderPath"
               },
               "fileName": {
@@ -324,12 +330,6 @@
                 "label": "File name",
                 "placeholder": "file.orc",
                 "jsonPath": "properties.typeProperties.location.fileName"
-              },
-              "container": {
-                "type": "text",
-                "label": "Container",
-                "placeholder": "mycontainer",
-                "jsonPath": "properties.typeProperties.location.container"
               },
               "locationType": {
                 "type": "hidden",
@@ -351,10 +351,16 @@
           "displayName": "XML",
           "fields": {
             "general": {
+              "container": {
+                "type": "text",
+                "label": "Container",
+                "placeholder": "mycontainer",
+                "jsonPath": "properties.typeProperties.location.container"
+              },
               "folderPath": {
                 "type": "text",
-                "label": "Folder path",
-                "placeholder": "container/folder",
+                "label": "Directory",
+                "placeholder": "folder/subfolder",
                 "jsonPath": "properties.typeProperties.location.folderPath"
               },
               "fileName": {
@@ -362,12 +368,6 @@
                 "label": "File name",
                 "placeholder": "file.xml",
                 "jsonPath": "properties.typeProperties.location.fileName"
-              },
-              "container": {
-                "type": "text",
-                "label": "Container",
-                "placeholder": "mycontainer",
-                "jsonPath": "properties.typeProperties.location.container"
               },
               "locationType": {
                 "type": "hidden",
@@ -389,10 +389,16 @@
           "displayName": "Binary",
           "fields": {
             "general": {
+              "container": {
+                "type": "text",
+                "label": "Container",
+                "placeholder": "mycontainer",
+                "jsonPath": "properties.typeProperties.location.container"
+              },
               "folderPath": {
                 "type": "text",
-                "label": "Folder path",
-                "placeholder": "container/folder",
+                "label": "Directory",
+                "placeholder": "folder/subfolder",
                 "jsonPath": "properties.typeProperties.location.folderPath"
               },
               "fileName": {
@@ -400,12 +406,6 @@
                 "label": "File name",
                 "placeholder": "file.bin",
                 "jsonPath": "properties.typeProperties.location.fileName"
-              },
-              "container": {
-                "type": "text",
-                "label": "Container",
-                "placeholder": "mycontainer",
-                "jsonPath": "properties.typeProperties.location.container"
               },
               "compressionType": {
                 "type": "select",
@@ -447,10 +447,16 @@
           "displayName": "Excel",
           "fields": {
             "general": {
+              "container": {
+                "type": "text",
+                "label": "Container",
+                "placeholder": "mycontainer",
+                "jsonPath": "properties.typeProperties.location.container"
+              },
               "folderPath": {
                 "type": "text",
-                "label": "Folder path",
-                "placeholder": "container/folder",
+                "label": "Directory",
+                "placeholder": "folder/subfolder",
                 "jsonPath": "properties.typeProperties.location.folderPath"
               },
               "fileName": {
@@ -458,12 +464,6 @@
                 "label": "File name",
                 "placeholder": "file.xlsx",
                 "jsonPath": "properties.typeProperties.location.fileName"
-              },
-              "container": {
-                "type": "text",
-                "label": "Container",
-                "placeholder": "mycontainer",
-                "jsonPath": "properties.typeProperties.location.container"
               },
               "sheetName": {
                 "type": "text",
@@ -507,13 +507,13 @@
             "general": {
               "fileSystem": {
                 "type": "text",
-                "label": "File system",
+                "label": "Container",
                 "placeholder": "myfilesystem",
                 "jsonPath": "properties.typeProperties.location.fileSystem"
               },
               "folderPath": {
                 "type": "text",
-                "label": "Folder path",
+                "label": "Directory",
                 "placeholder": "folder/subfolder",
                 "jsonPath": "properties.typeProperties.location.folderPath"
               },
@@ -545,13 +545,13 @@
             "general": {
               "fileSystem": {
                 "type": "text",
-                "label": "File system",
+                "label": "Container",
                 "placeholder": "myfilesystem",
                 "jsonPath": "properties.typeProperties.location.fileSystem"
               },
               "folderPath": {
                 "type": "text",
-                "label": "Folder path",
+                "label": "Directory",
                 "placeholder": "folder/subfolder",
                 "jsonPath": "properties.typeProperties.location.folderPath"
               },
@@ -677,13 +677,13 @@
             "general": {
               "fileSystem": {
                 "type": "text",
-                "label": "File system",
+                "label": "Container",
                 "placeholder": "myfilesystem",
                 "jsonPath": "properties.typeProperties.location.fileSystem"
               },
               "folderPath": {
                 "type": "text",
-                "label": "Folder path",
+                "label": "Directory",
                 "placeholder": "folder/subfolder",
                 "jsonPath": "properties.typeProperties.location.folderPath"
               },
@@ -708,13 +708,13 @@
             "general": {
               "fileSystem": {
                 "type": "text",
-                "label": "File system",
+                "label": "Container",
                 "placeholder": "myfilesystem",
                 "jsonPath": "properties.typeProperties.location.fileSystem"
               },
               "folderPath": {
                 "type": "text",
-                "label": "Folder path",
+                "label": "Directory",
                 "placeholder": "folder/subfolder",
                 "jsonPath": "properties.typeProperties.location.folderPath"
               },
@@ -769,13 +769,13 @@
             "general": {
               "fileSystem": {
                 "type": "text",
-                "label": "File system",
+                "label": "Container",
                 "placeholder": "myfilesystem",
                 "jsonPath": "properties.typeProperties.location.fileSystem"
               },
               "folderPath": {
                 "type": "text",
-                "label": "Folder path",
+                "label": "Directory",
                 "placeholder": "folder/subfolder",
                 "jsonPath": "properties.typeProperties.location.folderPath"
               },
@@ -800,13 +800,13 @@
             "general": {
               "fileSystem": {
                 "type": "text",
-                "label": "File system",
+                "label": "Container",
                 "placeholder": "myfilesystem",
                 "jsonPath": "properties.typeProperties.location.fileSystem"
               },
               "folderPath": {
                 "type": "text",
-                "label": "Folder path",
+                "label": "Directory",
                 "placeholder": "folder/subfolder",
                 "jsonPath": "properties.typeProperties.location.folderPath"
               },
@@ -831,13 +831,13 @@
             "general": {
               "fileSystem": {
                 "type": "text",
-                "label": "File system",
+                "label": "Container",
                 "placeholder": "myfilesystem",
                 "jsonPath": "properties.typeProperties.location.fileSystem"
               },
               "folderPath": {
                 "type": "text",
-                "label": "Folder path",
+                "label": "Directory",
                 "placeholder": "folder/subfolder",
                 "jsonPath": "properties.typeProperties.location.folderPath"
               },
@@ -862,13 +862,13 @@
             "general": {
               "fileSystem": {
                 "type": "text",
-                "label": "File system",
+                "label": "Container",
                 "placeholder": "myfilesystem",
                 "jsonPath": "properties.typeProperties.location.fileSystem"
               },
               "folderPath": {
                 "type": "text",
-                "label": "Folder path",
+                "label": "Directory",
                 "placeholder": "folder/subfolder",
                 "jsonPath": "properties.typeProperties.location.folderPath"
               },
@@ -920,13 +920,13 @@
             "general": {
               "fileSystem": {
                 "type": "text",
-                "label": "File system",
+                "label": "Container",
                 "placeholder": "myfilesystem",
                 "jsonPath": "properties.typeProperties.location.fileSystem"
               },
               "folderPath": {
                 "type": "text",
-                "label": "Folder path",
+                "label": "Directory",
                 "placeholder": "folder/subfolder",
                 "jsonPath": "properties.typeProperties.location.folderPath"
               },

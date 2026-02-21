@@ -58,11 +58,6 @@
         "title": "Open Dataset File"
       },
       {
-        "command": "adf-pipeline-clone.refreshDatasets",
-        "title": "Refresh Datasets",
-        "icon": "$(refresh)"
-      },
-      {
         "command": "adf-pipeline-clone.refreshPipelines",
         "title": "Refresh",
         "icon": "$(refresh)"

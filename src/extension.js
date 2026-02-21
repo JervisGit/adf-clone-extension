@@ -88,9 +88,6 @@ function activate(context) {
 		})
 	);
 
-	// Refresh datasets through main pipeline tree provider
-	// No separate refresh command needed
-
 	// Register the pipeline runs tree view
 	const pipelineRunsTreeProvider = new PipelineRunsTreeDataProvider(context);
 	const pipelineRunsTreeView = vscode.window.createTreeView('adf-pipeline-runs', {

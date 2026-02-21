@@ -274,7 +274,7 @@ class DatasetEditorProvider {
 			vscode.window.showInformationMessage(`Dataset saved: ${path.basename(savePath)}`);
 			
 			// Refresh tree view if it exists
-			vscode.commands.executeCommand('adf-datasets.refresh');
+			vscode.commands.executeCommand('adf-pipeline-clone.refreshPipelines');
 			
 		} catch (error) {
 			vscode.window.showErrorMessage(`Failed to save dataset: ${error.message}`);
@@ -960,12 +960,97 @@ class DatasetEditorProvider {
                         if (typeof opt === 'object' && opt.label && opt.value !== undefined) {
                             option.value = opt.value;
                             option.textContent = opt.label;
+                            if (opt.omitFromJson) {
+                                option.dataset.omitFromJson = 'true';
+                            }
                         } else {
                             option.value = opt;
                             option.textContent = opt;
                         }
                         input.appendChild(option);
                     });
+                    break;
+                    
+                case 'select-text':
+                    // Create a container for both select and text input with toggle
+                    const container = document.createElement('div');
+                    container.className = 'select-text-container';
+                    container.id = fieldKey;
+                    
+                    // Create select dropdown
+                    const selectInput = document.createElement('select');
+                    selectInput.className = 'form-select';
+                    selectInput.id = \`\${fieldKey}-select\`;
+                    
+                    const emptyOpt = document.createElement('option');
+                    emptyOpt.value = '';
+                    emptyOpt.textContent = 'Select...';
+                    emptyOpt.disabled = true;
+                    emptyOpt.selected = true;
+                    selectInput.appendChild(emptyOpt);
+                    
+                    (fieldConfig.options || []).forEach(opt => {
+                        const option = document.createElement('option');
+                        if (typeof opt === 'object' && opt.label && opt.value !== undefined) {
+                            option.value = opt.value;
+                            option.textContent = opt.label;
+                            if (opt.omitFromJson) {
+                                option.dataset.omitFromJson = 'true';
+                            }
+                        } else {
+                            option.value = opt;
+                            option.textContent = opt;
+                        }
+                        selectInput.appendChild(option);
+                    });
+                    
+                    // Create text input (hidden by default)
+                    const textInput = document.createElement('input');
+                    textInput.type = 'text';
+                    textInput.className = 'form-input';
+                    textInput.id = \`\${fieldKey}-text\`;
+                    textInput.placeholder = fieldConfig.placeholder || '';
+                    textInput.style.display = 'none';
+                    
+                    // Create toggle checkbox
+                    const toggleContainer = document.createElement('div');
+                    toggleContainer.style.marginTop = '5px';
+                    toggleContainer.style.display = 'flex';
+                    toggleContainer.style.alignItems = 'center';
+                    toggleContainer.style.gap = '5px';
+                    
+                    const toggleCheckbox = document.createElement('input');
+                    toggleCheckbox.type = 'checkbox';
+                    toggleCheckbox.id = \`\${fieldKey}-manual\`;
+                    toggleCheckbox.className = 'form-checkbox';
+                    
+                    const toggleLabel = document.createElement('label');
+                    toggleLabel.textContent = 'Enter manually';
+                    toggleLabel.style.fontSize = '12px';
+                    toggleLabel.style.cursor = 'pointer';
+                    toggleLabel.htmlFor = \`\${fieldKey}-manual\`;
+                    
+                    toggleCheckbox.addEventListener('change', (e) => {
+                        if (e.target.checked) {
+                            selectInput.style.display = 'none';
+                            textInput.style.display = 'block';
+                            textInput.value = selectInput.value;
+                        } else {
+                            textInput.style.display = 'none';
+                            selectInput.style.display = 'block';
+                            selectInput.value = textInput.value || '';
+                        }
+                        notifyDataChanged();
+                    });
+                    
+                    toggleContainer.appendChild(toggleCheckbox);
+                    toggleContainer.appendChild(toggleLabel);
+                    
+                    container.appendChild(selectInput);
+                    container.appendChild(textInput);
+                    container.appendChild(toggleContainer);
+                    
+                    input = container;
                     break;
                     
                 case 'boolean':
@@ -1011,10 +1096,32 @@ class DatasetEditorProvider {
                     input.id = fieldKey;
             }
             
-            if (fieldConfig.default !== undefined && !input.value) {
-                if (fieldConfig.type === 'boolean') {
+            if (fieldConfig.default !== undefined) {
+                if (fieldConfig.type === 'boolean' && !input.checked) {
                     input.checked = fieldConfig.default;
-                } else {
+                } else if (fieldConfig.type === 'select-text') {
+                    // For select-text, use querySelector since the element is not yet in the DOM
+                    const selectEl = input.querySelector('select');
+                    if (selectEl) {
+                        // Find first non-disabled option matching the default value
+                        const defaultVal = String(fieldConfig.default);
+                        for (let i = 0; i < selectEl.options.length; i++) {
+                            if (!selectEl.options[i].disabled && selectEl.options[i].value === defaultVal) {
+                                selectEl.selectedIndex = i;
+                                break;
+                            }
+                        }
+                    }
+                } else if (fieldConfig.type === 'select') {
+                    // Loop to find first non-disabled match (avoids landing on disabled placeholder)
+                    const defaultVal = String(fieldConfig.default);
+                    for (let i = 0; i < input.options.length; i++) {
+                        if (!input.options[i].disabled && input.options[i].value === defaultVal) {
+                            input.selectedIndex = i;
+                            break;
+                        }
+                    }
+                } else if (!input.value) {
                     input.value = fieldConfig.default;
                 }
             }
@@ -1086,11 +1193,47 @@ class DatasetEditorProvider {
                     return;
                 }
                 
+                // Skip if this is part of a select-text control (we'll handle those separately)
+                if (el.id.endsWith('-select') || el.id.endsWith('-text') || el.id.endsWith('-manual')) {
+                    return;
+                }
+                
                 if (el.type === 'checkbox') {
                     data[el.id] = el.checked;
                 } else if (!el.closest('.parameters-container')) {
                     // Skip parameters container's inputs as they're handled above
+                    // Check if the selected option has omitFromJson flag
+                    if (el.tagName === 'SELECT') {
+                        const selectedOpt = el.options[el.selectedIndex];
+                        if (selectedOpt && selectedOpt.dataset.omitFromJson === 'true') {
+                            return; // Don't write to JSON
+                        }
+                    }
                     data[el.id] = el.value;
+                }
+            });
+            
+            // Collect select-text field values
+            document.querySelectorAll('#dynamicFieldsContainer .select-text-container').forEach(container => {
+                const fieldGroup = container.closest('.form-group');
+                if (fieldGroup && fieldGroup.style.display === 'none') {
+                    return;
+                }
+                
+                const fieldKey = container.id;
+                const selectInput = document.getElementById(\`\${fieldKey}-select\`);
+                const textInput = document.getElementById(\`\${fieldKey}-text\`);
+                
+                // Get value from visible input
+                if (textInput && textInput.style.display !== 'none') {
+                    data[fieldKey] = textInput.value;
+                } else if (selectInput) {
+                    // Check if the selected option has omitFromJson flag - if so, exclude from formData entirely
+                    const selectedOption = selectInput.options[selectInput.selectedIndex];
+                    if (selectedOption && selectedOption.dataset.omitFromJson === 'true') {
+                        return; // Skip this field - don't write to JSON
+                    }
+                    data[fieldKey] = selectInput.value;
                 }
             });
             
@@ -1216,14 +1359,67 @@ class DatasetEditorProvider {
                         for (const [sectionName, fields] of Object.entries(fieldsConfig)) {
                             for (const [fieldKey, fieldConfig] of Object.entries(fields)) {
                                 if (fieldConfig.jsonPath && fieldConfig.type !== 'hidden') {
-                                    const value = getValueByPath(datasetJson, fieldConfig.jsonPath);
-                                    const element = document.getElementById(fieldKey);
+                                    let value = getValueByPath(datasetJson, fieldConfig.jsonPath);
+                                    let element = document.getElementById(fieldKey);
                                     
                                     if (element && value !== undefined && value !== null) {
                                         if (fieldConfig.type === 'boolean') {
                                             element.checked = Boolean(value);
+                                        } else if (fieldConfig.type === 'select-text') {
+                                            // For select-text, set the select dropdown value
+                                            const selectInput = document.getElementById(\`\${fieldKey}-select\`);
+                                            if (selectInput) {
+                                                // When loading from JSON, prefer non-omitFromJson options first
+                                                // e.g. rowDelimiter "" should load as "No delimiter", not "Default"
+                                                let found = false;
+                                                for (let i = 0; i < selectInput.options.length; i++) {
+                                                    if (!selectInput.options[i].disabled &&
+                                                        selectInput.options[i].value === String(value) &&
+                                                        selectInput.options[i].dataset.omitFromJson !== 'true') {
+                                                        selectInput.selectedIndex = i;
+                                                        found = true;
+                                                        break;
+                                                    }
+                                                }
+                                                // Second pass: accept any non-disabled match (e.g. omitFromJson options)
+                                                if (!found) {
+                                                    for (let i = 0; i < selectInput.options.length; i++) {
+                                                        if (!selectInput.options[i].disabled && selectInput.options[i].value === String(value)) {
+                                                            selectInput.selectedIndex = i;
+                                                            found = true;
+                                                            break;
+                                                        }
+                                                    }
+                                                }
+                                                if (!found) {
+                                                    // Value not in options - switch to manual mode
+                                                    const textInput = document.getElementById(\`\${fieldKey}-text\`);
+                                                    const manualCheckbox = document.getElementById(\`\${fieldKey}-manual\`);
+                                                    if (textInput && manualCheckbox) {
+                                                        manualCheckbox.checked = true;
+                                                        selectInput.style.display = 'none';
+                                                        textInput.style.display = 'block';
+                                                        textInput.value = value;
+                                                    }
+                                                }
+                                            }
                                         } else {
-                                            element.value = value;
+                                            if (element.tagName === 'SELECT') {
+                                                // Find first non-disabled option matching the value (avoids hitting disabled placeholder)
+                                                let found = false;
+                                                for (let i = 0; i < element.options.length; i++) {
+                                                    if (!element.options[i].disabled && element.options[i].value === String(value)) {
+                                                        element.selectedIndex = i;
+                                                        found = true;
+                                                        break;
+                                                    }
+                                                }
+                                                if (!found) {
+                                                    element.value = value; // fallback
+                                                }
+                                            } else {
+                                                element.value = value;
+                                            }
                                             
                                             // Trigger visibility check for fields that others depend on
                                             updateFieldVisibility(fieldKey, value);

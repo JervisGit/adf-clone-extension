@@ -127,6 +127,16 @@ function buildDatasetJson(formData, datasetConfig, datasetType, fileType = null)
         
         let valueToSet = fieldValue;
         
+        // If this field key appears in formData, the frontend already decided it should be written
+        // (fields with omitFromJson=true are excluded from formData by the webview before sending)
+        let isExplicitOption = false;
+        if (fieldConfig.options && Array.isArray(fieldConfig.options)) {
+            const matchingOption = fieldConfig.options.find(opt => opt.value === fieldValue);
+            if (matchingOption) {
+                isExplicitOption = true;
+            }
+        }
+        
         // Handle field type-specific transformations
         if (fieldConfig.type === 'number') {
             valueToSet = parseFloat(fieldValue);
@@ -138,14 +148,15 @@ function buildDatasetJson(formData, datasetConfig, datasetType, fileType = null)
             valueToSet = fieldConfig.value;
         }
         
-        // Skip empty optional fields
-        if (!fieldConfig.required && (valueToSet === '' || valueToSet === undefined || valueToSet === null)) {
-            continue;
+        // Apply default value if empty and default exists
+        // BUT: Don't apply default if user explicitly selected an option (even if value is "")
+        if ((valueToSet === '' || valueToSet === undefined) && fieldConfig.default !== undefined && !isExplicitOption) {
+            valueToSet = fieldConfig.default;
         }
         
-        // Apply default value if empty and default exists
-        if ((valueToSet === '' || valueToSet === undefined) && fieldConfig.default !== undefined) {
-            valueToSet = fieldConfig.default;
+        // Skip empty optional fields (not required, no default, and not an explicit option selection)
+        if (!fieldConfig.required && !isExplicitOption && (valueToSet === '' || valueToSet === undefined || valueToSet === null)) {
+            continue;
         }
         
         // Set value using jsonPath

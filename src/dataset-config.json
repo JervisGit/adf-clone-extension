@@ -106,32 +106,69 @@
                 "value": "AzureBlobStorageLocation"
               },
               "columnDelimiter": {
-                "type": "text",
+                "type": "select-text",
                 "label": "Column delimiter",
                 "placeholder": ",",
+                "options": [
+                  { "label": "Comma (,)", "value": "," },
+                  { "label": "Semicolon (;)", "value": ";" },
+                  { "label": "Pipe (|)", "value": "|" },
+                  { "label": "Tab (\\t)", "value": "\t" },
+                  { "label": "Start of heading (\\u0001)", "value": "\u0001" },
+                  { "label": "No delimiter", "value": "" }
+                ],
                 "jsonPath": "properties.typeProperties.columnDelimiter",
                 "default": ","
               },
               "rowDelimiter": {
-                "type": "text",
+                "type": "select-text",
                 "label": "Row delimiter",
-                "placeholder": "\\n",
+                "placeholder": "\n",
+                "options": [
+                  { "label": "Default (\\r, \\n, or \\r\\n)", "value": "", "omitFromJson": true },
+                  { "label": "Line feed (\\n)", "value": "\n" },
+                  { "label": "Carriage return (\\r)", "value": "\r" },
+                  { "label": "No delimiter", "value": "" }
+                ],
                 "jsonPath": "properties.typeProperties.rowDelimiter",
-                "default": "\\n"
+                "default": ""
+              },
+              "encodingName": {
+                "type": "text",
+                "label": "Encoding",
+                "placeholder": "UTF-8",
+                "jsonPath": "properties.typeProperties.encodingName"
+              },
+              "quoteChar": {
+                "type": "select-text",
+                "label": "Quote character",
+                "placeholder": "\"",
+                "options": [
+                  { "label": "Double quote (\")", "value": "\"" },
+                  { "label": "Single quote (')", "value": "'" },
+                  { "label": "No quote character", "value": "" }
+                ],
+                "jsonPath": "properties.typeProperties.quoteChar",
+                "default": "\""
               },
               "escapeChar": {
-                "type": "text",
+                "type": "select-text",
                 "label": "Escape character",
                 "placeholder": "\\",
+                "options": [
+                  { "label": "Backslash (\\)", "value": "\\" },
+                  { "label": "Slash (/)", "value": "/" },
+                  { "label": "Double quote (\")", "value": "\"" },
+                  { "label": "No escape character", "value": "" }
+                ],
                 "jsonPath": "properties.typeProperties.escapeChar",
                 "default": "\\"
               },
-              "quoteChar": {
+              "nullValue": {
                 "type": "text",
-                "label": "Quote character",
-                "placeholder": "\"",
-                "jsonPath": "properties.typeProperties.quoteChar",
-                "default": "\""
+                "label": "Null value",
+                "placeholder": "",
+                "jsonPath": "properties.typeProperties.nullValue"
               },
               "firstRowAsHeader": {
                 "type": "boolean",
@@ -141,10 +178,33 @@
               },
               "compressionCodec": {
                 "type": "select",
-                "label": "Compression codec",
-                "options": ["none", "gzip", "bzip2", "deflate", "ZipDeflate"],
+                "label": "Compression type",
+                "options": [
+                  { "label": "No compression", "value": "", "omitFromJson": true },
+                  { "label": "bzip2 (.bz2)", "value": "bzip2" },
+                  { "label": "gzip (.gz)", "value": "gzip" },
+                  { "label": "deflate (.deflate)", "value": "deflate" },
+                  { "label": "ZipDeflate (.zip)", "value": "ZipDeflate" },
+                  { "label": "TarGZip (.tgz/.tar.gz)", "value": "TarGZip" },
+                  { "label": "tar (.tar)", "value": "tar" },
+                  { "label": "snappy", "value": "snappy" },
+                  { "label": "lz4", "value": "lz4" }
+                ],
                 "jsonPath": "properties.typeProperties.compressionCodec",
-                "default": "none"
+                "default": ""
+              },
+              "compressionLevel": {
+                "type": "select",
+                "label": "Compression level",
+                "options": [
+                  { "label": "Fastest", "value": "Fastest" },
+                  { "label": "Optimal", "value": "Optimal" }
+                ],
+                "showWhen": {
+                  "field": "compressionCodec",
+                  "notEmpty": true
+                },
+                "jsonPath": "properties.typeProperties.compressionLevel"
               }
             }
           }
@@ -214,7 +274,7 @@
                 "type": "select",
                 "label": "Compression type",
                 "options": [
-                  { "label": "No compression", "value": "" },
+                  { "label": "No compression", "value": "", "omitFromJson": true },
                   { "label": "deflate (.deflate)", "value": "deflate" },
                   { "label": "snappy", "value": "snappy" }
                 ],
@@ -351,7 +411,7 @@
                 "type": "select",
                 "label": "Compression type",
                 "options": [
-                  { "label": "No compression", "value": "" },
+                  { "label": "No compression", "value": "", "omitFromJson": true },
                   { "label": "bzip2 (.bz2)", "value": "bzip2" },
                   { "label": "gzip (.gz)", "value": "gzip" },
                   { "label": "deflate (.deflate)", "value": "deflate" },
@@ -507,38 +567,105 @@
                 "value": "AzureBlobFSLocation"
               },
               "columnDelimiter": {
-                "type": "text",
+                "type": "select-text",
                 "label": "Column delimiter",
                 "placeholder": ",",
+                "options": [
+                  { "label": "Comma (,)", "value": "," },
+                  { "label": "Semicolon (;)", "value": ";" },
+                  { "label": "Pipe (|)", "value": "|" },
+                  { "label": "Tab (\\t)", "value": "\t" },
+                  { "label": "Start of heading (\\u0001)", "value": "\u0001" },
+                  { "label": "No delimiter", "value": "" }
+                ],
                 "jsonPath": "properties.typeProperties.columnDelimiter",
                 "default": ","
               },
               "rowDelimiter": {
-                "type": "text",
+                "type": "select-text",
                 "label": "Row delimiter",
-                "placeholder": "\\n",
+                "placeholder": "\n",
+                "options": [
+                  { "label": "Default (\\r, \\n, or \\r\\n)", "value": "", "omitFromJson": true },
+                  { "label": "Line feed (\\n)", "value": "\n" },
+                  { "label": "Carriage return (\\r)", "value": "\r" },
+                  { "label": "No delimiter", "value": "" }
+                ],
                 "jsonPath": "properties.typeProperties.rowDelimiter",
-                "default": "\\n"
+                "default": ""
+              },
+              "encodingName": {
+                "type": "text",
+                "label": "Encoding",
+                "placeholder": "UTF-8",
+                "jsonPath": "properties.typeProperties.encodingName"
+              },
+              "quoteChar": {
+                "type": "select-text",
+                "label": "Quote character",
+                "placeholder": "\"",
+                "options": [
+                  { "label": "Double quote (\")", "value": "\"" },
+                  { "label": "Single quote (')", "value": "'" },
+                  { "label": "No quote character", "value": "" }
+                ],
+                "jsonPath": "properties.typeProperties.quoteChar",
+                "default": "\""
               },
               "escapeChar": {
-                "type": "text",
+                "type": "select-text",
                 "label": "Escape character",
                 "placeholder": "\\",
+                "options": [
+                  { "label": "Backslash (\\)", "value": "\\" },
+                  { "label": "Slash (/)", "value": "/" },
+                  { "label": "Double quote (\")", "value": "\"" },
+                  { "label": "No escape character", "value": "" }
+                ],
                 "jsonPath": "properties.typeProperties.escapeChar",
                 "default": "\\"
               },
-              "quoteChar": {
+              "nullValue": {
                 "type": "text",
-                "label": "Quote character",
-                "placeholder": "\"",
-                "jsonPath": "properties.typeProperties.quoteChar",
-                "default": "\""
+                "label": "Null value",
+                "placeholder": "",
+                "jsonPath": "properties.typeProperties.nullValue"
               },
               "firstRowAsHeader": {
                 "type": "boolean",
                 "label": "First row as header",
                 "jsonPath": "properties.typeProperties.firstRowAsHeader",
                 "default": true
+              },
+              "compressionCodec": {
+                "type": "select",
+                "label": "Compression type",
+                "options": [
+                  { "label": "No compression", "value": "", "omitFromJson": true },
+                  { "label": "bzip2 (.bz2)", "value": "bzip2" },
+                  { "label": "gzip (.gz)", "value": "gzip" },
+                  { "label": "deflate (.deflate)", "value": "deflate" },
+                  { "label": "ZipDeflate (.zip)", "value": "ZipDeflate" },
+                  { "label": "TarGZip (.tgz/.tar.gz)", "value": "TarGZip" },
+                  { "label": "tar (.tar)", "value": "tar" },
+                  { "label": "snappy", "value": "snappy" },
+                  { "label": "lz4", "value": "lz4" }
+                ],
+                "jsonPath": "properties.typeProperties.compressionCodec",
+                "default": ""
+              },
+              "compressionLevel": {
+                "type": "select",
+                "label": "Compression level",
+                "options": [
+                  { "label": "Fastest", "value": "Fastest" },
+                  { "label": "Optimal", "value": "Optimal" }
+                ],
+                "showWhen": {
+                  "field": "compressionCodec",
+                  "notEmpty": true
+                },
+                "jsonPath": "properties.typeProperties.compressionLevel"
               }
             }
           }
@@ -601,7 +728,7 @@
                 "type": "select",
                 "label": "Compression type",
                 "options": [
-                  { "label": "No compression", "value": "" },
+                  { "label": "No compression", "value": "", "omitFromJson": true },
                   { "label": "deflate (.deflate)", "value": "deflate" },
                   { "label": "snappy", "value": "snappy" }
                 ],
@@ -755,7 +882,7 @@
                 "type": "select",
                 "label": "Compression type",
                 "options": [
-                  { "label": "No compression", "value": "" },
+                  { "label": "No compression", "value": "", "omitFromJson": true },
                   { "label": "bzip2 (.bz2)", "value": "bzip2" },
                   { "label": "gzip (.gz)", "value": "gzip" },
                   { "label": "deflate (.deflate)", "value": "deflate" },

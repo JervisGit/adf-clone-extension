@@ -917,12 +917,6 @@
                 "placeholder": "folder/subfolder",
                 "jsonPath": "properties.typeProperties.location.folderPath"
               },
-              "fileName": {
-                "type": "text",
-                "label": "File name",
-                "placeholder": "file",
-                "jsonPath": "properties.typeProperties.location.fileName"
-              },
               "locationType": {
                 "type": "hidden",
                 "jsonPath": "properties.typeProperties.location.type",

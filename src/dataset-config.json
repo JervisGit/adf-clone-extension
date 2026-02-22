@@ -389,6 +389,7 @@
         "Xml": {
           "typeValue": "Xml",
           "displayName": "XML",
+          "omitSchema": true,
           "fields": {
             "general": {
               "container": {
@@ -416,10 +417,45 @@
               },
               "compressionCodec": {
                 "type": "select",
-                "label": "Compression codec",
-                "options": ["none", "gzip", "bzip2", "deflate", "ZipDeflate"],
-                "jsonPath": "properties.typeProperties.compressionCodec",
-                "default": "none"
+                "label": "Compression type",
+                "options": [
+                  { "label": "No compression", "value": "", "omitFromJson": true },
+                  { "label": "bzip2 (.bz2)", "value": "bzip2" },
+                  { "label": "gzip (.gz)", "value": "gzip" },
+                  { "label": "deflate (.deflate)", "value": "deflate" },
+                  { "label": "ZipDeflate (.zip)", "value": "ZipDeflate" },
+                  { "label": "TarGZip (.tgz/.tar.gz)", "value": "TarGZip" },
+                  { "label": "tar (.tar)", "value": "tar" },
+                  { "label": "snappy", "value": "snappy" },
+                  { "label": "lz4", "value": "lz4" }
+                ],
+                "jsonPath": "properties.typeProperties.compression.type",
+                "default": ""
+              },
+              "compressionLevel": {
+                "type": "select",
+                "label": "Compression level",
+                "options": [
+                  { "label": "Fastest", "value": "Fastest" },
+                  { "label": "Optimal", "value": "Optimal" }
+                ],
+                "showWhen": {
+                  "field": "compressionCodec",
+                  "notEmpty": true
+                },
+                "jsonPath": "properties.typeProperties.compression.level"
+              },
+              "encodingName": {
+                "type": "text",
+                "label": "Encoding",
+                "placeholder": "UTF-8",
+                "jsonPath": "properties.typeProperties.encodingName"
+              },
+              "nullValue": {
+                "type": "text",
+                "label": "Null value",
+                "placeholder": "",
+                "jsonPath": "properties.typeProperties.nullValue"
               }
             }
           }
@@ -964,6 +1000,7 @@
         "Xml": {
           "typeValue": "Xml",
           "displayName": "XML",
+          "omitSchema": true,
           "fields": {
             "general": {
               "fileSystem": {
@@ -989,6 +1026,48 @@
                 "type": "hidden",
                 "jsonPath": "properties.typeProperties.location.type",
                 "value": "AzureBlobFSLocation"
+              },
+              "compressionCodec": {
+                "type": "select",
+                "label": "Compression type",
+                "options": [
+                  { "label": "No compression", "value": "", "omitFromJson": true },
+                  { "label": "bzip2 (.bz2)", "value": "bzip2" },
+                  { "label": "gzip (.gz)", "value": "gzip" },
+                  { "label": "deflate (.deflate)", "value": "deflate" },
+                  { "label": "ZipDeflate (.zip)", "value": "ZipDeflate" },
+                  { "label": "TarGZip (.tgz/.tar.gz)", "value": "TarGZip" },
+                  { "label": "tar (.tar)", "value": "tar" },
+                  { "label": "snappy", "value": "snappy" },
+                  { "label": "lz4", "value": "lz4" }
+                ],
+                "jsonPath": "properties.typeProperties.compression.type",
+                "default": ""
+              },
+              "compressionLevel": {
+                "type": "select",
+                "label": "Compression level",
+                "options": [
+                  { "label": "Fastest", "value": "Fastest" },
+                  { "label": "Optimal", "value": "Optimal" }
+                ],
+                "showWhen": {
+                  "field": "compressionCodec",
+                  "notEmpty": true
+                },
+                "jsonPath": "properties.typeProperties.compression.level"
+              },
+              "encodingName": {
+                "type": "text",
+                "label": "Encoding",
+                "placeholder": "UTF-8",
+                "jsonPath": "properties.typeProperties.encodingName"
+              },
+              "nullValue": {
+                "type": "text",
+                "label": "Null value",
+                "placeholder": "",
+                "jsonPath": "properties.typeProperties.nullValue"
               }
             }
           }

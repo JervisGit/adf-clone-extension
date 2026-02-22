@@ -86,7 +86,6 @@ function buildDatasetJson(formData, datasetConfig, datasetType, fileType = null)
             },
             annotations: [],
             type: '',  // Will be set based on file type or dataset type
-            schema: []
         }
     };
     
@@ -97,6 +96,11 @@ function buildDatasetJson(formData, datasetConfig, datasetType, fileType = null)
     
     if (typeConfig) {
         result.properties.type = typeConfig.typeValue || fileType || datasetType;
+    }
+
+    // Add schema array unless the type opts out
+    if (!typeConfig?.omitSchema) {
+        result.properties.schema = [];
     }
     
     // Get all field configurations

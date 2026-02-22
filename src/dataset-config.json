@@ -452,22 +452,19 @@
                 "label": "Container",
                 "placeholder": "mycontainer",
                 "jsonPath": "properties.typeProperties.location.container",
-                "required": true,
                 "validate": "lowercase"
               },
               "folderPath": {
                 "type": "text",
                 "label": "Directory",
                 "placeholder": "folder/subfolder",
-                "jsonPath": "properties.typeProperties.location.folderPath",
-                "required": true
+                "jsonPath": "properties.typeProperties.location.folderPath"
               },
               "fileName": {
                 "type": "text",
                 "label": "File name",
                 "placeholder": "file.xlsx",
-                "jsonPath": "properties.typeProperties.location.fileName",
-                "required": true
+                "jsonPath": "properties.typeProperties.location.fileName"
               },
               "locationType": {
                 "type": "hidden",
@@ -1003,22 +1000,19 @@
                 "label": "Container",
                 "placeholder": "myfilesystem",
                 "jsonPath": "properties.typeProperties.location.fileSystem",
-                "required": true,
                 "validate": "lowercase"
               },
               "folderPath": {
                 "type": "text",
                 "label": "Directory",
                 "placeholder": "folder/subfolder",
-                "jsonPath": "properties.typeProperties.location.folderPath",
-                "required": true
+                "jsonPath": "properties.typeProperties.location.folderPath"
               },
               "fileName": {
                 "type": "text",
                 "label": "File name",
                 "placeholder": "file.xlsx",
-                "jsonPath": "properties.typeProperties.location.fileName",
-                "required": true
+                "jsonPath": "properties.typeProperties.location.fileName"
               },
               "locationType": {
                 "type": "hidden",

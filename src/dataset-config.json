@@ -337,7 +337,7 @@
             }
           }
         },
-        "Orc": {
+        "ORC": {
           "typeValue": "ORC",
           "displayName": "ORC",
           "fields": {
@@ -365,12 +365,22 @@
                 "jsonPath": "properties.typeProperties.location.type",
                 "value": "AzureBlobStorageLocation"
               },
-              "compressionCodec": {
-                "type": "select",
-                "label": "Compression codec",
-                "options": ["none", "snappy", "zlib"],
-                "jsonPath": "properties.typeProperties.compressionCodec",
-                "default": "none"
+              "orcCompressionCodec": {
+                "type": "select-text",
+                "label": "Compression type",
+                "options": [
+                  { "label": "None", "value": "none" },
+                  { "label": "zlib (.zlib)", "value": "zlib" },
+                  { "label": "snappy", "value": "snappy" },
+                  { "label": "lzo", "value": "lzo" }
+                ],
+                "jsonPath": "properties.typeProperties.orcCompressionCodec",
+                "placeholder": "Enter value or expression"
+              },
+              "enablePhysicalSchema": {
+                "type": "hidden",
+                "jsonPath": "properties.typeProperties.enablePhysicalSchema",
+                "value": true
               }
             }
           }
@@ -900,7 +910,7 @@
             }
           }
         },
-        "Orc": {
+        "ORC": {
           "typeValue": "ORC",
           "displayName": "ORC",
           "fields": {
@@ -928,6 +938,23 @@
                 "type": "hidden",
                 "jsonPath": "properties.typeProperties.location.type",
                 "value": "AzureBlobFSLocation"
+              },
+              "orcCompressionCodec": {
+                "type": "select-text",
+                "label": "Compression type",
+                "options": [
+                  { "label": "None", "value": "none" },
+                  { "label": "zlib (.zlib)", "value": "zlib" },
+                  { "label": "snappy", "value": "snappy" },
+                  { "label": "lzo", "value": "lzo" }
+                ],
+                "jsonPath": "properties.typeProperties.orcCompressionCodec",
+                "placeholder": "Enter value or expression"
+              },
+              "enablePhysicalSchema": {
+                "type": "hidden",
+                "jsonPath": "properties.typeProperties.enablePhysicalSchema",
+                "value": true
               }
             }
           }

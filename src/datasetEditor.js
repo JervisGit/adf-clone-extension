@@ -1314,6 +1314,7 @@ class DatasetEditorProvider {
                 // Get value from visible input
                 if (textInput && textInput.style.display !== 'none') {
                     data[fieldKey] = textInput.value;
+                    data[fieldKey + '__isExpression'] = true;
                 } else if (selectInput) {
                     // Check if the selected option has omitFromJson flag - if so, exclude from formData entirely
                     const selectedOption = selectInput.options[selectInput.selectedIndex];
@@ -1447,6 +1448,18 @@ class DatasetEditorProvider {
                                             // For select-text, set the select dropdown value
                                             const selectInput = document.getElementById(\`\${fieldKey}-select\`);
                                             if (selectInput) {
+                                                // Handle Expression objects: {value: '...', type: 'Expression'}
+                                                if (value && typeof value === 'object' && value.type === 'Expression') {
+                                                    const textInput = document.getElementById(\`\${fieldKey}-text\`);
+                                                    const manualCheckbox = document.getElementById(\`\${fieldKey}-manual\`);
+                                                    if (textInput && manualCheckbox) {
+                                                        manualCheckbox.checked = true;
+                                                        selectInput.style.display = 'none';
+                                                        textInput.style.display = 'block';
+                                                        textInput.value = value.value;
+                                                    }
+                                                    continue;
+                                                }
                                                 // When loading from JSON, prefer non-omitFromJson options first
                                                 // e.g. rowDelimiter "" should load as "No delimiter", not "Default"
                                                 let found = false;

@@ -375,7 +375,8 @@
                   { "label": "lzo", "value": "lzo" }
                 ],
                 "jsonPath": "properties.typeProperties.orcCompressionCodec",
-                "placeholder": "Enter value or expression"
+                "placeholder": "Enter value or expression",
+                "expressionWhenManual": true
               },
               "enablePhysicalSchema": {
                 "type": "hidden",
@@ -949,7 +950,8 @@
                   { "label": "lzo", "value": "lzo" }
                 ],
                 "jsonPath": "properties.typeProperties.orcCompressionCodec",
-                "placeholder": "Enter value or expression"
+                "placeholder": "Enter value or expression",
+                "expressionWhenManual": true
               },
               "enablePhysicalSchema": {
                 "type": "hidden",

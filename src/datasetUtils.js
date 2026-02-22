@@ -149,6 +149,9 @@ function buildDatasetJson(formData, datasetConfig, datasetType, fileType = null)
         } else if (fieldConfig.type === 'hidden' && fieldConfig.value !== undefined) {
             // Use configured value for hidden fields
             valueToSet = fieldConfig.value;
+        } else if (fieldConfig.expressionWhenManual && formData[fieldKey + '__isExpression']) {
+            // Wrap manually entered values as ADF Expression objects
+            valueToSet = { value: fieldValue, type: 'Expression' };
         }
         
         // Apply default value if empty and default exists

@@ -128,6 +128,18 @@ class DatasetEditorProvider {
 			async message => {
 				switch (message.type) {
 					case 'save':
+						// Validate before building JSON
+						const saveValidation = validateDatasetForm(
+							message.formData,
+							datasetConfig,
+							message.datasetType,
+							message.fileType
+						);
+						if (!saveValidation.valid) {
+							const bulletList = saveValidation.errors.map(e => `• ${e}`).join('\n');
+							vscode.window.showErrorMessage(`Cannot save dataset:\n${bulletList}`, { modal: false });
+							break;
+						}
 						// Build JSON from form data using config
 						const datasetJson = buildDatasetJson(
 							message.formData,
@@ -1244,11 +1256,11 @@ class DatasetEditorProvider {
                 data.parameters = collectParameters('parameters');
             }
             
-            // Collect radio group values
+            // Collect radio group values (always included — validator needs them for showWhen conditions;
+            // omitFromJson is enforced server-side in buildDatasetJson, not here)
             document.querySelectorAll('#dynamicFieldsContainer .radio-group').forEach(radioContainer => {
                 const fieldGroup = radioContainer.closest('.form-group');
                 if (fieldGroup && fieldGroup.style.display === 'none') return;
-                if (radioContainer.dataset.omitFromJson === 'true') return;
                 const checked = radioContainer.querySelector('input[type="radio"]:checked');
                 if (checked) {
                     data[radioContainer.id] = checked.value;

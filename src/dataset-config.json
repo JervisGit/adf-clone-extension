@@ -451,19 +451,23 @@
                 "type": "text",
                 "label": "Container",
                 "placeholder": "mycontainer",
-                "jsonPath": "properties.typeProperties.location.container"
+                "jsonPath": "properties.typeProperties.location.container",
+                "required": true,
+                "validate": "lowercase"
               },
               "folderPath": {
                 "type": "text",
                 "label": "Directory",
                 "placeholder": "folder/subfolder",
-                "jsonPath": "properties.typeProperties.location.folderPath"
+                "jsonPath": "properties.typeProperties.location.folderPath",
+                "required": true
               },
               "fileName": {
                 "type": "text",
                 "label": "File name",
                 "placeholder": "file.xlsx",
-                "jsonPath": "properties.typeProperties.location.fileName"
+                "jsonPath": "properties.typeProperties.location.fileName",
+                "required": true
               },
               "locationType": {
                 "type": "hidden",
@@ -489,16 +493,19 @@
                 "label": "Sheet name",
                 "placeholder": "Sheet1",
                 "jsonPath": "properties.typeProperties.sheetName",
+                "required": true,
                 "showWhen": {
                   "field": "worksheetMode",
                   "value": "name"
                 }
               },
               "sheetIndex": {
-                "type": "number",
+                "type": "text",
                 "label": "Sheet index",
                 "placeholder": "0",
                 "jsonPath": "properties.typeProperties.sheetIndex",
+                "required": true,
+                "validate": "integer",
                 "showWhen": {
                   "field": "worksheetMode",
                   "value": "index"
@@ -575,7 +582,7 @@
                 "label": "Container",
                 "placeholder": "myfilesystem",
                 "jsonPath": "properties.typeProperties.location.fileSystem",
-                "helpText": "Must be all lowercase (Azure ADLS Gen2 requirement)"
+                "validate": "lowercase"
               },
               "folderPath": {
                 "type": "text",
@@ -614,7 +621,7 @@
                 "label": "Container",
                 "placeholder": "myfilesystem",
                 "jsonPath": "properties.typeProperties.location.fileSystem",
-                "helpText": "Must be all lowercase (Azure ADLS Gen2 requirement)"
+                "validate": "lowercase"
               },
               "folderPath": {
                 "type": "text",
@@ -747,7 +754,7 @@
                 "label": "Container",
                 "placeholder": "myfilesystem",
                 "jsonPath": "properties.typeProperties.location.fileSystem",
-                "helpText": "Must be all lowercase (Azure ADLS Gen2 requirement)"
+                "validate": "lowercase"
               },
               "folderPath": {
                 "type": "text",
@@ -779,7 +786,7 @@
                 "label": "Container",
                 "placeholder": "myfilesystem",
                 "jsonPath": "properties.typeProperties.location.fileSystem",
-                "helpText": "Must be all lowercase (Azure ADLS Gen2 requirement)"
+                "validate": "lowercase"
               },
               "folderPath": {
                 "type": "text",
@@ -841,7 +848,7 @@
                 "label": "Container",
                 "placeholder": "myfilesystem",
                 "jsonPath": "properties.typeProperties.location.fileSystem",
-                "helpText": "Must be all lowercase (Azure ADLS Gen2 requirement)"
+                "validate": "lowercase"
               },
               "folderPath": {
                 "type": "text",
@@ -873,7 +880,7 @@
                 "label": "Container",
                 "placeholder": "myfilesystem",
                 "jsonPath": "properties.typeProperties.location.fileSystem",
-                "helpText": "Must be all lowercase (Azure ADLS Gen2 requirement)"
+                "validate": "lowercase"
               },
               "folderPath": {
                 "type": "text",
@@ -905,7 +912,7 @@
                 "label": "Container",
                 "placeholder": "myfilesystem",
                 "jsonPath": "properties.typeProperties.location.fileSystem",
-                "helpText": "Must be all lowercase (Azure ADLS Gen2 requirement)"
+                "validate": "lowercase"
               },
               "folderPath": {
                 "type": "text",
@@ -937,7 +944,7 @@
                 "label": "Container",
                 "placeholder": "myfilesystem",
                 "jsonPath": "properties.typeProperties.location.fileSystem",
-                "helpText": "Must be all lowercase (Azure ADLS Gen2 requirement)"
+                "validate": "lowercase"
               },
               "folderPath": {
                 "type": "text",
@@ -996,19 +1003,22 @@
                 "label": "Container",
                 "placeholder": "myfilesystem",
                 "jsonPath": "properties.typeProperties.location.fileSystem",
-                "helpText": "Must be all lowercase (Azure ADLS Gen2 requirement)"
+                "required": true,
+                "validate": "lowercase"
               },
               "folderPath": {
                 "type": "text",
                 "label": "Directory",
                 "placeholder": "folder/subfolder",
-                "jsonPath": "properties.typeProperties.location.folderPath"
+                "jsonPath": "properties.typeProperties.location.folderPath",
+                "required": true
               },
               "fileName": {
                 "type": "text",
                 "label": "File name",
                 "placeholder": "file.xlsx",
-                "jsonPath": "properties.typeProperties.location.fileName"
+                "jsonPath": "properties.typeProperties.location.fileName",
+                "required": true
               },
               "locationType": {
                 "type": "hidden",
@@ -1034,16 +1044,19 @@
                 "label": "Sheet name",
                 "placeholder": "Sheet1",
                 "jsonPath": "properties.typeProperties.sheetName",
+                "required": true,
                 "showWhen": {
                   "field": "worksheetMode",
                   "value": "name"
                 }
               },
               "sheetIndex": {
-                "type": "number",
+                "type": "text",
                 "label": "Sheet index",
                 "placeholder": "0",
                 "jsonPath": "properties.typeProperties.sheetIndex",
+                "required": true,
+                "validate": "integer",
                 "showWhen": {
                   "field": "worksheetMode",
                   "value": "index"

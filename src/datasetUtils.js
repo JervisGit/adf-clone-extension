@@ -262,9 +262,24 @@ function validateDatasetForm(formData, datasetConfig, datasetType, fileType = nu
             Object.assign(allFields, section);
         }
     }
+
+    /**
+     * Determine whether a field's showWhen condition is currently satisfied.
+     * A field with no showWhen is always considered active/visible.
+     */
+    function isFieldActive(fieldConfig) {
+        if (!fieldConfig.showWhen) return true;
+        const triggerValue = formData[fieldConfig.showWhen.field];
+        if (fieldConfig.showWhen.notEmpty) {
+            return triggerValue !== '' && triggerValue !== null && triggerValue !== undefined;
+        }
+        return String(triggerValue ?? '') === String(fieldConfig.showWhen.value);
+    }
     
-    // Check required fields
+    // Check required fields and type-specific rules (only for active/visible fields)
     for (const [fieldKey, fieldConfig] of Object.entries(allFields)) {
+        if (!isFieldActive(fieldConfig)) continue;
+
         if (fieldConfig.required) {
             const value = formData[fieldKey];
             if (value === undefined || value === null || value === '') {
@@ -273,9 +288,10 @@ function validateDatasetForm(formData, datasetConfig, datasetType, fileType = nu
         }
         
         // Type-specific validation
-        if (formData[fieldKey] !== undefined && formData[fieldKey] !== '') {
+        const rawValue = formData[fieldKey];
+        if (rawValue !== undefined && rawValue !== '' && rawValue !== null) {
             if (fieldConfig.type === 'number') {
-                const num = parseFloat(formData[fieldKey]);
+                const num = parseFloat(rawValue);
                 if (isNaN(num)) {
                     errors.push(`${fieldConfig.label || fieldKey} must be a valid number`);
                 } else {
@@ -285,6 +301,17 @@ function validateDatasetForm(formData, datasetConfig, datasetType, fileType = nu
                     if (fieldConfig.max !== undefined && num > fieldConfig.max) {
                         errors.push(`${fieldConfig.label || fieldKey} must be at most ${fieldConfig.max}`);
                     }
+                }
+            }
+
+            // Config-driven custom validation rules
+            if (fieldConfig.validate === 'integer') {
+                if (!/^\d+$/.test(String(rawValue))) {
+                    errors.push(`${fieldConfig.label || fieldKey} must contain only numeric characters (0-9)`);
+                }
+            } else if (fieldConfig.validate === 'lowercase') {
+                if (String(rawValue) !== String(rawValue).toLowerCase()) {
+                    errors.push(`${fieldConfig.label || fieldKey} must be all lowercase`);
                 }
             }
         }

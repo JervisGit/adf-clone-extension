@@ -1333,16 +1333,7 @@ class DatasetEditorProvider {
             // Clear previous errors
             document.getElementById('errorContainer').innerHTML = '';
             
-            // Validate before saving
-            if (!formData.name || !formData.datasetType || !formData.linkedService) {
-                displayValidationErrors({
-                    valid: false,
-                    errors: ['Dataset name, type, and linked service are required']
-                });
-                return;
-            }
-            
-            // Send to backend for saving
+            // Send to backend for saving (backend runs full validation via validateDatasetForm)
             vscode.postMessage({
                 type: 'save',
                 formData: formData,
@@ -1432,9 +1423,9 @@ class DatasetEditorProvider {
                 // Load dynamic field values from JSON
                 const { datasetType: dt, fileType: ft } = detectDatasetTypeFromJson(datasetJson);
                 const config = dt ? currentConfig.datasetTypes[dt] : null;
+                let fieldsConfig = null;
                 
                 if (config) {
-                    let fieldsConfig = null;
                     if (ft && config.fileTypes && config.fileTypes[ft]) {
                         fieldsConfig = config.fileTypes[ft].fields;
                     } else {

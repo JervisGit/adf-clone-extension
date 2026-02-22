@@ -337,8 +337,8 @@
             }
           }
         },
-        "ORC": {
-          "typeValue": "ORC",
+        "Orc": {
+          "typeValue": "Orc",
           "displayName": "ORC",
           "fields": {
             "general": {
@@ -910,8 +910,8 @@
             }
           }
         },
-        "ORC": {
-          "typeValue": "ORC",
+        "Orc": {
+          "typeValue": "Orc",
           "displayName": "ORC",
           "fields": {
             "general": {

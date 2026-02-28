@@ -21,13 +21,6 @@
             "placeholder": "TableName",
             "jsonPath": "properties.typeProperties.table",
             "required": true
-          },
-          "tableName": {
-            "type": "text",
-            "label": "Table name (expression)",
-            "placeholder": "@{item().tableName}",
-            "jsonPath": "properties.typeProperties.tableName",
-            "helpText": "Use when table name is dynamic"
           }
         }
       }

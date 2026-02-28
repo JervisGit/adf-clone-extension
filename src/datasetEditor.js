@@ -840,10 +840,12 @@ class DatasetEditorProvider {
                 const section = document.createElement('div');
                 section.className = 'form-section';
                 
-                const title = document.createElement('div');
-                title.className = 'form-section-title';
-                title.textContent = sectionName.charAt(0).toUpperCase() + sectionName.slice(1);
-                section.appendChild(title);
+                if (sectionName !== 'general') {
+                    const title = document.createElement('div');
+                    title.className = 'form-section-title';
+                    title.textContent = sectionName.charAt(0).toUpperCase() + sectionName.slice(1);
+                    section.appendChild(title);
+                }
                 
                 // Render fields in section
                 for (const [fieldKey, fieldConfig] of Object.entries(fields)) {

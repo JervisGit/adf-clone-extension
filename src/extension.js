@@ -169,6 +169,7 @@ function activate(context) {
 			// Step 2: Ask for dataset source type
 			const datasetTypes = [
 				{ label: 'Azure SQL Database', value: 'AzureSqlTable', requiresFileType: false },
+				{ label: 'Azure Synapse Analytics', value: 'AzureSqlDWTable', requiresFileType: false },
 				{ label: 'Azure Blob Storage', value: 'AzureBlobStorage', requiresFileType: true },
 				{ label: 'Azure Data Lake Storage Gen2', value: 'AzureDataLakeStorageGen2', requiresFileType: true }
 			];

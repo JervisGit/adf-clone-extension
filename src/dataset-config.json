@@ -25,6 +25,38 @@
         }
       }
     },
+    "AzureSqlDWTable": {
+      "name": "Azure Synapse Analytics",
+      "displayName": "Azure Synapse Analytics Table",
+      "category": "database",
+      "supportsSchema": true,
+      "linkedServiceTypes": ["AzureSqlDW"],
+      "fields": {
+        "general": {
+          "dbName": {
+            "type": "text",
+            "label": "Database name",
+            "placeholder": "MyDatabase",
+            "jsonPath": "properties.linkedServiceName.parameters.DBName",
+            "required": true
+          },
+          "schema": {
+            "type": "text",
+            "label": "Schema name",
+            "placeholder": "dbo",
+            "jsonPath": "properties.typeProperties.schema",
+            "default": "dbo"
+          },
+          "table": {
+            "type": "text",
+            "label": "Table name",
+            "placeholder": "TableName",
+            "jsonPath": "properties.typeProperties.table",
+            "required": true
+          }
+        }
+      }
+    },
     "AzureBlobStorage": {
       "name": "Azure Blob Storage",
       "displayName": "Azure Blob Storage",

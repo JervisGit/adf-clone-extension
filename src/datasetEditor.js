@@ -1585,6 +1585,9 @@ class DatasetEditorProvider {
             if (type === 'AzureSqlTable') {
                 datasetType = 'AzureSqlTable';
                 fileType = null;
+            } else if (type === 'AzureSqlDWTable') {
+                datasetType = 'AzureSqlDWTable';
+                fileType = null;
             } else if (locationType === 'AzureBlobStorageLocation') {
                 datasetType = 'AzureBlobStorage';
                 fileType = type; // Type is the file format (Parquet, DelimitedText, etc.)

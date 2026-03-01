@@ -137,6 +137,39 @@
       "condition": { "type": "expression", "label": "Condition", "required": true, "placeholder": "This property should be parameterized." }
     }
   },
+  "ForEach": {
+    "name": "ForEach",
+    "isContainer": true,
+    "tabs": ["General", "Settings", "Activities", "User Properties"],
+    "commonProperties": {
+      "name": { "type": "string", "label": "Name", "required": true },
+      "description": { "type": "string", "label": "Description", "multiline": true },
+      "state": { "type": "radio", "label": "Activity state", "options": ["Activated", "Deactivated"], "default": "Activated" }
+    },
+    "typeProperties": {
+      "items": {
+        "type": "expression",
+        "label": "Items",
+        "required": true,
+        "placeholder": "@pipeline().parameters.myArray",
+        "helpText": "Collection or array to iterate over"
+      },
+      "isSequential": {
+        "type": "boolean",
+        "label": "Sequential",
+        "default": false,
+        "helpText": "Run activities sequentially (true) or in parallel (false)"
+      },
+      "batchCount": {
+        "type": "number",
+        "label": "Batch count",
+        "min": 1,
+        "max": 50,
+        "placeholder": "Max 50 (default)",
+        "conditional": { "field": "isSequential", "value": false }
+      }
+    }
+  },
   "IfCondition": {
     "name": "If Condition",
     "isContainer": true,

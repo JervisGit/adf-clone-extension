@@ -2124,6 +2124,22 @@ class PipelineEditorProvider {
                             throw new Error('IfCondition activity "' + a.name + '" is missing required Expression field');
                         }
                     }
+                    if (a.type === 'ForEach') {
+                        if (!a.items || a.items.trim() === '') {
+                            vscode.postMessage({
+                                type: 'validationError',
+                                message: 'Activity "' + a.name + '" requires an Items expression. Please set the items in the Settings tab before saving.'
+                            });
+                            throw new Error('ForEach activity "' + a.name + '" is missing required Items field');
+                        }
+                        if (!a.activities || a.activities.length === 0) {
+                            vscode.postMessage({
+                                type: 'validationError',
+                                message: 'Activity "' + a.name + '" must have at least one activity in its body. Please add activities in the Activities tab before saving.'
+                            });
+                            throw new Error('ForEach activity "' + a.name + '" has no body activities');
+                        }
+                    }
                 }
             }
             
@@ -3360,6 +3376,47 @@ class PipelineEditorProvider {
                         }
                     }
                     
+                    // Handle ForEach activity
+                    if (a.type === 'ForEach') {
+                        // Remove internal properties that shouldn't be serialized
+                        delete typeProperties.isContainer;
+                        delete typeProperties.activities;
+                        
+                        // Convert items from string to Expression object format
+                        if (a.items !== undefined) {
+                            typeProperties.items = {
+                                value: a.items || '',
+                                type: 'Expression'
+                            };
+                        }
+                        
+                        // Set isSequential
+                        typeProperties.isSequential = a.isSequential === true;
+                        
+                        // Set batchCount only if parallel and a value is provided
+                        if (!typeProperties.isSequential && a.batchCount !== undefined && a.batchCount !== null && a.batchCount !== '') {
+                            const batchNum = parseInt(a.batchCount);
+                            if (!isNaN(batchNum) && batchNum >= 1) {
+                                typeProperties.batchCount = batchNum;
+                            } else {
+                                delete typeProperties.batchCount;
+                            }
+                        } else {
+                            delete typeProperties.batchCount;
+                        }
+                        
+                        // Add nested activities only if they exist
+                        // Strip x, y properties which are UI-only and shouldn't be saved to file
+                        if (a.activities && a.activities.length > 0) {
+                            typeProperties.activities = a.activities.map(nestedAct => {
+                                const cleanAct = { ...nestedAct };
+                                delete cleanAct.x;
+                                delete cleanAct.y;
+                                return cleanAct;
+                            });
+                        }
+                    }
+                    
                     activity.typeProperties = typeProperties;
                     return activity;
                 })
@@ -3584,6 +3641,15 @@ class PipelineEditorProvider {
                     this.expression = '';
                     this.ifTrueActivities = [];
                     this.ifFalseActivities = [];
+                    this.state = 'Activated';
+                }
+                
+                // Set default values for ForEach
+                if (type === 'ForEach') {
+                    this.isContainer = true;
+                    this.items = '';
+                    this.isSequential = false;
+                    this.activities = [];
                     this.state = 'Activated';
                 }
                 
@@ -4466,6 +4532,62 @@ class PipelineEditorProvider {
             return iconMap[type] || '📦';
         }
 
+        // Shared helper: serialize a branch-canvas Activity into a clean typeProperties object,
+        // applying the same type-specific transformations as buildPipelineDataForSave.
+        function buildNestedActivityTypeProperties(a) {
+            const tp = {};
+            // Props handled separately or belonging to the activity envelope, not typeProperties
+            const excludedProps = ['id', 'type', 'x', 'y', 'width', 'height', 'name', 'description',
+                                   'color', 'container', 'element', 'userProperties', 'state',
+                                   'dependsOn', 'isContainer', 'ifTrueActivities', 'ifFalseActivities',
+                                   'expression', 'activities', 'cases', 'defaultActivities', 'typeProperties',
+                                   // SynapseNotebook fields converted to conf below
+                                   'dynamicAllocation', 'minExecutors', 'maxExecutors', 'numExecutors'];
+
+            for (const key in a) {
+                if (!excludedProps.includes(key) && a.hasOwnProperty(key) && typeof a[key] !== 'function') {
+                    // notebook string → NotebookReference block
+                    if (key === 'notebook' && typeof a[key] === 'string' && a[key]) {
+                        tp[key] = { referenceName: { value: a[key], type: 'Expression' }, type: 'NotebookReference' };
+                    // sparkPool string → BigDataPoolReference block
+                    } else if (key === 'sparkPool' && typeof a[key] === 'string' && a[key]) {
+                        tp[key] = { referenceName: { value: a[key], type: 'Expression' }, type: 'BigDataPoolReference' };
+                    } else {
+                        tp[key] = a[key];
+                    }
+                }
+            }
+
+            // SynapseNotebook-specific: snapshot flag, driverSize, conf block
+            if (a.type === 'SynapseNotebook') {
+                tp.snapshot = true;
+                if (tp.executorSize) tp.driverSize = tp.executorSize;
+                if (a.dynamicAllocation !== undefined || a.minExecutors !== undefined ||
+                    a.maxExecutors !== undefined || a.numExecutors !== undefined) {
+                    tp.conf = {};
+                    const isDynamic = a.dynamicAllocation === 'Enabled';
+                    tp.conf['spark.dynamicAllocation.enabled'] = isDynamic;
+                    if (isDynamic) {
+                        if (a.minExecutors) tp.conf['spark.dynamicAllocation.minExecutors'] = parseInt(a.minExecutors);
+                        if (a.maxExecutors) tp.conf['spark.dynamicAllocation.maxExecutors'] = parseInt(a.maxExecutors);
+                    } else if (a.numExecutors) {
+                        const n = parseInt(a.numExecutors);
+                        tp.conf['spark.dynamicAllocation.minExecutors'] = n;
+                        tp.conf['spark.dynamicAllocation.maxExecutors'] = n;
+                        tp.numExecutors = n;
+                    }
+                }
+            }
+
+            // Filter-specific: items/condition as Expression objects
+            if (a.type === 'Filter') {
+                tp.items = { value: a.items || '', type: 'Expression' };
+                tp.condition = { value: a.condition || '', type: 'Expression' };
+            }
+
+            return tp;
+        }
+
         // Context switching for IfCondition branch editing
         let editingContext = null; // { parentActivity, branch, savedState }
         
@@ -4568,6 +4690,104 @@ class PipelineEditorProvider {
             draw();
         };
         
+        window.openForEachEditor = function(activityId) {
+            const activity = activities.find(a => a.id == activityId);
+            if (!activity) return;
+            
+            // Save current state
+            const savedState = {
+                activities: activities,
+                connections: connections,
+                selectedActivity: selectedActivity
+            };
+            
+            editingContext = {
+                parentActivity: activity,
+                branch: 'activities',
+                savedState: savedState
+            };
+            
+            // Get body activities
+            const bodyActivities = activity.activities || [];
+            
+            // Clear current canvas
+            activities = [];
+            connections = [];
+            selectedActivity = null;
+            
+            // Clear only activity elements from canvas wrapper (keep canvas element)
+            const canvasWrapper = document.getElementById('canvasWrapper');
+            const activityElements = canvasWrapper.querySelectorAll('.activity-box');
+            console.log('[openForEachEditor] Found', activityElements.length, 'activity elements to remove');
+            activityElements.forEach(el => {
+                if (el && el.parentNode) {
+                    console.log('[openForEachEditor] Removing element:', el.dataset.activityId, el.className);
+                    el.parentNode.removeChild(el);
+                }
+            });
+            console.log('[openForEachEditor] After cleanup, canvasWrapper children:', canvasWrapper.children.length);
+            
+            // Load body activities into main canvas
+            const activityMap = new Map();
+            
+            console.log('[openForEachEditor] Loading', bodyActivities?.length || 0, 'body activities');
+            if (bodyActivities && Array.isArray(bodyActivities)) {
+                bodyActivities.forEach((actData, idx) => {
+                    console.log('[openForEachEditor] Loading activity:', actData.name, actData.type);
+                    const x = actData.x !== undefined ? actData.x : (100 + (idx % 4) * 220);
+                    const y = actData.y !== undefined ? actData.y : (100 + Math.floor(idx / 4) * 120);
+                    
+                    const act = new Activity(actData.type, x, y, canvasWrapper);
+                    act.name = actData.name;
+                    act.description = actData.description || '';
+                    
+                    // Copy typeProperties without nesting
+                    if (actData.typeProperties) {
+                        Object.assign(act, actData.typeProperties);
+                    }
+                    
+                    act.userProperties = actData.userProperties || [];
+                    act.container = canvasWrapper;
+                    activities.push(act);
+                    activityMap.set(actData.name, act);
+                });
+                
+                // Recreate connections after all activities are created
+                bodyActivities.forEach((actData) => {
+                    if (actData.dependsOn && actData.dependsOn.length > 0) {
+                        const toActivity = activityMap.get(actData.name);
+                        if (toActivity) {
+                            actData.dependsOn.forEach(dep => {
+                                const fromActivity = activityMap.get(dep.activity);
+                                if (fromActivity) {
+                                    const condition = dep.dependencyConditions?.[0] || 'Succeeded';
+                                    const connection = new Connection(fromActivity, toActivity, condition);
+                                    connections.push(connection);
+                                }
+                            });
+                        }
+                    }
+                });
+            }
+            
+            // Redraw canvas to show connections
+            draw();
+            
+            // Update breadcrumb
+            updateBreadcrumb();
+            
+            // Update sidebar to grey out restricted activities
+            updateSidebarForBranchEditing(true);
+            
+            // Show back button
+            document.getElementById('backToMainBtn').style.display = 'flex';
+            
+            // Clear properties panel
+            showProperties(null);
+            
+            draw();
+        };
+        
         window.backToMainPipeline = function() {
             if (!editingContext) return;
             
@@ -4591,47 +4811,47 @@ class PipelineEditorProvider {
                 if (a.description) cleaned.description = a.description;
                 if (a.state) cleaned.state = a.state;
                 
-                // Build typeProperties - exclude UI and system properties
-                const tp = {};
-                const excludedProps = ['id', 'type', 'x', 'y', 'width', 'height', 'name', 'description', 
-                                      'color', 'container', 'element', 'userProperties', 'state', 
-                                      'dependsOn', 'isContainer', 'ifTrueActivities', 'ifFalseActivities', 'expression',
-                                      'typeProperties'];
-                
-                for (const key in a) {
-                    if (!excludedProps.includes(key) && a.hasOwnProperty(key) && typeof a[key] !== 'function') {
-                        tp[key] = a[key];
-                    }
-                }
-                
-                cleaned.typeProperties = tp;
+                cleaned.typeProperties = buildNestedActivityTypeProperties(a);
                 return cleaned;
             });
             
             // Update parent activity's branch
             if (editingContext.branch === 'true') {
                 editingContext.parentActivity.ifTrueActivities = branchData;
-            } else {
+            } else if (editingContext.branch === 'false') {
                 editingContext.parentActivity.ifFalseActivities = branchData;
+            } else if (editingContext.branch === 'activities') {
+                editingContext.parentActivity.activities = branchData;
             }
             
             // Update container info display
             const containerInfo = editingContext.parentActivity.element?.querySelector('.container-info');
             if (containerInfo) {
-                const trueCount = editingContext.parentActivity.ifTrueActivities.length;
-                const falseCount = editingContext.parentActivity.ifFalseActivities.length;
-                containerInfo.innerHTML = \`
-                    <div class="container-stat">
-                        <span class="branch-label">True:</span> 
-                        <span class="count">\${trueCount}</span> 
-                        <span class="label">\${trueCount === 1 ? 'activity' : 'activities'}</span>
-                    </div>
-                    <div class="container-stat">
-                        <span class="branch-label">False:</span> 
-                        <span class="count">\${falseCount}</span> 
-                        <span class="label">\${falseCount === 1 ? 'activity' : 'activities'}</span>
-                    </div>
-                \`;
+                if (editingContext.parentActivity.type === 'ForEach') {
+                    const bodyCount = editingContext.parentActivity.activities.length;
+                    containerInfo.innerHTML = \`
+                        <div class="container-stat">
+                            <span class="label">Items:</span> 
+                            <span class="count">\${bodyCount}</span> 
+                            <span class="label">\${bodyCount === 1 ? 'activity' : 'activities'}</span>
+                        </div>
+                    \`;
+                } else {
+                    const trueCount = editingContext.parentActivity.ifTrueActivities.length;
+                    const falseCount = editingContext.parentActivity.ifFalseActivities.length;
+                    containerInfo.innerHTML = \`
+                        <div class="container-stat">
+                            <span class="branch-label">True:</span> 
+                            <span class="count">\${trueCount}</span> 
+                            <span class="label">\${trueCount === 1 ? 'activity' : 'activities'}</span>
+                        </div>
+                        <div class="container-stat">
+                            <span class="branch-label">False:</span> 
+                            <span class="count">\${falseCount}</span> 
+                            <span class="label">\${falseCount === 1 ? 'activity' : 'activities'}</span>
+                        </div>
+                    \`;
+                }
             }
             
             // Clear current canvas
@@ -4687,7 +4907,11 @@ class PipelineEditorProvider {
         function updateBreadcrumb() {
             const breadcrumb = document.getElementById('breadcrumb');
             if (editingContext) {
-                const branchLabel = editingContext.branch === 'true' ? 'If True' : 'If False';
+                let branchLabel;
+                if (editingContext.branch === 'true') branchLabel = 'If True';
+                else if (editingContext.branch === 'false') branchLabel = 'If False';
+                else if (editingContext.branch === 'activities') branchLabel = 'Body';
+                else branchLabel = editingContext.branch;
                 breadcrumb.innerHTML = \`
                     <span style="color: var(--vscode-descriptionForeground);">\${editingContext.parentActivity.name}</span>
                     <span style="margin: 0 6px; color: var(--vscode-descriptionForeground);">›</span>
@@ -4749,6 +4973,43 @@ class PipelineEditorProvider {
                             \${renderActivitiesList(falseActivities)}
                             <div style="margin-top: 8px; font-size: 11px; color: var(--vscode-descriptionForeground);">
                                 \${falseActivities.length} \${falseActivities.length === 1 ? 'activity' : 'activities'}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            \`;
+        }
+
+        // Generate Activities tab content for ForEach
+        function generateForEachActivitiesTab(activity) {
+            const bodyActivities = activity.activities || [];
+            
+            const renderActivitiesList = (actList) => {
+                if (actList.length === 0) {
+                    return '<div class="empty-branch">No activities</div>';
+                }
+                return actList.map(act => {
+                    const icon = getIconForType(act.type);
+                    return \`<div class="activity-pill">
+                        <span class="activity-pill-icon">\${icon}</span>
+                        <span>\${act.name}</span>
+                    </div>\`;
+                }).join('');
+            };
+            
+            return \`
+                <div style="padding: 4px 0;">
+                    <div class="branch-editor">
+                        <div class="branch-header">
+                            <span>Body</span>
+                            <button class="edit-activities-btn" onclick="openForEachEditor('\${activity.id}')">
+                                Edit Activities
+                            </button>
+                        </div>
+                        <div class="branch-content">
+                            \${renderActivitiesList(bodyActivities)}
+                            <div style="margin-top: 8px; font-size: 11px; color: var(--vscode-descriptionForeground);">
+                                \${bodyActivities.length} \${bodyActivities.length === 1 ? 'activity' : 'activities'}
                             </div>
                         </div>
                     </div>
@@ -5840,6 +6101,8 @@ class PipelineEditorProvider {
                 else if (tabId === 'user-properties') tabContent = userPropsContent;
                 else if (tabId === 'activities' && activity.type === 'IfCondition') {
                     tabContent = generateIfConditionActivitiesTab(activity);
+                } else if (tabId === 'activities' && activity.type === 'ForEach') {
+                    tabContent = generateForEachActivitiesTab(activity);
                 }
                 
                 console.log(\`Tab \${tabName} (id: \${tabId}) content length: \${tabContent.length}\`);
@@ -5917,8 +6180,8 @@ class PipelineEditorProvider {
                         markAsDirty();
                         console.log('Updated ' + key + ':', activity[key]);
                         
-                        // If enablePartitionDiscovery or namespaces changed, re-render to show/hide conditional fields
-                        if (key === 'enablePartitionDiscovery' || key === 'namespaces') {
+                        // If enablePartitionDiscovery or namespaces or isSequential changed, re-render to show/hide conditional fields
+                        if (key === 'enablePartitionDiscovery' || key === 'namespaces' || key === 'isSequential') {
                             const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
                             if (activeTab === 'settings') {
                                 showProperties(activity, 'settings');
@@ -7338,28 +7601,17 @@ class PipelineEditorProvider {
                     if (a.description) cleaned.description = a.description;
                     if (a.state) cleaned.state = a.state;
                     
-                    // Build typeProperties - exclude UI and system properties
-                    const tp = {};
-                    const excludedProps = ['id', 'type', 'x', 'y', 'width', 'height', 'name', 'description', 
-                                          'color', 'container', 'element', 'userProperties', 'state', 
-                                          'dependsOn', 'isContainer', 'ifTrueActivities', 'ifFalseActivities', 'expression',
-                                          'typeProperties'];
-                    
-                    for (const key in a) {
-                        if (!excludedProps.includes(key) && a.hasOwnProperty(key) && typeof a[key] !== 'function') {
-                            tp[key] = a[key];
-                        }
-                    }
-                    
-                    cleaned.typeProperties = tp;
+                    cleaned.typeProperties = buildNestedActivityTypeProperties(a);
                     return cleaned;
                 });
                 
                 // Update parent activity's branch
                 if (editingContext.branch === 'true') {
                     editingContext.parentActivity.ifTrueActivities = branchData;
-                } else {
+                } else if (editingContext.branch === 'false') {
                     editingContext.parentActivity.ifFalseActivities = branchData;
+                } else if (editingContext.branch === 'activities') {
+                    editingContext.parentActivity.activities = branchData;
                 }
                 
                 // Temporarily switch to main pipeline context for validation and save
@@ -8164,6 +8416,43 @@ class PipelineEditorProvider {
                                 }
                             }
                             Object.assign(activity, cleanedProps);
+                        } else if (activityData.type === 'ForEach') {
+                            // Handle ForEach activities
+                            const tp = activityData.typeProperties;
+                            
+                            // Convert items expression object to string
+                            if (tp.items && typeof tp.items === 'object') {
+                                activity.items = tp.items.value || '';
+                            } else if (typeof tp.items === 'string') {
+                                activity.items = tp.items;
+                            } else {
+                                activity.items = '';
+                            }
+                            
+                            // Load isSequential
+                            activity.isSequential = tp.isSequential === true;
+                            
+                            // Load batchCount if specified
+                            if (tp.batchCount !== undefined) {
+                                activity.batchCount = tp.batchCount;
+                            }
+                            
+                            // Load nested activities
+                            if (tp.activities && Array.isArray(tp.activities)) {
+                                activity.activities = tp.activities;
+                            } else {
+                                activity.activities = [];
+                            }
+                            
+                            // Don't copy the items expression object or nested arrays
+                            const excludePropsForEach = ['items', 'activities', 'isSequential', 'batchCount'];
+                            const cleanedPropsForEach = {};
+                            for (const key in tp) {
+                                if (!excludePropsForEach.includes(key)) {
+                                    cleanedPropsForEach[key] = tp[key];
+                                }
+                            }
+                            Object.assign(activity, cleanedPropsForEach);
                         } else {
                             Object.assign(activity, activityData.typeProperties);
                         }

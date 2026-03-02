@@ -4273,11 +4273,18 @@ class PipelineEditorProvider {
         }
 
         // Function to update sidebar activity restrictions when editing branches
-        function updateSidebarForBranchEditing(isInBranch) {
-            const restrictedTypes = ['Validation', 'IfCondition', 'ForEach', 'Until', 'Switch'];
+        function updateSidebarForBranchEditing(isInBranch, containerType) {
+            // Activities that cannot be nested inside each container type.
+            // ForEach: cannot contain another ForEach or Until.
+            // IfCondition: cannot contain IfCondition, ForEach, Until, or Switch.
+            const restrictedByContainer = {
+                'ForEach':     ['ForEach', 'Until'],
+                'IfCondition': ['IfCondition', 'ForEach', 'Until', 'Switch']
+            };
+            const restrictedTypes = (isInBranch && restrictedByContainer[containerType]) || [];
             document.querySelectorAll('.activity-item').forEach(item => {
                 const activityType = item.getAttribute('data-type');
-                const isRestricted = isInBranch && restrictedTypes.includes(activityType);
+                const isRestricted = restrictedTypes.includes(activityType);
                 
                 if (isRestricted) {
                     item.style.opacity = '0.4';
@@ -4917,7 +4924,7 @@ class PipelineEditorProvider {
             updateBreadcrumb();
             
             // Update sidebar to grey out restricted activities
-            updateSidebarForBranchEditing(true);
+            updateSidebarForBranchEditing(true, 'IfCondition');
             
             // Show back button
             document.getElementById('backToMainBtn').style.display = 'flex';
@@ -5015,7 +5022,7 @@ class PipelineEditorProvider {
             updateBreadcrumb();
             
             // Update sidebar to grey out restricted activities
-            updateSidebarForBranchEditing(true);
+            updateSidebarForBranchEditing(true, 'ForEach');
             
             // Show back button
             document.getElementById('backToMainBtn').style.display = 'flex';
@@ -5130,7 +5137,7 @@ class PipelineEditorProvider {
             updateBreadcrumb();
             
             // Restore sidebar to normal (remove restrictions)
-            updateSidebarForBranchEditing(false);
+            updateSidebarForBranchEditing(false, null);
             
             // Hide back button
             document.getElementById('backToMainBtn').style.display = 'none';

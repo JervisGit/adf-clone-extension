@@ -2145,26 +2145,39 @@ class PipelineEditorProvider {
             
             // Use pipeline-level variables from pipelineData, then merge with activity-derived variables
             const variables = { ...pipelineData.variables };
-            activities.forEach(a => {
-                if (a.type === 'AppendVariable' && a.variableName) {
-                    if (!variables[a.variableName]) {
-                        variables[a.variableName] = { type: 'Array' };
+            
+            // Recursively collect variables from AppendVariable/SetVariable activities,
+            // including those nested inside ForEach, IfCondition, etc.
+            // Nested activities may be serialized POJOs (with typeProperties sub-object) or
+            // live Activity instances (with flat properties) — handle both layouts.
+            function collectVariables(actList) {
+                actList.forEach(a => {
+                    // Support both flat (Activity instance) and serialized POJO layouts
+                    const varName = a.variableName || a.typeProperties?.variableName;
+                    const varType = a.variableType || a.typeProperties?.variableType;
+                    const pipelineVarType = a.pipelineVariableType || a.typeProperties?.pipelineVariableType;
+
+                    if (a.type === 'AppendVariable' && varName) {
+                        if (!variables[varName]) {
+                            variables[varName] = { type: 'Array' };
+                        }
+                    } else if (a.type === 'SetVariable' && varName && varType === 'Pipeline variable') {
+                        if (!variables[varName]) {
+                            const typeMap = { 'String': 'String', 'Boolean': 'Boolean', 'Array': 'Array', 'Integer': 'Integer' };
+                            const resolvedType = typeMap[pipelineVarType] || 'String';
+                            variables[varName] = { type: resolvedType };
+                        }
                     }
-                } else if (a.type === 'SetVariable' && a.variableName && a.variableType === 'Pipeline variable') {
-                    // Only create pipeline variable entry for non-return-value types
-                    if (!variables[a.variableName]) {
-                        // Map UI type names to Azure format
-                        const typeMap = {
-                            'String': 'String',
-                            'Boolean': 'Boolean',
-                            'Array': 'Array',
-                            'Integer': 'Integer'
-                        };
-                        const varType = typeMap[a.pipelineVariableType] || 'String';
-                        variables[a.variableName] = { type: varType };
-                    }
-                }
-            });
+                    // Recurse into container activity children (handles both layouts)
+                    const nested = a.activities || a.typeProperties?.activities;
+                    const trueActs = a.ifTrueActivities || a.typeProperties?.ifTrueActivities;
+                    const falseActs = a.ifFalseActivities || a.typeProperties?.ifFalseActivities;
+                    if (nested && Array.isArray(nested)) collectVariables(nested);
+                    if (trueActs && Array.isArray(trueActs)) collectVariables(trueActs);
+                    if (falseActs && Array.isArray(falseActs)) collectVariables(falseActs);
+                });
+            }
+            collectVariables(activities);
             
             const result = {
                 name: pipelineName,
@@ -3434,16 +3447,16 @@ class PipelineEditorProvider {
                         type: varData.type
                     };
                     
-                    // Convert Integer type to actual number, not string
-                    if (varData.type === 'Integer') {
-                        const numValue = parseInt(varData.defaultValue);
-                        processedVars[key].defaultValue = isNaN(numValue) ? 0 : numValue;
-                    } else if (varData.type === 'Boolean') {
-                        // Convert to boolean
-                        processedVars[key].defaultValue = varData.defaultValue === 'true' || varData.defaultValue === true;
-                    } else {
-                        // Keep as-is for String and Array types
-                        processedVars[key].defaultValue = varData.defaultValue || '';
+                    // Only include defaultValue if one was explicitly set
+                    if (varData.defaultValue !== undefined && varData.defaultValue !== null && varData.defaultValue !== '') {
+                        if (varData.type === 'Integer') {
+                            const numValue = parseInt(varData.defaultValue);
+                            if (!isNaN(numValue)) processedVars[key].defaultValue = numValue;
+                        } else if (varData.type === 'Boolean') {
+                            processedVars[key].defaultValue = varData.defaultValue === 'true' || varData.defaultValue === true;
+                        } else {
+                            processedVars[key].defaultValue = varData.defaultValue;
+                        }
                     }
                 }
                 if (Object.keys(processedVars).length > 0) {
@@ -4534,15 +4547,42 @@ class PipelineEditorProvider {
 
         // Shared helper: serialize a branch-canvas Activity into a clean typeProperties object,
         // applying the same type-specific transformations as buildPipelineDataForSave.
+        // Returns { typeProperties, activityProps } where activityProps holds any fields that
+        // belong at the activity envelope level (e.g. linkedServiceName for Script/SP).
         function buildNestedActivityTypeProperties(a) {
+            const activityProps = {}; // fields hoisted to the activity envelope level
             const tp = {};
-            // Props handled separately or belonging to the activity envelope, not typeProperties
-            const excludedProps = ['id', 'type', 'x', 'y', 'width', 'height', 'name', 'description',
-                                   'color', 'container', 'element', 'userProperties', 'state',
-                                   'dependsOn', 'isContainer', 'ifTrueActivities', 'ifFalseActivities',
-                                   'expression', 'activities', 'cases', 'defaultActivities', 'typeProperties',
-                                   // SynapseNotebook fields converted to conf below
-                                   'dynamicAllocation', 'minExecutors', 'maxExecutors', 'numExecutors'];
+
+            // All props that are either UI-only, handled specially below, or belong on the
+            // activity envelope rather than in typeProperties.
+            const excludedProps = [
+                'id', 'type', 'x', 'y', 'width', 'height', 'name', 'description',
+                'color', 'container', 'element', 'userProperties', 'state',
+                'dependsOn', 'isContainer', 'ifTrueActivities', 'ifFalseActivities',
+                'expression', 'activities', 'cases', 'defaultActivities', 'typeProperties',
+                // SynapseNotebook raw fields → converted to conf block
+                'dynamicAllocation', 'minExecutors', 'maxExecutors', 'numExecutors',
+                // Delete UI fields → converted to storeSettings block
+                'dataset', 'filePathType', 'wildcardFileName', 'fileListPath',
+                'recursive', 'maxConcurrentConnections', 'modifiedDatetimeStart', 'modifiedDatetimeEnd',
+                // GetMetadata/Lookup UI fields
+                'fieldList', '_datasetLocationType', 'skipLineCount',
+                // ExecutePipeline UI field → converted to pipeline reference
+                'pipeline',
+                // SetVariable UI fields
+                'variableType', 'pipelineVariableType', 'returnValues',
+                // Script/SqlServerStoredProcedure fields → activity envelope or rebuilt
+                'linkedServiceName', '_selectedLinkedServiceType', 'linkedServiceProperties',
+                'storedProcedureName', 'storedProcedureParameters',
+                'scripts', 'scriptBlockExecutionTimeout',
+                // WebActivity/WebHook auth + header fields → rebuilt as objects
+                'authenticationType', 'username', 'password', 'resource',
+                'pfx', 'pfxPassword', 'servicePrincipalAuthMethod', 'tenant',
+                'servicePrincipalId', 'servicePrincipalCredentialType', 'servicePrincipalKey',
+                'servicePrincipalCert', 'servicePrincipalResource', 'credential',
+                'credentialResource', 'credentialUserAssigned',
+                'headers', 'httpRequestTimeout', 'disableAsyncPattern', 'disableCertValidation'
+            ];
 
             for (const key in a) {
                 if (!excludedProps.includes(key) && a.hasOwnProperty(key) && typeof a[key] !== 'function') {
@@ -4558,7 +4598,7 @@ class PipelineEditorProvider {
                 }
             }
 
-            // SynapseNotebook-specific: snapshot flag, driverSize, conf block
+            // ── SynapseNotebook: snapshot, driverSize, conf block ──────────────────────
             if (a.type === 'SynapseNotebook') {
                 tp.snapshot = true;
                 if (tp.executorSize) tp.driverSize = tp.executorSize;
@@ -4579,13 +4619,212 @@ class PipelineEditorProvider {
                 }
             }
 
-            // Filter-specific: items/condition as Expression objects
+            // ── Filter: expression objects ─────────────────────────────────────────────
             if (a.type === 'Filter') {
                 tp.items = { value: a.items || '', type: 'Expression' };
                 tp.condition = { value: a.condition || '', type: 'Expression' };
             }
 
-            return tp;
+            // ── Delete: dataset ref + storeSettings block ──────────────────────────────
+            if (a.type === 'Delete') {
+                tp.enableLogging = false;
+                // Determine storeSettings type from dataset contents
+                let storeType = 'AzureBlobFSReadSettings';
+                if (a.dataset && datasetContents[a.dataset]) {
+                    const loc = datasetContents[a.dataset].properties?.typeProperties?.location;
+                    if (loc?.type === 'AzureBlobStorageLocation') storeType = 'AzureBlobStorageReadSettings';
+                }
+                const ss = { type: storeType, enablePartitionDiscovery: false };
+                if (a.filePathType === 'listOfFiles' && a.fileListPath) {
+                    ss.fileListPath = a.fileListPath;
+                } else if (a.filePathType === 'wildcardFilePath' && a.wildcardFileName) {
+                    ss.wildcardFileName = a.wildcardFileName;
+                }
+                if (a.maxConcurrentConnections) ss.maxConcurrentConnections = parseInt(a.maxConcurrentConnections);
+                if (a.recursive !== undefined) ss.recursive = a.recursive;
+                if (a.filePathType !== 'listOfFiles') {
+                    if (a.modifiedDatetimeStart) ss.modifiedDatetimeStart = new Date(a.modifiedDatetimeStart).toISOString();
+                    if (a.modifiedDatetimeEnd) ss.modifiedDatetimeEnd = new Date(a.modifiedDatetimeEnd).toISOString();
+                }
+                tp.storeSettings = ss;
+                if (a.dataset) tp.dataset = { referenceName: a.dataset, type: 'DatasetReference' };
+            }
+
+            // ── ExecutePipeline: pipeline reference ────────────────────────────────────
+            if (a.type === 'ExecutePipeline') {
+                if (a.pipeline) tp.pipeline = { referenceName: a.pipeline, type: 'PipelineReference' };
+                tp.waitOnCompletion = a.waitOnCompletion !== undefined ? a.waitOnCompletion : true;
+            }
+
+            // ── Lookup: dataset reference ──────────────────────────────────────────────
+            if (a.type === 'Lookup') {
+                if (a.dataset) tp.dataset = { referenceName: a.dataset, type: 'DatasetReference' };
+                tp.firstRowOnly = a.firstRowOnly !== undefined ? a.firstRowOnly : true;
+            }
+
+            // ── GetMetadata: dataset ref, fieldList, storeSettings ─────────────────────
+            if (a.type === 'GetMetadata') {
+                if (a.dataset) tp.dataset = { referenceName: a.dataset, type: 'DatasetReference' };
+                if (a.fieldList && a.fieldList.length > 0) {
+                    tp.fieldList = a.fieldList
+                        .filter(f => f.value && f.value.trim() !== '')
+                        .map(f => f.type === 'dynamic' ? { value: f.value, type: 'Expression' } : f.value);
+                }
+                let locationType = null;
+                if (a.dataset && datasetContents[a.dataset]) {
+                    locationType = datasetContents[a.dataset].properties?.typeProperties?.location?.type;
+                }
+                if (locationType === 'AzureBlobFSLocation' || locationType === 'AzureBlobStorageLocation') {
+                    const storeType = locationType === 'AzureBlobFSLocation' ? 'AzureBlobFSReadSettings' : 'AzureBlobStorageReadSettings';
+                    const ss = { type: storeType };
+                    if (a.modifiedDatetimeStart) ss.modifiedDatetimeStart = new Date(a.modifiedDatetimeStart).toISOString();
+                    if (a.modifiedDatetimeEnd) ss.modifiedDatetimeEnd = new Date(a.modifiedDatetimeEnd).toISOString();
+                    ss.enablePartitionDiscovery = false;
+                    tp.storeSettings = ss;
+                    tp.formatSettings = { type: 'DelimitedTextReadSettings' };
+                    if (a.skipLineCount && a.skipLineCount > 0) tp.formatSettings.skipLineCount = parseInt(a.skipLineCount);
+                }
+            }
+
+            // ── Validation: dataset ref ────────────────────────────────────────────────
+            if (a.type === 'Validation') {
+                if (a.dataset) tp.dataset = typeof a.dataset === 'object' ? a.dataset : { referenceName: a.dataset, type: 'DatasetReference' };
+                if (!tp.timeout || tp.timeout === '') tp.timeout = '0.12:00:00';
+                if (tp.sleep === undefined || tp.sleep === null || tp.sleep === '') tp.sleep = 10;
+                const isStorage = a._datasetLocationType === 'AzureBlobStorageLocation' || a._datasetLocationType === 'AzureBlobFSLocation';
+                if (isStorage && tp.childItems !== undefined && tp.childItems !== 'ignore') {
+                    tp.childItems = tp.childItems === 'true' || tp.childItems === true;
+                } else {
+                    delete tp.childItems;
+                }
+                delete tp._datasetLocationType;
+            }
+
+            // ── SetVariable: remove UI-only fields ─────────────────────────────────────
+            if (a.type === 'SetVariable') {
+                delete tp.variableType;
+                delete tp.pipelineVariableType;
+                delete tp.returnValues;
+                if (a.variableType === 'Pipeline return value' && a.returnValues) {
+                    tp.variableName = 'pipelineReturnValue';
+                    tp.setSystemVariable = true;
+                    const valueArray = [];
+                    for (const [k, item] of Object.entries(a.returnValues)) {
+                        if (!a.returnValues.hasOwnProperty(k)) continue;
+                        const vo = { key: k, value: { type: item.type } };
+                        if (item.type === 'Null') { /* no content */ }
+                        else if (item.type === 'Array') vo.value.content = item.content || [];
+                        else if (item.type === 'Int' || item.type === 'Float') vo.value.content = parseFloat(item.value) || 0;
+                        else if (item.type === 'Boolean') vo.value.content = item.value === 'true' || item.value === true;
+                        else vo.value.content = item.value || '';
+                        valueArray.push(vo);
+                    }
+                    tp.value = valueArray;
+                }
+            }
+
+            // ── Script: linkedServiceName at activity level, scripts array ─────────────
+            if (a.type === 'Script') {
+                if (a.linkedServiceName) {
+                    activityProps.linkedServiceName = {
+                        referenceName: typeof a.linkedServiceName === 'object' ? a.linkedServiceName.referenceName : a.linkedServiceName,
+                        type: 'LinkedServiceReference'
+                    };
+                }
+                if (a.scripts && a.scripts.length > 0) {
+                    tp.scripts = a.scripts.map(s => {
+                        const so = { type: s.type || 'Query' };
+                        if (s.text) so.text = s.text;
+                        if (s.parameters && s.parameters.length > 0) {
+                            so.parameters = s.parameters.map(p => {
+                                const po = { name: p.name, type: p.type, value: p.value, direction: p.direction };
+                                if ((p.direction === 'Output' || p.direction === 'InputOutput') &&
+                                    (p.type === 'String' || p.type === 'Byte[]') && p.size !== undefined) {
+                                    po.size = parseInt(p.size);
+                                }
+                                return po;
+                            });
+                        }
+                        return so;
+                    });
+                }
+                if (a.scriptBlockExecutionTimeout) tp.scriptBlockExecutionTimeout = a.scriptBlockExecutionTimeout;
+            }
+
+            // ── SqlServerStoredProcedure: linkedServiceName + storedProcedureParameters ─
+            if (a.type === 'SqlServerStoredProcedure') {
+                if (a.linkedServiceName) {
+                    const lsRef = {
+                        referenceName: typeof a.linkedServiceName === 'object' ? a.linkedServiceName.referenceName : a.linkedServiceName,
+                        type: 'LinkedServiceReference'
+                    };
+                    if (a._selectedLinkedServiceType === 'AzureSynapse' && a.linkedServiceProperties?.DBName) {
+                        lsRef.parameters = { DBName: a.linkedServiceProperties.DBName };
+                    }
+                    activityProps.linkedServiceName = lsRef;
+                }
+                if (a.storedProcedureName) tp.storedProcedureName = a.storedProcedureName;
+                if (a.storedProcedureParameters && Object.keys(a.storedProcedureParameters).length > 0) {
+                    const validParams = {};
+                    for (const [pn, pd] of Object.entries(a.storedProcedureParameters)) {
+                        if (pn && pn.trim()) validParams[pn] = { value: pd.value, type: pd.type };
+                    }
+                    if (Object.keys(validParams).length > 0) tp.storedProcedureParameters = validParams;
+                }
+            }
+
+            // ── WebActivity: authentication object, headers ────────────────────────────
+            if (a.type === 'WebActivity' || a.type === 'WebHook') {
+                if (a.authenticationType && a.authenticationType !== 'None') {
+                    const auth = {};
+                    const isSpCredential = a.authenticationType === 'ServicePrincipal' && a.servicePrincipalAuthMethod === 'Credential';
+                    if (!isSpCredential) auth.type = a.authenticationType;
+                    if (a.authenticationType === 'Basic') {
+                        if (a.username) auth.username = a.username;
+                        if (a.password) auth.password = a.password;
+                    } else if (a.authenticationType === 'MSI' || a.authenticationType === 'UserAssignedManagedIdentity') {
+                        if (a.resource) auth.resource = a.resource;
+                        if (a.credentialUserAssigned) auth.credential = { referenceName: a.credentialUserAssigned, type: 'CredentialReference' };
+                    } else if (a.authenticationType === 'ClientCertificate') {
+                        if (a.pfx) auth.pfx = a.pfx;
+                        if (a.pfxPassword) auth.password = a.pfxPassword;
+                    } else if (a.authenticationType === 'ServicePrincipal') {
+                        if (a.servicePrincipalResource) auth.resource = a.servicePrincipalResource;
+                        if (a.servicePrincipalAuthMethod === 'Credential') {
+                            if (a.credential) auth.credential = { referenceName: a.credential, type: 'CredentialReference' };
+                            if (a.credentialResource) auth.resource = a.credentialResource;
+                        } else {
+                            if (a.tenant) auth.userTenant = a.tenant;
+                            if (a.servicePrincipalId) auth.username = a.servicePrincipalId;
+                            if (a.servicePrincipalKey) auth.password = a.servicePrincipalKey;
+                            else if (a.servicePrincipalCert) auth.pfx = a.servicePrincipalCert;
+                        }
+                    }
+                    tp.authentication = auth;
+                }
+                if (a.headers && a.headers.length > 0) {
+                    const headersObj = {};
+                    a.headers.forEach(h => { if (h.name && h.value) headersObj[h.name] = h.value; });
+                    tp.headers = headersObj;
+                }
+                if (a.type === 'WebActivity') {
+                    if (a.httpRequestTimeout) tp.httpRequestTimeout = a.httpRequestTimeout;
+                    if (a.disableAsyncPattern) tp.turnOffAsync = a.disableAsyncPattern;
+                    if (a.disableCertValidation) tp.disableCertValidation = a.disableCertValidation;
+                }
+                if (a.type === 'WebHook') {
+                    if (a.timeout) tp.timeout = a.timeout;
+                    if (a.reportStatusOnCallBack === true) tp.reportStatusOnCallBack = true;
+                    if (a.disableCertValidation === true) tp.disableCertValidation = true;
+                }
+            }
+
+            return { typeProperties: tp, activityProps };
+        }
+
+        // Convenience wrapper used where only typeProperties is needed (e.g. legacy call sites)
+        function buildNestedActivityTP(a) {
+            return buildNestedActivityTypeProperties(a).typeProperties;
         }
 
         // Context switching for IfCondition branch editing
@@ -4811,7 +5050,9 @@ class PipelineEditorProvider {
                 if (a.description) cleaned.description = a.description;
                 if (a.state) cleaned.state = a.state;
                 
-                cleaned.typeProperties = buildNestedActivityTypeProperties(a);
+                const { typeProperties: _tp1, activityProps: _ap1 } = buildNestedActivityTypeProperties(a);
+                cleaned.typeProperties = _tp1;
+                Object.assign(cleaned, _ap1);
                 return cleaned;
             });
             
@@ -7601,7 +7842,9 @@ class PipelineEditorProvider {
                     if (a.description) cleaned.description = a.description;
                     if (a.state) cleaned.state = a.state;
                     
-                    cleaned.typeProperties = buildNestedActivityTypeProperties(a);
+                    const { typeProperties: _tp2, activityProps: _ap2 } = buildNestedActivityTypeProperties(a);
+                    cleaned.typeProperties = _tp2;
+                    Object.assign(cleaned, _ap2);
                     return cleaned;
                 });
                 

@@ -63,12 +63,6 @@
           "description": "Execute another pipeline"
         },
         {
-          "name": "Execute SSIS package",
-          "type": "ExecuteSSISPackage",
-          "icon": "📦",
-          "description": "Execute an SSIS package"
-        },
-        {
           "name": "Fail",
           "type": "Fail",
           "icon": "❌",

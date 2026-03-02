@@ -4539,7 +4539,6 @@ class PipelineEditorProvider {
                 'HDInsightMapReduce': '🗺',
                 'HDInsightStreaming': '〰',
                 'ExecuteDataFlow': '📈',
-                'ExecuteSSISPackage': '📦',
                 'Custom': '⚙'
             };
             return iconMap[type] || '📦';

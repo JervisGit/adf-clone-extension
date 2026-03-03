@@ -432,7 +432,8 @@ class PipelineEditorProvider {
                                              'writeBatchSize', 'writeBatchTimeout', 'preCopyScript', 'maxConcurrentConnections', 'writeBehavior', 
                                              'sqlWriterUseTableLock', 'disableMetricsCollection', '_sourceObject', '_sinkObject',
                                              '_sourceDatasetType', '_sinkDatasetType', '_datasetLocationType', 'inputs', 'outputs', 'sink', 'typeProperties',
-                                             'linkedServiceName', '_selectedLinkedServiceType', 'linkedServiceProperties'];
+                                             'linkedServiceName', '_selectedLinkedServiceType', 'linkedServiceProperties',
+                                             'null'];
 						
 						for (const key in a) {
 							if (!commonProps.includes(key) && a.hasOwnProperty(key) && typeof a[key] !== 'function') {
@@ -2152,10 +2153,11 @@ class PipelineEditorProvider {
             // live Activity instances (with flat properties) — handle both layouts.
             function collectVariables(actList) {
                 actList.forEach(a => {
-                    // Support both flat (Activity instance) and serialized POJO layouts
+                    // Support flat (Activity instance), serialized POJO (typeProperties layout),
+                    // and POJO with _variableType/_pipelineVariableType metadata stashed by buildNestedActivityTypeProperties
                     const varName = a.variableName || a.typeProperties?.variableName;
-                    const varType = a.variableType || a.typeProperties?.variableType;
-                    const pipelineVarType = a.pipelineVariableType || a.typeProperties?.pipelineVariableType;
+                    const varType = a.variableType || a.typeProperties?.variableType || a._variableType;
+                    const pipelineVarType = a.pipelineVariableType || a.typeProperties?.pipelineVariableType || a._pipelineVariableType;
 
                     if (a.type === 'AppendVariable' && varName) {
                         if (!variables[varName]) {
@@ -2269,7 +2271,8 @@ class PipelineEditorProvider {
                                          'sqlWriterUseTableLock', 'disableMetricsCollection', '_sourceObject', '_sinkObject', '_sourceDatasetType', '_sinkDatasetType',
                                          'typeProperties', 'inputs', 'outputs', 'sink', 'linkedServiceName', '_selectedLinkedServiceType', 'linkedServiceProperties',
                                          'storedProcedureName', 'storedProcedureParameters',
-                                         'isContainer', 'ifTrueActivities', 'ifFalseActivities', 'expression', 'activities', 'cases', 'defaultActivities'];
+                                         'isContainer', 'ifTrueActivities', 'ifFalseActivities', 'expression', 'activities', 'cases', 'defaultActivities',
+                                         'null']; // safeguard against spurious 'null'-keyed UI artefacts
                     
                     for (const key in a) {
                         if (!commonProps.includes(key) && a.hasOwnProperty(key) && typeof a[key] !== 'function') {
@@ -3425,6 +3428,9 @@ class PipelineEditorProvider {
                                 const cleanAct = { ...nestedAct };
                                 delete cleanAct.x;
                                 delete cleanAct.y;
+                                // Strip SetVariable type metadata stashed for collectVariables
+                                delete cleanAct._variableType;
+                                delete cleanAct._pipelineVariableType;
                                 return cleanAct;
                             });
                         }
@@ -4566,6 +4572,8 @@ class PipelineEditorProvider {
                 'color', 'container', 'element', 'userProperties', 'state',
                 'dependsOn', 'isContainer', 'ifTrueActivities', 'ifFalseActivities',
                 'expression', 'activities', 'cases', 'defaultActivities', 'typeProperties',
+                // Policy fields → built into activityProps.policy below
+                'timeout', 'retry', 'retryIntervalInSeconds', 'secureOutput', 'secureInput', 'policy',
                 // SynapseNotebook raw fields → converted to conf block
                 'dynamicAllocation', 'minExecutors', 'maxExecutors', 'numExecutors',
                 // Delete UI fields → converted to storeSettings block
@@ -4573,9 +4581,18 @@ class PipelineEditorProvider {
                 'recursive', 'maxConcurrentConnections', 'modifiedDatetimeStart', 'modifiedDatetimeEnd',
                 // GetMetadata/Lookup UI fields
                 'fieldList', '_datasetLocationType', 'skipLineCount',
+                // Lookup-specific UI fields → converted to source block
+                '_datasetType', 'useQuery', 'sqlReaderQuery', 'sqlReaderStoredProcedureName',
+                'queryTimeout', 'isolationLevel',
+                'partitionOption', 'partitionOptionQuery', 'partitionOptionStoredProc',
+                'partitionColumnName', 'partitionUpperBound', 'partitionLowerBound',
+                'partitionColumnNameQuery', 'partitionUpperBoundQuery', 'partitionLowerBoundQuery',
+                'wildcardFolderPath', 'enablePartitionDiscovery', 'partitionRootPath', 'prefix',
+                'requestMethod', 'additionalHeaders', 'requestBody', 'requestTimeout',
+                'validationMode', 'namespaces', 'namespacePrefixPairs', 'detectDataType',
                 // ExecutePipeline UI field → converted to pipeline reference
                 'pipeline',
-                // SetVariable UI fields
+                // SetVariable UI fields (kept in activityProps for collectVariables, not in tp)
                 'variableType', 'pipelineVariableType', 'returnValues',
                 // Script/SqlServerStoredProcedure fields → activity envelope or rebuilt
                 'linkedServiceName', '_selectedLinkedServiceType', 'linkedServiceProperties',
@@ -4587,7 +4604,9 @@ class PipelineEditorProvider {
                 'servicePrincipalId', 'servicePrincipalCredentialType', 'servicePrincipalKey',
                 'servicePrincipalCert', 'servicePrincipalResource', 'credential',
                 'credentialResource', 'credentialUserAssigned',
-                'headers', 'httpRequestTimeout', 'disableAsyncPattern', 'disableCertValidation'
+                'headers', 'httpRequestTimeout', 'disableAsyncPattern', 'disableCertValidation',
+                // Safeguard: exclude any property literally named 'null' (spurious UI artefact)
+                'null'
             ];
 
             for (const key in a) {
@@ -4601,6 +4620,44 @@ class PipelineEditorProvider {
                     } else {
                         tp[key] = a[key];
                     }
+                }
+            }
+
+            // ── Policy block → activity envelope level ────────────────────────────────
+            if (a.type === 'SetVariable') {
+                activityProps.policy = {
+                    secureOutput: a.secureOutput || false,
+                    secureInput: a.secureInput || false
+                };
+            } else if (a.type === 'WebHook') {
+                activityProps.policy = {
+                    secureOutput: a.secureOutput || false,
+                    secureInput: a.secureInput || false
+                };
+            } else if (['GetMetadata', 'Script', 'SqlServerStoredProcedure', 'WebActivity',
+                        'Lookup', 'Delete', 'Validation'].includes(a.type)) {
+                activityProps.policy = {
+                    timeout: a.timeout || '0.12:00:00',
+                    retry: a.retry !== undefined ? a.retry : 0,
+                    retryIntervalInSeconds: a.retryIntervalInSeconds !== undefined ? a.retryIntervalInSeconds : 30,
+                    secureOutput: a.secureOutput || false,
+                    secureInput: a.secureInput || false
+                };
+            } else {
+                const hasNonDefaultPolicy =
+                    (a.timeout && a.timeout !== '0.12:00:00') ||
+                    (a.retry && a.retry !== 0) ||
+                    (a.retryIntervalInSeconds && a.retryIntervalInSeconds !== 30) ||
+                    a.secureOutput === true ||
+                    a.secureInput === true;
+                if (hasNonDefaultPolicy) {
+                    activityProps.policy = {
+                        timeout: a.timeout || '0.12:00:00',
+                        retry: a.retry || 0,
+                        retryIntervalInSeconds: a.retryIntervalInSeconds || 30,
+                        secureOutput: a.secureOutput || false,
+                        secureInput: a.secureInput || false
+                    };
                 }
             }
 
@@ -4662,10 +4719,84 @@ class PipelineEditorProvider {
                 tp.waitOnCompletion = a.waitOnCompletion !== undefined ? a.waitOnCompletion : true;
             }
 
-            // ── Lookup: dataset reference ──────────────────────────────────────────────
+            // ── Lookup: dataset reference + source ─────────────────────────────────────
             if (a.type === 'Lookup') {
                 if (a.dataset) tp.dataset = { referenceName: a.dataset, type: 'DatasetReference' };
                 tp.firstRowOnly = a.firstRowOnly !== undefined ? a.firstRowOnly : true;
+
+                let datasetType = a._datasetType;
+                if (!datasetType && a.dataset && datasetContents[a.dataset]) {
+                    datasetType = datasetContents[a.dataset].properties?.type;
+                }
+
+                if (datasetType === 'AzureSqlTable' || datasetType === 'AzureSynapseAnalytics') {
+                    const source = { type: datasetType === 'AzureSqlTable' ? 'AzureSqlSource' : 'SqlDWSource' };
+                    if (a.useQuery === 'Query' && a.sqlReaderQuery) source.sqlReaderQuery = a.sqlReaderQuery;
+                    else if (a.useQuery === 'Stored procedure' && a.sqlReaderStoredProcedureName) source.sqlReaderStoredProcedureName = a.sqlReaderStoredProcedureName;
+                    if (a.queryTimeout !== undefined && a.queryTimeout !== '') {
+                        const mins = parseInt(a.queryTimeout) || 120;
+                        const h = Math.floor(mins / 60); const m = mins % 60;
+                        source.queryTimeout = (h < 10 ? '0' + h : '' + h) + ':' + (m < 10 ? '0' + m : '' + m) + ':00';
+                    } else { source.queryTimeout = '02:00:00'; }
+                    if (a.isolationLevel) source.isolationLevel = a.isolationLevel;
+                    let pov = 'None';
+                    if (a.useQuery === 'Table' && a.partitionOption) pov = a.partitionOption;
+                    else if (a.useQuery === 'Query' && a.partitionOptionQuery) pov = a.partitionOptionQuery;
+                    else if (a.useQuery === 'Stored procedure' && a.partitionOptionStoredProc) pov = a.partitionOptionStoredProc;
+                    source.partitionOption = pov;
+                    if (pov === 'DynamicRange') {
+                        const ps = {};
+                        if (a.useQuery === 'Table') {
+                            if (a.partitionColumnName) ps.partitionColumnName = a.partitionColumnName;
+                            if (a.partitionUpperBound) ps.partitionUpperBound = a.partitionUpperBound;
+                            if (a.partitionLowerBound) ps.partitionLowerBound = a.partitionLowerBound;
+                        } else if (a.useQuery === 'Query') {
+                            if (a.partitionColumnNameQuery) ps.partitionColumnName = a.partitionColumnNameQuery;
+                            if (a.partitionUpperBoundQuery) ps.partitionUpperBound = a.partitionUpperBoundQuery;
+                            if (a.partitionLowerBoundQuery) ps.partitionLowerBound = a.partitionLowerBoundQuery;
+                        }
+                        if (Object.keys(ps).length > 0) source.partitionSettings = ps;
+                    }
+                    if (a.useQuery === 'Stored procedure' && a.storedProcedureParameters && typeof a.storedProcedureParameters === 'object') {
+                        source.storedProcedureParameters = a.storedProcedureParameters;
+                    }
+                    tp.source = source;
+                } else if (['DelimitedText', 'Parquet', 'Json', 'Avro', 'ORC', 'Xml'].includes(datasetType)) {
+                    const source = { type: datasetType + 'Source' };
+                    let storeType = 'AzureBlobFSReadSettings';
+                    if (a.dataset && datasetContents[a.dataset]) {
+                        const lt = datasetContents[a.dataset].properties?.typeProperties?.location?.type;
+                        if (lt === 'AzureBlobStorageLocation') storeType = 'AzureBlobStorageReadSettings';
+                    }
+                    const ss = { type: storeType };
+                    if (a.filePathType === 'listOfFiles' && a.fileListPath) ss.fileListPath = a.fileListPath;
+                    else if (a.filePathType === 'wildcardFilePath') {
+                        if (a.wildcardFolderPath) ss.wildcardFolderPath = a.wildcardFolderPath;
+                        if (a.wildcardFileName) ss.wildcardFileName = a.wildcardFileName;
+                    } else if (a.filePathType === 'prefix' && a.prefix) ss.prefix = a.prefix;
+                    if (a.modifiedDatetimeStart) ss.modifiedDatetimeStart = new Date(a.modifiedDatetimeStart).toISOString();
+                    if (a.modifiedDatetimeEnd) ss.modifiedDatetimeEnd = new Date(a.modifiedDatetimeEnd).toISOString();
+                    ss.recursive = a.recursive !== undefined ? a.recursive : true;
+                    ss.enablePartitionDiscovery = a.enablePartitionDiscovery || false;
+                    if (a.enablePartitionDiscovery && a.partitionRootPath) ss.partitionRootPath = a.partitionRootPath;
+                    if (a.maxConcurrentConnections) ss.maxConcurrentConnections = parseInt(a.maxConcurrentConnections);
+                    source.storeSettings = ss;
+                    if (datasetType === 'DelimitedText') {
+                        source.formatSettings = { type: 'DelimitedTextReadSettings' };
+                        if (a.skipLineCount && a.skipLineCount > 0) source.formatSettings.skipLineCount = parseInt(a.skipLineCount);
+                    } else if (datasetType === 'Xml') {
+                        source.formatSettings = { type: 'XmlReadSettings' };
+                        if (a.validationMode) source.formatSettings.validationMode = a.validationMode;
+                        if (a.detectDataType !== undefined) source.formatSettings.detectDataType = a.detectDataType;
+                        if (a.namespaces !== undefined) source.formatSettings.namespaces = a.namespaces;
+                        if (a.namespacePrefixPairs && Object.keys(a.namespacePrefixPairs).length > 0) source.formatSettings.namespacePrefixes = a.namespacePrefixPairs;
+                    }
+                    tp.source = source;
+                } else if (datasetType === 'HttpFile') {
+                    const source = { type: 'HttpSource' };
+                    if (a.maxConcurrentConnections) source.maxConcurrentConnections = parseInt(a.maxConcurrentConnections);
+                    tp.source = source;
+                }
             }
 
             // ── GetMetadata: dataset ref, fieldList, storeSettings ─────────────────────
@@ -4706,8 +4837,13 @@ class PipelineEditorProvider {
                 delete tp._datasetLocationType;
             }
 
-            // ── SetVariable: remove UI-only fields ─────────────────────────────────────
+            // ── SetVariable: remove UI-only fields, stash type metadata for collectVariables ──
             if (a.type === 'SetVariable') {
+                // Stash at activity level so collectVariables can find them after backToMainPipeline;
+                // these are stripped by the ForEach serializer before writing to disk.
+                if (a.variableType) activityProps._variableType = a.variableType;
+                if (a.pipelineVariableType) activityProps._pipelineVariableType = a.pipelineVariableType;
+
                 delete tp.variableType;
                 delete tp.pipelineVariableType;
                 delete tp.returnValues;

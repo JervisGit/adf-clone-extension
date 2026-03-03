@@ -4682,6 +4682,21 @@ class PipelineEditorProvider {
                 }
             }
 
+            // ── IfCondition: expression object + preserve branch children ─────────────
+            if (a.type === 'IfCondition') {
+                // expression string → Expression object required by ADF
+                if (a.expression) tp.expression = { value: a.expression, type: 'Expression' };
+                // Strip UI-only fields (x, y, _variableType, _pipelineVariableType) from branch children
+                const _stripUiFields = arr => (arr || []).map(act => {
+                    const c = Object.assign({}, act);
+                    delete c.x; delete c.y;
+                    delete c._variableType; delete c._pipelineVariableType;
+                    return c;
+                });
+                if (a.ifTrueActivities) tp.ifTrueActivities = _stripUiFields(a.ifTrueActivities);
+                if (a.ifFalseActivities) tp.ifFalseActivities = _stripUiFields(a.ifFalseActivities);
+            }
+
             // ── Filter: expression objects ─────────────────────────────────────────────
             if (a.type === 'Filter') {
                 tp.items = { value: a.items || '', type: 'Expression' };
@@ -4969,8 +4984,9 @@ class PipelineEditorProvider {
             return buildNestedActivityTypeProperties(a).typeProperties;
         }
 
-        // Context switching for IfCondition branch editing
-        let editingContext = null; // { parentActivity, branch, savedState }
+        // Context switching for IfCondition/ForEach branch editing
+        let editingContext = null; // current { parentActivity, branch, savedState }
+        let editingContextStack = []; // ancestor contexts when nesting editors (oldest first)
         
         window.openIfConditionEditor = function(activityId, branch) {
             const activity = activities.find(a => a.id == activityId);
@@ -4983,6 +4999,8 @@ class PipelineEditorProvider {
                 selectedActivity: selectedActivity
             };
             
+            // Push current context if already inside an editor (enables multi-level nesting)
+            if (editingContext) editingContextStack.push(editingContext);
             editingContext = {
                 parentActivity: activity,
                 branch: branch,
@@ -5082,6 +5100,8 @@ class PipelineEditorProvider {
                 selectedActivity: selectedActivity
             };
             
+            // Push current context if already inside an editor (enables multi-level nesting)
+            if (editingContext) editingContextStack.push(editingContext);
             editingContext = {
                 parentActivity: activity,
                 branch: 'activities',
@@ -5253,30 +5273,53 @@ class PipelineEditorProvider {
             });
             console.log('[backToMainPipeline] After cleanup, canvasWrapper children:', canvasWrapper.children.length);
             
-            // Restore main pipeline state
-            activities = editingContext.savedState.activities;
-            connections = editingContext.savedState.connections;
-            selectedActivity = editingContext.savedState.selectedActivity;
-            
-            console.log('[backToMainPipeline] Restoring', activities.length, 'main pipeline activities');
-            // Re-render all activities
-            activities.forEach(a => {
-                a.container = canvasWrapper;
-                a.element = null;
-                a.createDOMElement();
-            });
-            
-            // Clear editing context
-            editingContext = null;
-            
-            // Update breadcrumb
-            updateBreadcrumb();
-            
-            // Restore sidebar to normal (remove restrictions)
-            updateSidebarForBranchEditing(false, null);
-            
-            // Hide back button
-            document.getElementById('backToMainBtn').style.display = 'none';
+            if (editingContextStack.length > 0) {
+                // Still nested — go back to parent editor level
+                // The savedState of the current context holds the parent level's canvas activities
+                activities = editingContext.savedState.activities;
+                connections = editingContext.savedState.connections;
+                selectedActivity = editingContext.savedState.selectedActivity;
+                
+                // Pop the grandparent context — it becomes the new current
+                editingContext = editingContextStack.pop();
+                
+                console.log('[backToMainPipeline] Restoring parent editor level,', activities.length, 'activities');
+                activities.forEach(a => {
+                    a.container = canvasWrapper;
+                    a.element = null;
+                    a.createDOMElement();
+                });
+                
+                updateBreadcrumb();
+                updateSidebarForBranchEditing(true, editingContext.parentActivity.type);
+                // Keep back button visible
+            } else {
+                // Back at root main pipeline
+                activities = editingContext.savedState.activities;
+                connections = editingContext.savedState.connections;
+                selectedActivity = editingContext.savedState.selectedActivity;
+                
+                console.log('[backToMainPipeline] Restoring', activities.length, 'main pipeline activities');
+                // Re-render all activities
+                activities.forEach(a => {
+                    a.container = canvasWrapper;
+                    a.element = null;
+                    a.createDOMElement();
+                });
+                
+                // Clear editing context and stack
+                editingContext = null;
+                editingContextStack = [];
+                
+                // Update breadcrumb
+                updateBreadcrumb();
+                
+                // Restore sidebar to normal (remove restrictions)
+                updateSidebarForBranchEditing(false, null);
+                
+                // Hide back button
+                document.getElementById('backToMainBtn').style.display = 'none';
+            }
             
             // Refresh properties panel
             if (selectedActivity) {
@@ -5290,16 +5333,20 @@ class PipelineEditorProvider {
         function updateBreadcrumb() {
             const breadcrumb = document.getElementById('breadcrumb');
             if (editingContext) {
-                let branchLabel;
-                if (editingContext.branch === 'true') branchLabel = 'If True';
-                else if (editingContext.branch === 'false') branchLabel = 'If False';
-                else if (editingContext.branch === 'activities') branchLabel = 'Body';
-                else branchLabel = editingContext.branch;
-                breadcrumb.innerHTML = \`
-                    <span style="color: var(--vscode-descriptionForeground);">\${editingContext.parentActivity.name}</span>
-                    <span style="margin: 0 6px; color: var(--vscode-descriptionForeground);">›</span>
-                    <span style="font-weight: 600;">\${branchLabel}</span>
-                \`;
+                // Build full path: ancestors from stack + current context
+                const allContexts = [...editingContextStack, editingContext];
+                const sep = '<span style="margin: 0 6px; color: var(--vscode-descriptionForeground);">›</span>';
+                let parts = [];
+                allContexts.forEach(ctx => {
+                    let branchLabel;
+                    if (ctx.branch === 'true') branchLabel = 'If True';
+                    else if (ctx.branch === 'false') branchLabel = 'If False';
+                    else if (ctx.branch === 'activities') branchLabel = 'Body';
+                    else branchLabel = ctx.branch;
+                    parts.push('<span style="color: var(--vscode-descriptionForeground);">' + ctx.parentActivity.name + '</span>');
+                    parts.push('<span style="font-weight: 600;">' + branchLabel + '</span>');
+                });
+                breadcrumb.innerHTML = parts.join(sep);
             } else {
                 breadcrumb.innerHTML = '<span style="font-weight: 600;">Pipeline</span>';
             }
@@ -7999,11 +8046,65 @@ class PipelineEditorProvider {
                     editingContext.parentActivity.activities = branchData;
                 }
                 
+                // Walk up the context stack: serialize each ancestor canvas into its parent activity.
+                // When N levels deep (e.g. IfCondition True inside ForEach inside main pipeline):
+                //   - editingContext.savedState.activities = ForEach body canvas [IfCondition_obj]
+                //   - editingContextStack[0].savedState.activities = main pipeline canvas [ForEach_obj]
+                // We need to serialize the ForEach body into ForEach_obj.activities so that
+                // buildPipelineDataForSave can read it correctly.
+                for (let _i = editingContextStack.length - 1; _i >= 0; _i--) {
+                    // The canvas for this ancestor level comes from the *child* context's savedState
+                    const _levelCanvasCtx = (_i === editingContextStack.length - 1)
+                        ? editingContext
+                        : editingContextStack[_i + 1];
+                    const _levelActs = _levelCanvasCtx.savedState.activities;
+                    const _levelConns = _levelCanvasCtx.savedState.connections;
+                    const _ctx = editingContextStack[_i];
+                    
+                    const _levelBranchData = _levelActs.map(_a3 => {
+                        const _c3 = {
+                            name: _a3.name,
+                            type: _a3.type,
+                            x: _a3.x,
+                            y: _a3.y,
+                            dependsOn: _levelConns
+                                .filter(_c => _c.to === _a3)
+                                .map(_c => ({
+                                    activity: _c.from.name,
+                                    dependencyConditions: [_c.condition || 'Succeeded']
+                                })),
+                            userProperties: _a3.userProperties || []
+                        };
+                        if (_a3.description) _c3.description = _a3.description;
+                        if (_a3.state) _c3.state = _a3.state;
+                        const { typeProperties: _tp3, activityProps: _ap3 } = buildNestedActivityTypeProperties(_a3);
+                        _c3.typeProperties = _tp3;
+                        Object.assign(_c3, _ap3);
+                        return _c3;
+                    });
+                    
+                    if (_ctx.branch === 'true') _ctx.parentActivity.ifTrueActivities = _levelBranchData;
+                    else if (_ctx.branch === 'false') _ctx.parentActivity.ifFalseActivities = _levelBranchData;
+                    else if (_ctx.branch === 'activities') _ctx.parentActivity.activities = _levelBranchData;
+                }
+                
+                // Validate current branch: IfCondition must have an expression
+                for (const _a of activities) {
+                    if (_a.type === 'IfCondition' && (!_a.expression || _a.expression.trim() === '')) {
+                        vscode.postMessage({ type: 'error', text: 'If Condition "' + _a.name + '" requires an expression.' });
+                        return;
+                    }
+                }
+                
+                // Use root saved state (outermost ancestor) as the main pipeline for save
+                // When 2+ levels deep (e.g. IfCondition inside ForEach), stack[0] holds the true root
+                const rootCtx = editingContextStack.length > 0 ? editingContextStack[0] : editingContext;
+                
                 // Temporarily switch to main pipeline context for validation and save
                 const savedActivities = activities;
                 const savedConnections = connections;
-                activities = editingContext.savedState.activities;
-                connections = editingContext.savedState.connections;
+                activities = rootCtx.savedState.activities;
+                connections = rootCtx.savedState.connections;
                 
                 // Validate main pipeline activities
                 const validation = validateActivities();

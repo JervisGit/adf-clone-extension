@@ -6411,11 +6411,28 @@ class PipelineEditorProvider {
                         settingsContent += '<div style="border-top: 1px solid var(--vscode-panel-border); margin: 16px 0; padding-top: 16px;"></div>';
                         settingsContent += '<div style="font-size: 13px; font-weight: bold; color: var(--vscode-foreground); margin-bottom: 12px;">Dataset Settings (' + datasetSchemas[datasetType].name + ')</div>';
                         
-                        // Special handling for SQL datasets with useQuery field
+                        // Detect storage type — Prefix is Blob Storage-only, not supported by ADLS Gen2
+                        const locationType = datasetContents[activity.dataset]?.properties?.typeProperties?.location?.type;
+                        const isAdls = locationType === 'AzureBlobFSLocation';
+
                         const lookupFields = datasetSchemas[datasetType].lookupFields;
                         for (const [key, prop] of Object.entries(lookupFields)) {
                             // Skip firstRowOnly as it's already in typeProperties
                             if (key === 'firstRowOnly') continue;
+                            // For ADLS datasets, remove "Prefix" from filePathType options (Blob Storage only)
+                            if (key === 'filePathType' && isAdls && prop.optionValues) {
+                                const prefixIdx = prop.optionValues.indexOf('prefix');
+                                if (prefixIdx !== -1) {
+                                    const filteredProp = Object.assign({}, prop, {
+                                        options: prop.options.filter((_, i) => i !== prefixIdx),
+                                        optionValues: prop.optionValues.filter(v => v !== 'prefix')
+                                    });
+                                    settingsContent += generateFormField(key, filteredProp, activity);
+                                    continue;
+                                }
+                            }
+                            // Hide the Prefix text field for ADLS datasets
+                            if (key === 'prefix' && isAdls) continue;
                             settingsContent += generateFormField(key, prop, activity);
                         }
                         console.log('Added', Object.keys(datasetSchemas[datasetType].lookupFields).length, 'lookup fields');
@@ -6776,6 +6793,12 @@ class PipelineEditorProvider {
                             const datasetType = datasetContents[datasetName].properties?.type;
                             activity._datasetType = datasetType;
                             console.log('Lookup dataset selected:', datasetName, 'Type:', datasetType);
+                            // Prefix is Blob Storage-only — reset if switching to an ADLS dataset
+                            const newLocType = datasetContents[datasetName].properties?.typeProperties?.location?.type;
+                            if (newLocType === 'AzureBlobFSLocation' && activity.filePathType === 'prefix') {
+                                activity.filePathType = 'filePathInDataset';
+                                delete activity.prefix;
+                            }
                         }
                     } else {
                         delete activity[key];

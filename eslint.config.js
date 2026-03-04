@@ -13,7 +13,10 @@ module.exports = {
 			setImmediate: "readonly",
 			suite: "readonly",
 			test: "readonly",
-			fetch: "readonly"
+			fetch: "readonly",
+			window: "readonly",
+			JSON: "readonly",
+			Array: "readonly"
 		}
 	},
 	rules: {

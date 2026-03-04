@@ -9269,6 +9269,24 @@ class PipelineEditorProvider {
         renderPipelineParameters();
         renderPipelineVariables();
 
+        // Debug hook — accessible from VS Code DevTools webview console
+        window._debug = {
+            buildPipelineDataForSave,
+            buildNestedActivityTypeProperties,
+            getActivities: () => activities,
+            getConnections: () => connections,
+            setActivities: (a) => { activities = a; },
+            setConnections: (c) => { connections = c; },
+            runTest: (testActivities) => {
+                const prev = activities, prevC = connections;
+                activities = testActivities; connections = [];
+                const result = buildPipelineDataForSave('pipeline1', false);
+                activities = prev; connections = prevC;
+                return result;
+            }
+        };
+        console.log('[_debug] window._debug exposed — call window._debug.runTest([...]) to generate JSON without UI interaction');
+
         // Initial draw
         draw();
     </script>

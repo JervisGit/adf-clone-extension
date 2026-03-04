@@ -2180,6 +2180,26 @@ class PipelineEditorProvider {
                 });
             }
             collectVariables(activities);
+
+            // Recursively strip UI-only metadata from a nested activity POJO and any of
+            // its sub-activities (ForEach body, IfCondition branches). Used by the ForEach
+            // body serializer to ensure _variableType/_pipelineVariableType (kept alive for
+            // collectVariables above) are removed before the JSON is written to disk.
+            function deepCleanNestedActivity(act) {
+                const c = Object.assign({}, act);
+                delete c.x; delete c.y;
+                delete c._variableType; delete c._pipelineVariableType;
+                if (c.typeProperties) {
+                    c.typeProperties = Object.assign({}, c.typeProperties);
+                    if (Array.isArray(c.typeProperties.activities))
+                        c.typeProperties.activities = c.typeProperties.activities.map(deepCleanNestedActivity);
+                    if (Array.isArray(c.typeProperties.ifTrueActivities))
+                        c.typeProperties.ifTrueActivities = c.typeProperties.ifTrueActivities.map(deepCleanNestedActivity);
+                    if (Array.isArray(c.typeProperties.ifFalseActivities))
+                        c.typeProperties.ifFalseActivities = c.typeProperties.ifFalseActivities.map(deepCleanNestedActivity);
+                }
+                return c;
+            }
             
             const result = {
                 name: pipelineName,
@@ -3422,17 +3442,10 @@ class PipelineEditorProvider {
                         }
                         
                         // Add nested activities only if they exist
-                        // Strip x, y properties which are UI-only and shouldn't be saved to file
+                        // Recursively strip x, y and _variableType/_pipelineVariableType
+                        // metadata at all nesting depths (IfCondition branches, etc.)
                         if (a.activities && a.activities.length > 0) {
-                            typeProperties.activities = a.activities.map(nestedAct => {
-                                const cleanAct = { ...nestedAct };
-                                delete cleanAct.x;
-                                delete cleanAct.y;
-                                // Strip SetVariable type metadata stashed for collectVariables
-                                delete cleanAct._variableType;
-                                delete cleanAct._pipelineVariableType;
-                                return cleanAct;
-                            });
+                            typeProperties.activities = a.activities.map(deepCleanNestedActivity);
                         }
                     }
                     
@@ -4686,11 +4699,15 @@ class PipelineEditorProvider {
             if (a.type === 'IfCondition') {
                 // expression string → Expression object required by ADF
                 if (a.expression) tp.expression = { value: a.expression, type: 'Expression' };
-                // Strip UI-only fields (x, y, _variableType, _pipelineVariableType) from branch children
+                // Strip only UI position fields (x, y) from branch children here.
+                // _variableType/_pipelineVariableType are intentionally kept so that
+                // collectVariables() can detect SetVariable type metadata when it
+                // recurses into ifTrueActivities/ifFalseActivities. These metadata
+                // fields are stripped in the final pass by deepCleanNestedActivity()
+                // inside buildPipelineDataForSave before the JSON is written to disk.
                 const _stripUiFields = arr => (arr || []).map(act => {
                     const c = Object.assign({}, act);
                     delete c.x; delete c.y;
-                    delete c._variableType; delete c._pipelineVariableType;
                     return c;
                 });
                 if (a.ifTrueActivities) tp.ifTrueActivities = _stripUiFields(a.ifTrueActivities);

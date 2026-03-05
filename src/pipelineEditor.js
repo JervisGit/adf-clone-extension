@@ -2157,6 +2157,22 @@ class PipelineEditorProvider {
                             throw new Error('Switch activity "' + a.name + '" has no cases');
                         }
                     }
+                    if (a.type === 'Until') {
+                        if (!a.expression || a.expression.trim() === '') {
+                            vscode.postMessage({
+                                type: 'validationError',
+                                message: 'Activity "' + a.name + '" requires an Expression. Please set the expression in the Activities tab before saving.'
+                            });
+                            throw new Error('Until activity "' + a.name + '" is missing required Expression field');
+                        }
+                        if (!a.activities || a.activities.length === 0) {
+                            vscode.postMessage({
+                                type: 'validationError',
+                                message: 'Activity "' + a.name + '" must have at least one activity in its body. Please add activities in the Activities tab before saving.'
+                            });
+                            throw new Error('Until activity "' + a.name + '" has no body activities');
+                        }
+                    }
                 }
             }
             
@@ -3514,7 +3530,20 @@ class PipelineEditorProvider {
                             typeProperties.activities = a.activities.map(deepCleanNestedActivity);
                         }
                     }
-                    
+
+                    // Handle Until activity
+                    if (a.type === 'Until') {
+                        delete typeProperties.isContainer;
+                        delete typeProperties.activities;
+                        if (a.expression !== undefined) {
+                            typeProperties.expression = { value: a.expression || '', type: 'Expression' };
+                        }
+                        if (a.timeout) typeProperties.timeout = a.timeout;
+                        if (a.activities && a.activities.length > 0) {
+                            typeProperties.activities = a.activities.map(deepCleanNestedActivity);
+                        }
+                    }
+
                     activity.typeProperties = typeProperties;
                     return activity;
                 })
@@ -3751,6 +3780,15 @@ class PipelineEditorProvider {
                     this.state = 'Activated';
                 }
                 
+                // Set default values for Until
+                if (type === 'Until') {
+                    this.isContainer = true;
+                    this.expression = '';
+                    this.timeout = '0.12:00:00';
+                    this.activities = [];
+                    this.state = 'Activated';
+                }
+                
                 // Set default values for Switch
                 if (type === 'Switch') {
                     this.isContainer = true;
@@ -3771,6 +3809,7 @@ class PipelineEditorProvider {
                     'Notebook': '#f2c811',
                     'ForEach': '#7fba00',
                     'IfCondition': '#ff8c00',
+                    'Until': '#e81123',
                     'Switch': '#6264a7',
                     'Wait': '#00bcf2',
                     'WebActivity': '#8661c5',
@@ -4169,6 +4208,7 @@ class PipelineEditorProvider {
                     'Notebook': 'Notebook',
                     'ForEach': 'ForEach',
                     'IfCondition': 'If Condition',
+                    'Until': 'Until',
                     'Switch': 'Switch',
                     'Wait': 'Wait',
                     'WebActivity': 'Web Activity',
@@ -4187,6 +4227,7 @@ class PipelineEditorProvider {
                     'Notebook': '📓',
                     'ForEach': '🔁',
                     'IfCondition': '❓',
+                    'Until': '🔁',
                     'Switch': '🔀',
                     'Wait': '⏱️',
                     'WebActivity': '🌐',
@@ -4793,6 +4834,14 @@ class PipelineEditorProvider {
                 if (a.ifFalseActivities) tp.ifFalseActivities = _stripUiFields(a.ifFalseActivities);
             }
 
+            // ── Until: expression object + body activities ───────────────────────────
+            if (a.type === 'Until') {
+                if (a.expression) tp.expression = { value: a.expression, type: 'Expression' };
+                if (a.timeout) tp.timeout = a.timeout;
+                const _stripU = arr => (arr || []).map(act => { const c = Object.assign({}, act); delete c.x; delete c.y; return c; });
+                if (a.activities) tp.activities = _stripU(a.activities);
+            }
+
             // ── Switch: on expression + preserve case children ─────────────────────────
             if (a.type === 'Switch') {
                 if (a.on) tp.on = { value: a.on, type: 'Expression' };
@@ -5302,6 +5351,9 @@ class PipelineEditorProvider {
             draw();
         };
 
+        // Until uses the same canvas structure as ForEach (body = activities array)
+        window.openUntilEditor = window.openForEachEditor;
+
         // Open the canvas editor for a Switch case or default branch
         window.openSwitchEditor = function(activityId, branch) {
             const activity = activities.find(a => a.id == activityId);
@@ -5370,8 +5422,11 @@ class PipelineEditorProvider {
                         if (act.type === 'IfCondition' && act.expression && typeof act.expression === 'object') {
                             act.expression = act.expression.value || '';
                         }
-                        if ((act.type === 'ForEach' || act.type === 'Until') && act.items && typeof act.items === 'object') {
+                        if (act.type === 'ForEach' && act.items && typeof act.items === 'object') {
                             act.items = act.items.value || '';
+                        }
+                        if (act.type === 'Until' && act.expression && typeof act.expression === 'object') {
+                            act.expression = act.expression.value || '';
                         }
                     }
 
@@ -5482,11 +5537,11 @@ class PipelineEditorProvider {
             // Update container info display
             const containerInfo = editingContext.parentActivity.element?.querySelector('.container-info');
             if (containerInfo) {
-                if (editingContext.parentActivity.type === 'ForEach') {
+                if (editingContext.parentActivity.type === 'ForEach' || editingContext.parentActivity.type === 'Until') {
                     const bodyCount = editingContext.parentActivity.activities.length;
                     containerInfo.innerHTML = \`
                         <div class="container-stat">
-                            <span class="label">Items:</span> 
+                            <span class="label">Loop:</span> 
                             <span class="count">\${bodyCount}</span> 
                             <span class="label">\${bodyCount === 1 ? 'activity' : 'activities'}</span>
                         </div>
@@ -5684,6 +5739,44 @@ class PipelineEditorProvider {
                             \${renderActivitiesList(falseActivities)}
                             <div style="margin-top: 8px; font-size: 11px; color: var(--vscode-descriptionForeground);">
                                 \${falseActivities.length} \${falseActivities.length === 1 ? 'activity' : 'activities'}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            \`;
+        }
+
+        // Generate Activities tab for Until — expression + timeout + body
+        function generateUntilActivitiesTab(activity) {
+            const bodyActivities = activity.activities || [];
+            const renderActivitiesList = (actList) => {
+                if (actList.length === 0) return '<div class="empty-branch">No activities</div>';
+                return actList.map(act => {
+                    const icon = getIconForType(act.type);
+                    return \`<div class="activity-pill"><span class="activity-pill-icon">\${icon}</span><span>\${act.name}</span></div>\`;
+                }).join('');
+            };
+            const exprVal = typeof activity.expression === 'object' ? (activity.expression?.value || '') : (activity.expression || '');
+            return \`
+                <div style="padding: 4px 0;">
+                    <div class="property-group" style="margin-bottom: 16px;">
+                        <div class="property-label">Expression <span style="color: #d13438;">*</span></div>
+                        <textarea class="property-input" id="propUntilExpression" rows="3" placeholder="@equals(variables('done'), true)">\${exprVal}</textarea>
+                        <div style="font-size: 11px; color: var(--vscode-descriptionForeground); margin-top: 4px;">Loop stops when this expression evaluates to <strong>true</strong></div>
+                    </div>
+                    <div class="property-group" style="margin-bottom: 16px;">
+                        <div class="property-label">Timeout</div>
+                        <input type="text" class="property-input" id="propUntilTimeout" value="\${activity.timeout || '0.12:00:00'}" placeholder="0.12:00:00">
+                    </div>
+                    <div class="branch-editor">
+                        <div class="branch-header">
+                            <span>Body</span>
+                            <button class="edit-activities-btn" onclick="openUntilEditor('\${activity.id}')">Edit Activities</button>
+                        </div>
+                        <div class="branch-content">
+                            \${renderActivitiesList(bodyActivities)}
+                            <div style="margin-top: 8px; font-size: 11px; color: var(--vscode-descriptionForeground);">
+                                \${bodyActivities.length} \${bodyActivities.length === 1 ? 'activity' : 'activities'}
                             </div>
                         </div>
                     </div>
@@ -6912,7 +7005,9 @@ class PipelineEditorProvider {
                 else if (tabId === 'mapping') tabContent = mappingContent;
                 else if (tabId === 'advanced') tabContent = advancedContent;
                 else if (tabId === 'user-properties') tabContent = userPropsContent;
-                else if (tabId === 'activities' && activity.type === 'IfCondition') {
+                else if (tabId === 'activities' && activity.type === 'Until') {
+                    tabContent = generateUntilActivitiesTab(activity);
+                } else if (tabId === 'activities' && activity.type === 'IfCondition') {
                     tabContent = generateIfConditionActivitiesTab(activity);
                 } else if (tabId === 'activities' && activity.type === 'ForEach') {
                     tabContent = generateForEachActivitiesTab(activity);
@@ -8358,6 +8453,22 @@ class PipelineEditorProvider {
                     markAsDirty();
                 });
             }
+
+            // Expression + timeout for Until activities
+            const propUntilExpression = document.getElementById('propUntilExpression');
+            if (propUntilExpression) {
+                propUntilExpression.addEventListener('input', (e) => {
+                    activity.expression = e.target.value;
+                    markAsDirty();
+                });
+            }
+            const propUntilTimeout = document.getElementById('propUntilTimeout');
+            if (propUntilTimeout) {
+                propUntilTimeout.addEventListener('input', (e) => {
+                    activity.timeout = e.target.value;
+                    markAsDirty();
+                });
+            }
             
             document.getElementById('propX').addEventListener('input', (e) => {
                 const x = parseInt(e.target.value) || 0;
@@ -8514,6 +8625,10 @@ class PipelineEditorProvider {
                     }
                     if (_a.type === 'Switch' && (!_a.cases || _a.cases.length === 0)) {
                         vscode.postMessage({ type: 'error', text: 'Switch "' + _a.name + '" must have at least one case.' });
+                        return;
+                    }
+                    if (_a.type === 'Until' && (!_a.expression || _a.expression.trim() === '')) {
+                        vscode.postMessage({ type: 'error', text: 'Until "' + _a.name + '" requires an expression.' });
                         return;
                     }
                 }
@@ -9365,6 +9480,17 @@ class PipelineEditorProvider {
                                 }
                             }
                             Object.assign(activity, cleanedPropsForEach);
+                        } else if (activityData.type === 'Until') {
+                            // Handle Until activities
+                            const tp = activityData.typeProperties;
+                            // Convert expression object to string
+                            if (tp.expression && typeof tp.expression === 'object') {
+                                activity.expression = tp.expression.value || '';
+                            } else {
+                                activity.expression = tp.expression || '';
+                            }
+                            if (tp.timeout) activity.timeout = tp.timeout;
+                            activity.activities = Array.isArray(tp.activities) ? tp.activities : [];
                         } else if (activityData.type === 'Switch') {
                             // Handle Switch activities
                             const tp = activityData.typeProperties;

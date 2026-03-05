@@ -94,7 +94,7 @@
     "typeProperties": {
       "variableType": { "type": "radio", "label": "Variable type", "options": ["Pipeline variable", "Pipeline return value"], "default": "Pipeline variable" },
       "variableName": { "type": "text", "label": "Name", "required": true, "placeholder": "Enter variable name", "conditional": { "field": "variableType", "value": "Pipeline variable" } },
-      "value": { "type": "text", "label": "Value", "placeholder": "Enter value", "conditional": { "field": "variableType", "value": "Pipeline variable" } },
+      "value": { "type": "text", "label": "Value", "required": true, "placeholder": "Enter value", "conditional": { "field": "variableType", "value": "Pipeline variable" } },
       "pipelineVariableType": { "type": "select", "label": "Type", "options": ["String", "Boolean", "Array", "Integer"], "default": "String", "conditional": { "field": "variableType", "value": "Pipeline variable" } },
       "returnValues": { "type": "keyvalue", "label": "Return values", "valueTypes": ["String", "Expression", "Object", "Array", "Int", "Float", "Boolean", "Null"], "conditional": { "field": "variableType", "value": "Pipeline return value" } }
     }

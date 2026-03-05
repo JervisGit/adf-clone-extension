@@ -1619,6 +1619,12 @@ class PipelineEditorProvider {
                 if ((a.type === 'SetVariable' || a.type === 'AppendVariable') && !a.variableName) {
                     invalidActivities.push(a.name + ' (' + a.type + ') - missing variable name');
                 }
+                if (a.type === 'SetVariable') {
+                    const varType = a.variableType || 'Pipeline variable';
+                    if (varType === 'Pipeline variable' && (a.value === undefined || a.value === null || a.value === '')) {
+                        invalidActivities.push(a.name + ' (' + a.type + ') - missing value');
+                    }
+                }
                 if (a.type === 'Fail' && (!a.message || !a.errorCode)) {
                     const missing = [];
                     if (!a.message) missing.push('Fail message');
@@ -2174,6 +2180,120 @@ class PipelineEditorProvider {
                         }
                     }
                 }
+
+                // Recursively validate required fields on all activities, including those
+                // nested inside Until, ForEach, IfCondition, Switch, etc.
+                // Supports both live Activity instances (flat properties) and
+                // serialized POJOs (properties under typeProperties sub-object).
+                const schemaData = ${JSON.stringify(activitySchemas)};
+
+                function validateActivityListDeep(actList, contextPath) {
+                    actList.forEach(function(a) {
+                        const schema = schemaData[a.type];
+                        if (schema) {
+                            // Collect all property groups to check
+                            const propGroups = [
+                                schema.typeProperties,
+                                schema.sourceProperties,
+                                schema.sinkProperties
+                            ].filter(Boolean);
+
+                            // Simple value types where empty string = not set
+                            const checkableTypes = ['text', 'string', 'expression'];
+                            // Reference types where value should be an object with a non-empty referenceName
+                            const referenceTypes = ['dataset', 'dataset-lookup', 'getmetadata-dataset', 'validation-dataset', 'pipeline', 'script-linkedservice', 'storedprocedure-linkedservice'];
+
+                            propGroups.forEach(function(group) {
+                                Object.entries(group).forEach(function([fieldKey, fieldDef]) {
+                                    // Only check unconditionally required fields of known types
+                                    // (skip conditional fields to avoid false positives, skip
+                                    //  complex array/object types that have their own dedicated UI)
+                                    if (!fieldDef.required || fieldDef.conditional) return;
+                                    const isSimple    = checkableTypes.includes(fieldDef.type);
+                                    const isReference = referenceTypes.includes(fieldDef.type);
+                                    if (!isSimple && !isReference) return;
+
+                                    // Support both flat (live instance) and POJO (typeProperties layout)
+                                    const val = a[fieldKey] !== undefined ? a[fieldKey] : (a.typeProperties && a.typeProperties[fieldKey]);
+
+                                    let isEmpty;
+                                    if (isReference) {
+                                        // Reference fields store an object { referenceName: '...' } when set,
+                                        // or are null/undefined/empty-string/''/empty-object when not set.
+                                        isEmpty = (val === undefined || val === null || val === '' ||
+                                                   (typeof val === 'object' && (!val.referenceName || val.referenceName === '')));
+                                    } else {
+                                        // For expression fields, the value may be stored as an object
+                                        // { value: '...', type: 'Expression' } when loaded back from JSON
+                                        // (after Object.assign of typeProperties onto the live Activity).
+                                        const strVal = (typeof val === 'object' && val !== null && 'value' in val) ? val.value : val;
+                                        isEmpty = (strVal === undefined || strVal === null || strVal === '' || (typeof strVal === 'string' && strVal.trim() === ''));
+                                    }
+
+                                    if (isEmpty) {
+                                        const locationLabel = contextPath ? ' (inside "' + contextPath + '")' : '';
+                                        vscode.postMessage({
+                                            type: 'validationError',
+                                            message: 'Activity "' + a.name + '"' + locationLabel + ' requires "' + fieldDef.label + '". Please fill in this field before saving.'
+                                        });
+                                        throw new Error('Activity "' + a.name + '" is missing required field "' + fieldKey + '"');
+                                    }
+                                });
+                            });
+                        }
+
+                        // Special case: SetVariable — variableName and value are both marked conditional
+                        // (conditional on variableType === 'Pipeline variable') so the generic loop above
+                        // skips them.  But 'Pipeline variable' IS the default, so treat both as required.
+                        if (a.type === 'SetVariable') {
+                            const varType = a.variableType || (a.typeProperties && a.typeProperties.variableType) || 'Pipeline variable';
+                            if (varType === 'Pipeline variable') {
+                                const varName = a.variableName || (a.typeProperties && a.typeProperties.variableName);
+                                const varEmpty = !varName || (typeof varName === 'string' && varName.trim() === '');
+                                if (varEmpty) {
+                                    const locationLabel = contextPath ? ' (inside "' + contextPath + '")' : '';
+                                    vscode.postMessage({
+                                        type: 'validationError',
+                                        message: 'Activity "' + a.name + '"' + locationLabel + ' requires "Name" (variable name). Please fill in this field before saving.'
+                                    });
+                                    throw new Error('Activity "' + a.name + '" is missing required field variableName');
+                                }
+                                const varValue = a.value !== undefined ? a.value : (a.typeProperties && a.typeProperties.value);
+                                const valEmpty = varValue === undefined || varValue === null || varValue === '' || (typeof varValue === 'string' && varValue.trim() === '');
+                                if (valEmpty) {
+                                    const locationLabel = contextPath ? ' (inside "' + contextPath + '")' : '';
+                                    vscode.postMessage({
+                                        type: 'validationError',
+                                        message: 'Activity "' + a.name + '"' + locationLabel + ' requires "Value". Please fill in this field before saving.'
+                                    });
+                                    throw new Error('Activity "' + a.name + '" is missing required field value');
+                                }
+                            }
+                        }
+
+                        // Recurse into all container branches
+                        const nested   = a.activities        || (a.typeProperties && a.typeProperties.activities);
+                        const trueActs = a.ifTrueActivities  || (a.typeProperties && a.typeProperties.ifTrueActivities);
+                        const falseActs= a.ifFalseActivities || (a.typeProperties && a.typeProperties.ifFalseActivities);
+                        const defaultActs = a.defaultActivities || (a.typeProperties && a.typeProperties.defaultActivities);
+                        const cases    = a.cases             || (a.typeProperties && a.typeProperties.cases);
+
+                        const nextPath = contextPath ? contextPath + ' > ' + a.name : a.name;
+                        if (nested    && Array.isArray(nested))     validateActivityListDeep(nested,     nextPath);
+                        if (trueActs  && Array.isArray(trueActs))   validateActivityListDeep(trueActs,   nextPath + ' > True');
+                        if (falseActs && Array.isArray(falseActs))  validateActivityListDeep(falseActs,  nextPath + ' > False');
+                        if (defaultActs && Array.isArray(defaultActs)) validateActivityListDeep(defaultActs, nextPath + ' > Default');
+                        if (cases && Array.isArray(cases)) {
+                            cases.forEach(function(c, idx) {
+                                if (c.activities && Array.isArray(c.activities)) {
+                                    validateActivityListDeep(c.activities, nextPath + ' > Case ' + (c.value || idx));
+                                }
+                            });
+                        }
+                    });
+                }
+
+                validateActivityListDeep(activities, '');
             }
             
             // Use pipeline-level variables from pipelineData, then merge with activity-derived variables
@@ -4415,10 +4535,12 @@ class PipelineEditorProvider {
             // Activities that cannot be nested inside each container type.
             // ForEach: cannot contain another ForEach or Until.
             // IfCondition: cannot contain IfCondition, ForEach, Until, or Switch.
+            // Until: cannot contain Validation (it waits for file existence — a top-level concern).
             const restrictedByContainer = {
                 'ForEach':     ['ForEach', 'Until'],
                 'IfCondition': ['IfCondition', 'ForEach', 'Until', 'Switch'],
-                'Switch':      ['IfCondition', 'ForEach', 'Until', 'Switch']
+                'Switch':      ['IfCondition', 'ForEach', 'Until', 'Switch'],
+                'Until':       ['Validation']
             };
             const restrictedTypes = (isInBranch && restrictedByContainer[containerType]) || [];
             document.querySelectorAll('.activity-item').forEach(item => {
@@ -4868,17 +4990,19 @@ class PipelineEditorProvider {
             // ── Delete: dataset ref + storeSettings block ──────────────────────────────
             if (a.type === 'Delete') {
                 tp.enableLogging = false;
-                // Determine storeSettings type from dataset contents
-                let storeType = 'AzureBlobFSReadSettings';
-                if (a.dataset && datasetContents[a.dataset]) {
-                    const loc = datasetContents[a.dataset].properties?.typeProperties?.location;
-                    if (loc?.type === 'AzureBlobStorageLocation') storeType = 'AzureBlobStorageReadSettings';
-                }
+                // Normalize dataset: may be a plain string (from UI) or an object { referenceName, type }
+                // (when the activity was loaded back from saved JSON via Object.assign on typeProperties)
+                const deleteDatasetName = typeof a.dataset === 'string' ? a.dataset : (a.dataset?.referenceName || null);
+                // Delete activity always uses AzureBlobStorageReadSettings for both ADLS and Blob datasets.
+                // (Unlike Lookup/GetMetadata which use AzureBlobFSReadSettings for ADLS.)
+                const storeType = 'AzureBlobStorageReadSettings';
                 const ss = { type: storeType, enablePartitionDiscovery: false };
                 if (a.filePathType === 'listOfFiles' && a.fileListPath) {
                     ss.fileListPath = a.fileListPath;
                 } else if (a.filePathType === 'wildcardFilePath' && a.wildcardFileName) {
                     ss.wildcardFileName = a.wildcardFileName;
+                } else if (a.filePathType === 'prefix' && a.prefix) {
+                    ss.prefix = a.prefix;
                 }
                 if (a.maxConcurrentConnections) ss.maxConcurrentConnections = parseInt(a.maxConcurrentConnections);
                 if (a.recursive !== undefined) ss.recursive = a.recursive;
@@ -4887,7 +5011,7 @@ class PipelineEditorProvider {
                     if (a.modifiedDatetimeEnd) ss.modifiedDatetimeEnd = new Date(a.modifiedDatetimeEnd).toISOString();
                 }
                 tp.storeSettings = ss;
-                if (a.dataset) tp.dataset = { referenceName: a.dataset, type: 'DatasetReference' };
+                if (deleteDatasetName) tp.dataset = { referenceName: deleteDatasetName, type: 'DatasetReference' };
             }
 
             // ── ExecutePipeline: pipeline reference ────────────────────────────────────
@@ -4898,12 +5022,14 @@ class PipelineEditorProvider {
 
             // ── Lookup: dataset reference + source ─────────────────────────────────────
             if (a.type === 'Lookup') {
-                if (a.dataset) tp.dataset = { referenceName: a.dataset, type: 'DatasetReference' };
+                // Normalize dataset: may be a plain string (from UI) or an object { referenceName, type }
+                const lookupDatasetName = typeof a.dataset === 'string' ? a.dataset : (a.dataset?.referenceName || null);
+                if (lookupDatasetName) tp.dataset = { referenceName: lookupDatasetName, type: 'DatasetReference' };
                 tp.firstRowOnly = a.firstRowOnly !== undefined ? a.firstRowOnly : true;
 
                 let datasetType = a._datasetType;
-                if (!datasetType && a.dataset && datasetContents[a.dataset]) {
-                    datasetType = datasetContents[a.dataset].properties?.type;
+                if (!datasetType && lookupDatasetName && datasetContents[lookupDatasetName]) {
+                    datasetType = datasetContents[lookupDatasetName].properties?.type;
                 }
 
                 if (datasetType === 'AzureSqlTable' || datasetType === 'AzureSynapseAnalytics') {
@@ -4941,8 +5067,8 @@ class PipelineEditorProvider {
                 } else if (['DelimitedText', 'Parquet', 'Json', 'Avro', 'ORC', 'Xml'].includes(datasetType)) {
                     const source = { type: datasetType + 'Source' };
                     let storeType = 'AzureBlobFSReadSettings';
-                    if (a.dataset && datasetContents[a.dataset]) {
-                        const lt = datasetContents[a.dataset].properties?.typeProperties?.location?.type;
+                    if (lookupDatasetName && datasetContents[lookupDatasetName]) {
+                        const lt = datasetContents[lookupDatasetName].properties?.typeProperties?.location?.type;
                         if (lt === 'AzureBlobStorageLocation') storeType = 'AzureBlobStorageReadSettings';
                     }
                     const ss = { type: storeType };
@@ -4978,15 +5104,17 @@ class PipelineEditorProvider {
 
             // ── GetMetadata: dataset ref, fieldList, storeSettings ─────────────────────
             if (a.type === 'GetMetadata') {
-                if (a.dataset) tp.dataset = { referenceName: a.dataset, type: 'DatasetReference' };
+                // Normalize dataset: may be a plain string (from UI) or an object { referenceName, type }
+                const gmDatasetName = typeof a.dataset === 'string' ? a.dataset : (a.dataset?.referenceName || null);
+                if (gmDatasetName) tp.dataset = { referenceName: gmDatasetName, type: 'DatasetReference' };
                 if (a.fieldList && a.fieldList.length > 0) {
                     tp.fieldList = a.fieldList
                         .filter(f => f.value && f.value.trim() !== '')
                         .map(f => f.type === 'dynamic' ? { value: f.value, type: 'Expression' } : f.value);
                 }
                 let locationType = null;
-                if (a.dataset && datasetContents[a.dataset]) {
-                    locationType = datasetContents[a.dataset].properties?.typeProperties?.location?.type;
+                if (gmDatasetName && datasetContents[gmDatasetName]) {
+                    locationType = datasetContents[gmDatasetName].properties?.typeProperties?.location?.type;
                 }
                 if (locationType === 'AzureBlobFSLocation' || locationType === 'AzureBlobStorageLocation') {
                     const storeType = locationType === 'AzureBlobFSLocation' ? 'AzureBlobFSReadSettings' : 'AzureBlobStorageReadSettings';
@@ -5351,8 +5479,13 @@ class PipelineEditorProvider {
             draw();
         };
 
-        // Until uses the same canvas structure as ForEach (body = activities array)
-        window.openUntilEditor = window.openForEachEditor;
+        // Until uses the same canvas structure as ForEach (body = activities array).
+        // Wrap so we can apply Until-specific sidebar restrictions (e.g. greying out Validation).
+        window.openUntilEditor = function(activityId) {
+            window.openForEachEditor(activityId);
+            // Override the 'ForEach' sidebar restrictions set by openForEachEditor with Until's own set.
+            updateSidebarForBranchEditing(true, 'Until');
+        };
 
         // Open the canvas editor for a Switch case or default branch
         window.openSwitchEditor = function(activityId, branch) {
@@ -8653,17 +8786,26 @@ class PipelineEditorProvider {
                     return;
                 }
                 
-                // Build save data from main pipeline
-                const data = buildPipelineDataForSave("pipeline1", false);
-                
-                // Restore branch context
-                activities = savedActivities;
-                connections = savedConnections;
+                // Build save data from main pipeline.
+                // Use try/finally so that the branch context (activities, connections) is
+                // ALWAYS restored even when buildPipelineDataForSave throws a validation error.
+                let saveData;
+                try {
+                    saveData = buildPipelineDataForSave("pipeline1", false);
+                } catch (_saveErr) {
+                    // Validation error was already reported inside buildPipelineDataForSave
+                    // via vscode.postMessage({ type: 'validationError', ... }).
+                    return;
+                } finally {
+                    // Always restore branch context so subsequent saves work correctly.
+                    activities = savedActivities;
+                    connections = savedConnections;
+                }
                 
                 console.log('[Webview] Sending save message (from branch) with filePath:', currentFilePath);
                 vscode.postMessage({ 
                     type: 'save', 
-                    data: data,
+                    data: saveData,
                     filePath: currentFilePath 
                 });
                 return;

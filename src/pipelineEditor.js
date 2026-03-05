@@ -2223,8 +2223,8 @@ class PipelineEditorProvider {
                             secureOutput: a.secureOutput || false,
                             secureInput: a.secureInput || false
                         };
-                    } else if (a.type === 'GetMetadata' || a.type === 'Script' || a.type === 'SqlServerStoredProcedure' || a.type === 'WebActivity' || a.type === 'Lookup' || a.type === 'Delete' || a.type === 'Validation') {
-                        // For GetMetadata, Script, SqlServerStoredProcedure, WebActivity, Lookup, Delete, and Validation, always include full policy section with defaults
+                    } else if (a.type === 'GetMetadata' || a.type === 'Script' || a.type === 'SqlServerStoredProcedure' || a.type === 'WebActivity' || a.type === 'Lookup' || a.type === 'Delete' || a.type === 'Validation' || a.type === 'SynapseNotebook') {
+                        // Always include full policy section with defaults for these activity types
                         activity.policy = {
                             timeout: a.timeout || "0.12:00:00",
                             retry: a.retry !== undefined ? a.retry : 0,
@@ -4642,7 +4642,7 @@ class PipelineEditorProvider {
                     secureInput: a.secureInput || false
                 };
             } else if (['GetMetadata', 'Script', 'SqlServerStoredProcedure', 'WebActivity',
-                        'Lookup', 'Delete', 'Validation'].includes(a.type)) {
+                        'Lookup', 'Delete', 'Validation', 'SynapseNotebook'].includes(a.type)) {
                 activityProps.policy = {
                     timeout: a.timeout || '0.12:00:00',
                     retry: a.retry !== undefined ? a.retry : 0,

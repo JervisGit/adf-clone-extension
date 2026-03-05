@@ -2821,18 +2821,8 @@ class PipelineEditorProvider {
                         
                         typeProperties.enableLogging = false;
                         
-                        // Determine storeSettings type based on dataset
-                        let storeType = 'AzureBlobFSReadSettings'; // Default
-                        if (a.dataset && datasetContents[a.dataset]) {
-                            const dsLocation = datasetContents[a.dataset].properties?.typeProperties?.location;
-                            if (dsLocation) {
-                                if (dsLocation.type === 'AzureBlobFSLocation') {
-                                    storeType = 'AzureBlobFSReadSettings';
-                                } else if (dsLocation.type === 'AzureBlobStorageLocation') {
-                                    storeType = 'AzureBlobStorageReadSettings';
-                                }
-                            }
-                        }
+                        // Delete activity always uses AzureBlobStorageReadSettings regardless of dataset type
+                        const storeType = 'AzureBlobStorageReadSettings';
                         
                         const storeSettings = {
                             type: storeType,
@@ -2842,27 +2832,29 @@ class PipelineEditorProvider {
                         // Add conditional fields based on filePathType
                         if (a.filePathType === 'listOfFiles' && a.fileListPath) {
                             storeSettings.fileListPath = a.fileListPath;
-                        } else if (a.filePathType === 'wildcardFilePath' && a.wildcardFileName) {
-                            storeSettings.wildcardFileName = a.wildcardFileName;
+                        } else if (a.filePathType === 'wildcardFilePath') {
+                            if (a.wildcardFolderPath) storeSettings.wildcardFolderPath = a.wildcardFolderPath;
+                            if (a.wildcardFileName) storeSettings.wildcardFileName = a.wildcardFileName;
+                        } else if (a.filePathType === 'prefix' && a.prefix) {
+                            storeSettings.prefix = a.prefix;
                         }
                         
                         // Add optional fields if set
                         if (a.maxConcurrentConnections) {
                             storeSettings.maxConcurrentConnections = parseInt(a.maxConcurrentConnections);
                         }
-                        if (a.recursive !== undefined) {
+                        // recursive only applies for non-listOfFiles modes
+                        if (a.recursive !== undefined && a.filePathType !== 'listOfFiles') {
                             storeSettings.recursive = a.recursive;
                         }
                         
-                        // Add modified datetime filters (only for filePathInDataset or wildcardFilePath)
-                        if (a.filePathType !== 'listOfFiles') {
+                        // Add modified datetime filters (for filePathInDataset, wildcardFilePath, and prefix)
+                        if (a.filePathType === 'filePathInDataset' || a.filePathType === 'wildcardFilePath' || a.filePathType === 'prefix') {
                             if (a.modifiedDatetimeStart) {
-                                // Convert datetime-local format to ISO format
                                 const startDate = new Date(a.modifiedDatetimeStart);
                                 storeSettings.modifiedDatetimeStart = startDate.toISOString();
                             }
                             if (a.modifiedDatetimeEnd) {
-                                // Convert datetime-local format to ISO format
                                 const endDate = new Date(a.modifiedDatetimeEnd);
                                 storeSettings.modifiedDatetimeEnd = endDate.toISOString();
                             }
@@ -2875,6 +2867,8 @@ class PipelineEditorProvider {
                         delete typeProperties.recursive;
                         delete typeProperties.maxConcurrentConnections;
                         delete typeProperties.filePathType;
+                        delete typeProperties.prefix;
+                        delete typeProperties.wildcardFolderPath;
                         delete typeProperties.wildcardFileName;
                         delete typeProperties.fileListPath;
                         delete typeProperties.modifiedDatetimeStart;
@@ -6443,12 +6437,12 @@ class PipelineEditorProvider {
             // Build Source tab content
             let sourceContent = '';
             if (schema && schema.sourceProperties) {
-                // For Delete activity, add section headers
+                // For Delete activity, add "Filter by last modified" section header
                 if (activity.type === 'Delete') {
                     for (const [key, prop] of Object.entries(schema.sourceProperties)) {
                         // Add "Filter by last modified" header before datetime fields
-                        if ((key === 'modifiedDatetimeStart' || key === 'modifiedDatetimeEnd') && 
-                            (activity.filePathType === 'filePathInDataset' || activity.filePathType === 'wildcardFilePath') &&
+                        if ((key === 'modifiedDatetimeStart' || key === 'modifiedDatetimeEnd') &&
+                            (activity.filePathType === 'filePathInDataset' || activity.filePathType === 'wildcardFilePath' || activity.filePathType === 'prefix') &&
                             !sourceContent.includes('Filter by last modified')) {
                             sourceContent += '<div style="margin-top: 16px; margin-bottom: 12px; font-weight: 600; font-size: 13px; color: var(--vscode-foreground);">Filter by last modified</div>';
                         }
@@ -6695,6 +6689,9 @@ class PipelineEditorProvider {
                             activity._sourceDatasetType = datasetType;
                         } else if (key === 'sinkDataset') {
                             activity._sinkDatasetType = datasetType;
+                        } else if (key === 'dataset' && activity.type === 'Delete') {
+                            // Track location type for Delete (used for future conditional logic)
+                            activity._datasetLocationType = datasetContents[datasetName].properties?.typeProperties?.location?.type;
                         }
                         
                         // Re-render the current tab to show dataset-specific fields
@@ -7572,10 +7569,7 @@ class PipelineEditorProvider {
                             const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
                             if (activeTab === 'settings') {
                                 showProperties(activity, 'settings');
-                            }
-                        } else if (key === 'filePathType') {
-                            const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
-                            if (activeTab === 'source') {
+                            } else if (activeTab === 'source') {
                                 showProperties(activity, 'source');
                             }
                         } else if (key === 'servicePrincipalAuthMethod' || key === 'servicePrincipalCredentialType') {
@@ -8540,9 +8534,13 @@ class PipelineEditorProvider {
                                 if (ss.fileListPath) {
                                     activity.filePathType = 'listOfFiles';
                                     activity.fileListPath = ss.fileListPath;
-                                } else if (ss.wildcardFileName) {
+                                } else if (ss.prefix) {
+                                    activity.filePathType = 'prefix';
+                                    activity.prefix = ss.prefix;
+                                } else if (ss.wildcardFileName || ss.wildcardFolderPath) {
                                     activity.filePathType = 'wildcardFilePath';
-                                    activity.wildcardFileName = ss.wildcardFileName;
+                                    if (ss.wildcardFolderPath) activity.wildcardFolderPath = ss.wildcardFolderPath;
+                                    if (ss.wildcardFileName) activity.wildcardFileName = ss.wildcardFileName;
                                 } else {
                                     activity.filePathType = 'filePathInDataset';
                                 }

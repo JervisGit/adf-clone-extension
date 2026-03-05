@@ -189,6 +189,25 @@
       }
     }
   },
+  "Switch": {
+    "name": "Switch",
+    "isContainer": true,
+    "tabs": ["General", "Activities", "User Properties"],
+    "commonProperties": {
+      "name": { "type": "string", "label": "Name", "required": true },
+      "description": { "type": "string", "label": "Description", "multiline": true },
+      "state": { "type": "radio", "label": "Activity state", "options": ["Activated", "Deactivated"], "default": "Activated" }
+    },
+    "typeProperties": {
+      "on": {
+        "type": "expression",
+        "label": "On Expression",
+        "required": true,
+        "placeholder": "@pipeline().parameters.channel",
+        "helpText": "Expression whose value determines which case to execute"
+      }
+    }
+  },
   "Lookup": {
     "name": "Lookup",
     "tabs": ["General", "Settings", "User Properties"],

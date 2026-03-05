@@ -2141,6 +2141,15 @@ class PipelineEditorProvider {
                             throw new Error('ForEach activity "' + a.name + '" has no body activities');
                         }
                     }
+                    if (a.type === 'Switch') {
+                        if (!a.on || a.on.trim() === '') {
+                            vscode.postMessage({
+                                type: 'validationError',
+                                message: 'Activity "' + a.name + '" requires an On Expression. Please set the expression in the Activities tab before saving.'
+                            });
+                            throw new Error('Switch activity "' + a.name + '" is missing required On Expression field');
+                        }
+                    }
                 }
             }
             
@@ -2177,6 +2186,16 @@ class PipelineEditorProvider {
                     if (nested && Array.isArray(nested)) collectVariables(nested);
                     if (trueActs && Array.isArray(trueActs)) collectVariables(trueActs);
                     if (falseActs && Array.isArray(falseActs)) collectVariables(falseActs);
+                    // Recurse into Switch cases and defaultActivities
+                    const switchCases = a.cases || a.typeProperties?.cases;
+                    if (switchCases && Array.isArray(switchCases)) {
+                        switchCases.forEach(c => {
+                            const caseActs = c.activities;
+                            if (caseActs && Array.isArray(caseActs)) collectVariables(caseActs);
+                        });
+                    }
+                    const defaultActs = a.defaultActivities || a.typeProperties?.defaultActivities;
+                    if (defaultActs && Array.isArray(defaultActs)) collectVariables(defaultActs);
                 });
             }
             collectVariables(activities);
@@ -2197,6 +2216,13 @@ class PipelineEditorProvider {
                         c.typeProperties.ifTrueActivities = c.typeProperties.ifTrueActivities.map(deepCleanNestedActivity);
                     if (Array.isArray(c.typeProperties.ifFalseActivities))
                         c.typeProperties.ifFalseActivities = c.typeProperties.ifFalseActivities.map(deepCleanNestedActivity);
+                    if (Array.isArray(c.typeProperties.cases))
+                        c.typeProperties.cases = c.typeProperties.cases.map(swCase => ({
+                            ...swCase,
+                            activities: Array.isArray(swCase.activities) ? swCase.activities.map(deepCleanNestedActivity) : []
+                        }));
+                    if (Array.isArray(c.typeProperties.defaultActivities))
+                        c.typeProperties.defaultActivities = c.typeProperties.defaultActivities.map(deepCleanNestedActivity);
                 }
                 return c;
             }
@@ -3406,6 +3432,45 @@ class PipelineEditorProvider {
                         }
                     }
                     
+                    // Handle Switch activity
+                    if (a.type === 'Switch') {
+                        // Remove internal properties that shouldn't be serialized
+                        delete typeProperties.isContainer;
+                        delete typeProperties.cases;
+                        delete typeProperties.defaultActivities;
+                        
+                        // Convert on expression from string to Expression object format
+                        if (a.on !== undefined) {
+                            typeProperties.on = {
+                                value: a.on || '',
+                                type: 'Expression'
+                            };
+                        }
+                        
+                        // Serialize cases array
+                        if (a.cases && a.cases.length > 0) {
+                            typeProperties.cases = a.cases.map(c => ({
+                                value: c.value || '',
+                                activities: (c.activities || []).map(nestedAct => {
+                                    const cleanAct = { ...nestedAct };
+                                    delete cleanAct.x;
+                                    delete cleanAct.y;
+                                    return cleanAct;
+                                })
+                            }));
+                        }
+                        
+                        // Serialize defaultActivities
+                        if (a.defaultActivities && a.defaultActivities.length > 0) {
+                            typeProperties.defaultActivities = a.defaultActivities.map(nestedAct => {
+                                const cleanAct = { ...nestedAct };
+                                delete cleanAct.x;
+                                delete cleanAct.y;
+                                return cleanAct;
+                            });
+                        }
+                    }
+                    
                     // Handle ForEach activity
                     if (a.type === 'ForEach') {
                         // Remove internal properties that shouldn't be serialized
@@ -3679,6 +3744,15 @@ class PipelineEditorProvider {
                     this.state = 'Activated';
                 }
                 
+                // Set default values for Switch
+                if (type === 'Switch') {
+                    this.isContainer = true;
+                    this.on = '';
+                    this.cases = []; // array of {value: string, activities: []}
+                    this.defaultActivities = [];
+                    this.state = 'Activated';
+                }
+                
                 this.createDOMElement();
             }
 
@@ -3690,6 +3764,7 @@ class PipelineEditorProvider {
                     'Notebook': '#f2c811',
                     'ForEach': '#7fba00',
                     'IfCondition': '#ff8c00',
+                    'Switch': '#6264a7',
                     'Wait': '#00bcf2',
                     'WebActivity': '#8661c5',
                     'WebHook': '#9b59b6',
@@ -3893,17 +3968,17 @@ class PipelineEditorProvider {
                         </div>
                     \`;
                 } else if (this.type === 'Switch') {
-                    // Count activities across all cases
+                    // Count activities across all cases (array format: [{value, activities}])
                     let totalCount = 0;
                     if (this.cases) {
-                        Object.values(this.cases).forEach(caseActivities => {
-                            totalCount += caseActivities.length;
+                        this.cases.forEach(c => {
+                            totalCount += (c.activities || []).length;
                         });
                     }
                     if (this.defaultActivities) {
                         totalCount += this.defaultActivities.length;
                     }
-                    const caseCount = this.cases ? Object.keys(this.cases).length : 0;
+                    const caseCount = this.cases ? this.cases.length : 0;
                     infoSection.innerHTML = \`
                         <div class="container-stat">
                             <span class="label">Cases:</span> <span class="count">\${caseCount}</span>
@@ -4087,6 +4162,7 @@ class PipelineEditorProvider {
                     'Notebook': 'Notebook',
                     'ForEach': 'ForEach',
                     'IfCondition': 'If Condition',
+                    'Switch': 'Switch',
                     'Wait': 'Wait',
                     'WebActivity': 'Web Activity',
                     'WebHook': 'WebHook',
@@ -4104,6 +4180,7 @@ class PipelineEditorProvider {
                     'Notebook': '📓',
                     'ForEach': '🔁',
                     'IfCondition': '❓',
+                    'Switch': '🔀',
                     'Wait': '⏱️',
                     'WebActivity': '🌐',
                     'WebHook': '🪝',
@@ -4292,7 +4369,8 @@ class PipelineEditorProvider {
             // IfCondition: cannot contain IfCondition, ForEach, Until, or Switch.
             const restrictedByContainer = {
                 'ForEach':     ['ForEach', 'Until'],
-                'IfCondition': ['IfCondition', 'ForEach', 'Until', 'Switch']
+                'IfCondition': ['IfCondition', 'ForEach', 'Until', 'Switch'],
+                'Switch':      ['IfCondition', 'ForEach', 'Until', 'Switch']
             };
             const restrictedTypes = (isInBranch && restrictedByContainer[containerType]) || [];
             document.querySelectorAll('.activity-item').forEach(item => {
@@ -4706,6 +4784,23 @@ class PipelineEditorProvider {
                 });
                 if (a.ifTrueActivities) tp.ifTrueActivities = _stripUiFields(a.ifTrueActivities);
                 if (a.ifFalseActivities) tp.ifFalseActivities = _stripUiFields(a.ifFalseActivities);
+            }
+
+            // ── Switch: on expression + preserve case children ─────────────────────────
+            if (a.type === 'Switch') {
+                if (a.on) tp.on = { value: a.on, type: 'Expression' };
+                const _stripSwitchUiFields = arr => (arr || []).map(act => {
+                    const c = Object.assign({}, act);
+                    delete c.x; delete c.y;
+                    return c;
+                });
+                if (a.cases) {
+                    tp.cases = a.cases.map(c => ({
+                        value: c.value || '',
+                        activities: _stripSwitchUiFields(c.activities)
+                    }));
+                }
+                if (a.defaultActivities) tp.defaultActivities = _stripSwitchUiFields(a.defaultActivities);
             }
 
             // ── Filter: expression objects ─────────────────────────────────────────────
@@ -5199,7 +5294,139 @@ class PipelineEditorProvider {
             
             draw();
         };
-        
+
+        // Open the canvas editor for a Switch case or default branch
+        window.openSwitchEditor = function(activityId, branch) {
+            const activity = activities.find(a => a.id == activityId);
+            if (!activity) return;
+
+            // Save current state
+            const savedState = {
+                activities: activities,
+                connections: connections,
+                selectedActivity: selectedActivity
+            };
+
+            // Push current context if inside another editor (enables nesting)
+            if (editingContext) editingContextStack.push(editingContext);
+            editingContext = {
+                parentActivity: activity,
+                branch: branch,
+                savedState: savedState
+            };
+
+            // Resolve which activities to load
+            let branchActivities;
+            if (branch === 'default') {
+                branchActivities = activity.defaultActivities || [];
+            } else if (branch.startsWith('case:')) {
+                const caseIdx = parseInt(branch.split(':')[1]);
+                branchActivities = (activity.cases[caseIdx] && activity.cases[caseIdx].activities) || [];
+            } else {
+                branchActivities = [];
+            }
+
+            // Clear current canvas
+            activities = [];
+            connections = [];
+            selectedActivity = null;
+
+            const canvasWrapper = document.getElementById('canvasWrapper');
+            const activityElements = canvasWrapper.querySelectorAll('.activity-box');
+            console.log('[openSwitchEditor] Found', activityElements.length, 'activity elements to remove');
+            activityElements.forEach(el => {
+                if (el && el.parentNode) {
+                    console.log('[openSwitchEditor] Removing element:', el.dataset.activityId, el.className);
+                    el.parentNode.removeChild(el);
+                }
+            });
+
+            // Load branch activities into canvas
+            const activityMap = new Map();
+            console.log('[openSwitchEditor] Loading', branchActivities?.length || 0, 'branch activities');
+            if (branchActivities && Array.isArray(branchActivities)) {
+                branchActivities.forEach((actData, idx) => {
+                    console.log('[openSwitchEditor] Loading activity:', actData.name, actData.type);
+                    const x = actData.x !== undefined ? actData.x : (100 + (idx % 4) * 220);
+                    const y = actData.y !== undefined ? actData.y : (100 + Math.floor(idx / 4) * 120);
+
+                    const act = new Activity(actData.type, x, y, canvasWrapper);
+                    act.name = actData.name;
+                    act.description = actData.description || '';
+
+                    if (actData.typeProperties) {
+                        Object.assign(act, actData.typeProperties);
+                        // Normalize expression-type properties that may still be Expression objects
+                        if (act.type === 'Switch' && act.on && typeof act.on === 'object') {
+                            act.on = act.on.value || '';
+                        }
+                        if (act.type === 'IfCondition' && act.expression && typeof act.expression === 'object') {
+                            act.expression = act.expression.value || '';
+                        }
+                        if ((act.type === 'ForEach' || act.type === 'Until') && act.items && typeof act.items === 'object') {
+                            act.items = act.items.value || '';
+                        }
+                    }
+
+                    act.userProperties = actData.userProperties || [];
+                    act.container = canvasWrapper;
+                    activities.push(act);
+                    activityMap.set(actData.name, act);
+                });
+
+                // Recreate connections
+                branchActivities.forEach((actData) => {
+                    if (actData.dependsOn && actData.dependsOn.length > 0) {
+                        const toActivity = activityMap.get(actData.name);
+                        if (toActivity) {
+                            actData.dependsOn.forEach(dep => {
+                                const fromActivity = activityMap.get(dep.activity);
+                                if (fromActivity) {
+                                    const condition = dep.dependencyConditions?.[0] || 'Succeeded';
+                                    const connection = new Connection(fromActivity, toActivity, condition);
+                                    connections.push(connection);
+                                }
+                            });
+                        }
+                    }
+                });
+            }
+
+            draw();
+            updateBreadcrumb();
+            updateSidebarForBranchEditing(true, 'Switch');
+            document.getElementById('backToMainBtn').style.display = 'flex';
+            showProperties(null);
+            draw();
+        };
+
+        // Add a new empty case to a Switch activity
+        window.addSwitchCase = function(activityId) {
+            const activity = activities.find(a => a.id == activityId);
+            if (!activity) return;
+            activity.cases = activity.cases || [];
+            activity.cases.push({ value: '', activities: [] });
+            markAsDirty();
+            showProperties(activity, 'activities');
+        };
+
+        // Remove a case from a Switch activity
+        window.removeSwitchCase = function(activityId, caseIdx) {
+            const activity = activities.find(a => a.id == activityId);
+            if (!activity) return;
+            activity.cases.splice(caseIdx, 1);
+            markAsDirty();
+            showProperties(activity, 'activities');
+        };
+
+        // Update the value of a Switch case
+        window.updateSwitchCaseValue = function(activityId, caseIdx, newValue) {
+            const activity = activities.find(a => a.id == activityId);
+            if (!activity || !activity.cases[caseIdx]) return;
+            activity.cases[caseIdx].value = newValue;
+            markAsDirty();
+        };
+
         window.backToMainPipeline = function() {
             if (!editingContext) return;
             
@@ -5236,6 +5463,13 @@ class PipelineEditorProvider {
                 editingContext.parentActivity.ifFalseActivities = branchData;
             } else if (editingContext.branch === 'activities') {
                 editingContext.parentActivity.activities = branchData;
+            } else if (editingContext.branch === 'default') {
+                editingContext.parentActivity.defaultActivities = branchData;
+            } else if (editingContext.branch && editingContext.branch.startsWith('case:')) {
+                const caseIdx = parseInt(editingContext.branch.split(':')[1]);
+                if (editingContext.parentActivity.cases[caseIdx]) {
+                    editingContext.parentActivity.cases[caseIdx].activities = branchData;
+                }
             }
             
             // Update container info display
@@ -5248,6 +5482,27 @@ class PipelineEditorProvider {
                             <span class="label">Items:</span> 
                             <span class="count">\${bodyCount}</span> 
                             <span class="label">\${bodyCount === 1 ? 'activity' : 'activities'}</span>
+                        </div>
+                    \`;
+                } else if (editingContext.parentActivity.type === 'Switch') {
+                    let swTotalCount = 0;
+                    if (editingContext.parentActivity.cases) {
+                        editingContext.parentActivity.cases.forEach(c => {
+                            swTotalCount += (c.activities || []).length;
+                        });
+                    }
+                    if (editingContext.parentActivity.defaultActivities) {
+                        swTotalCount += editingContext.parentActivity.defaultActivities.length;
+                    }
+                    const swCaseCount = editingContext.parentActivity.cases ? editingContext.parentActivity.cases.length : 0;
+                    containerInfo.innerHTML = \`
+                        <div class="container-stat">
+                            <span class="label">Cases:</span> <span class="count">\${swCaseCount}</span>
+                        </div>
+                        <div class="container-stat">
+                            <span class="label">Total:</span> 
+                            <span class="count">\${swTotalCount}</span> 
+                            <span class="label">\${swTotalCount === 1 ? 'activity' : 'activities'}</span>
                         </div>
                     \`;
                 } else {
@@ -5353,6 +5608,14 @@ class PipelineEditorProvider {
                     if (ctx.branch === 'true') branchLabel = 'If True';
                     else if (ctx.branch === 'false') branchLabel = 'If False';
                     else if (ctx.branch === 'activities') branchLabel = 'Body';
+                    else if (ctx.branch === 'default') branchLabel = 'Default';
+                    else if (ctx.branch && ctx.branch.startsWith('case:')) {
+                        const caseIdx = parseInt(ctx.branch.split(':')[1]);
+                        const caseVal = ctx.parentActivity.cases && ctx.parentActivity.cases[caseIdx]
+                            ? ctx.parentActivity.cases[caseIdx].value
+                            : caseIdx;
+                        branchLabel = 'Case: ' + (caseVal || caseIdx);
+                    }
                     else branchLabel = ctx.branch;
                     parts.push('<span style="color: var(--vscode-descriptionForeground);">' + ctx.parentActivity.name + '</span>');
                     parts.push('<span style="font-weight: 600;">' + branchLabel + '</span>');
@@ -5451,6 +5714,91 @@ class PipelineEditorProvider {
                             \${renderActivitiesList(bodyActivities)}
                             <div style="margin-top: 8px; font-size: 11px; color: var(--vscode-descriptionForeground);">
                                 \${bodyActivities.length} \${bodyActivities.length === 1 ? 'activity' : 'activities'}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            \`;
+        }
+
+        // Generate Activities tab content for Switch
+        function generateSwitchActivitiesTab(activity) {
+            const cases = activity.cases || [];
+            const defaultActivities = activity.defaultActivities || [];
+
+            const renderActivitiesList = (actList) => {
+                if (actList.length === 0) {
+                    return '<div class="empty-branch">No activities</div>';
+                }
+                return actList.map(act => {
+                    const icon = getIconForType(act.type);
+                    return \`<div class="activity-pill">
+                        <span class="activity-pill-icon">\${icon}</span>
+                        <span>\${act.name}</span>
+                    </div>\`;
+                }).join('');
+            };
+
+            const casesHtml = cases.map((c, idx) => {
+                const caseActivities = c.activities || [];
+                const safeValue = (c.value || '').replace(/"/g, '&quot;');
+                return \`
+                    <div class="branch-editor" style="margin-bottom: 12px;">
+                        <div class="branch-header" style="align-items: flex-start;">
+                            <div style="display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0;">
+                                <span style="white-space: nowrap; font-size: 11px; color: var(--vscode-descriptionForeground);">Case:</span>
+                                <input type="text" class="property-input" style="flex: 1; padding: 2px 6px; font-size: 11px; min-width: 0;"
+                                    value="\${safeValue}"
+                                    onchange="updateSwitchCaseValue('\${activity.id}', \${idx}, this.value)"
+                                    placeholder="case value">
+                            </div>
+                            <div style="display: flex; gap: 4px; margin-left: 6px; flex-shrink: 0;">
+                                <button class="edit-activities-btn" onclick="openSwitchEditor('\${activity.id}', 'case:\${idx}')">
+                                    Edit
+                                </button>
+                                <button class="edit-activities-btn" style="background: var(--vscode-inputValidation-errorBackground, #5a1d1d); border-color: #d13438; color: #f48771;"
+                                    onclick="removeSwitchCase('\${activity.id}', \${idx})">
+                                    ✕
+                                </button>
+                            </div>
+                        </div>
+                        <div class="branch-content">
+                            \${renderActivitiesList(caseActivities)}
+                            <div style="margin-top: 8px; font-size: 11px; color: var(--vscode-descriptionForeground);">
+                                \${caseActivities.length} \${caseActivities.length === 1 ? 'activity' : 'activities'}
+                            </div>
+                        </div>
+                    </div>
+                \`;
+            }).join('');
+
+            return \`
+                <div style="padding: 4px 0;">
+                    <div class="property-group" style="margin-bottom: 16px;">
+                        <div class="property-label">On Expression <span style="color: #d13438;">*</span></div>
+                        <textarea class="property-input" id="propOn" rows="3" placeholder="@pipeline().parameters.channel">\${typeof activity.on === 'object' ? (activity.on?.value || '') : (activity.on || '')}</textarea>
+                    </div>
+
+                    \${casesHtml}
+
+                    <div style="margin-bottom: 16px;">
+                        <button class="edit-activities-btn" style="width: 100%; justify-content: center;"
+                            onclick="addSwitchCase('\${activity.id}')">
+                            + Add Case
+                        </button>
+                    </div>
+
+                    <div class="branch-editor">
+                        <div class="branch-header">
+                            <span>Default</span>
+                            <button class="edit-activities-btn" onclick="openSwitchEditor('\${activity.id}', 'default')">
+                                Edit Activities
+                            </button>
+                        </div>
+                        <div class="branch-content">
+                            \${renderActivitiesList(defaultActivities)}
+                            <div style="margin-top: 8px; font-size: 11px; color: var(--vscode-descriptionForeground);">
+                                \${defaultActivities.length} \${defaultActivities.length === 1 ? 'activity' : 'activities'}
                             </div>
                         </div>
                     </div>
@@ -6561,6 +6909,8 @@ class PipelineEditorProvider {
                     tabContent = generateIfConditionActivitiesTab(activity);
                 } else if (tabId === 'activities' && activity.type === 'ForEach') {
                     tabContent = generateForEachActivitiesTab(activity);
+                } else if (tabId === 'activities' && activity.type === 'Switch') {
+                    tabContent = generateSwitchActivitiesTab(activity);
                 }
                 
                 console.log(\`Tab \${tabName} (id: \${tabId}) content length: \${tabContent.length}\`);
@@ -7992,6 +8342,15 @@ class PipelineEditorProvider {
                     markAsDirty();
                 });
             }
+
+            // On expression field for Switch activities
+            const propOn = document.getElementById('propOn');
+            if (propOn) {
+                propOn.addEventListener('input', (e) => {
+                    activity.on = e.target.value;
+                    markAsDirty();
+                });
+            }
             
             document.getElementById('propX').addEventListener('input', (e) => {
                 const x = parseInt(e.target.value) || 0;
@@ -8078,6 +8437,13 @@ class PipelineEditorProvider {
                     editingContext.parentActivity.ifFalseActivities = branchData;
                 } else if (editingContext.branch === 'activities') {
                     editingContext.parentActivity.activities = branchData;
+                } else if (editingContext.branch === 'default') {
+                    editingContext.parentActivity.defaultActivities = branchData;
+                } else if (editingContext.branch && editingContext.branch.startsWith('case:')) {
+                    const _caseIdx = parseInt(editingContext.branch.split(':')[1]);
+                    if (editingContext.parentActivity.cases[_caseIdx]) {
+                        editingContext.parentActivity.cases[_caseIdx].activities = branchData;
+                    }
                 }
                 
                 // Walk up the context stack: serialize each ancestor canvas into its parent activity.
@@ -8120,12 +8486,23 @@ class PipelineEditorProvider {
                     if (_ctx.branch === 'true') _ctx.parentActivity.ifTrueActivities = _levelBranchData;
                     else if (_ctx.branch === 'false') _ctx.parentActivity.ifFalseActivities = _levelBranchData;
                     else if (_ctx.branch === 'activities') _ctx.parentActivity.activities = _levelBranchData;
+                    else if (_ctx.branch === 'default') _ctx.parentActivity.defaultActivities = _levelBranchData;
+                    else if (_ctx.branch && _ctx.branch.startsWith('case:')) {
+                        const _stackCaseIdx = parseInt(_ctx.branch.split(':')[1]);
+                        if (_ctx.parentActivity.cases[_stackCaseIdx]) {
+                            _ctx.parentActivity.cases[_stackCaseIdx].activities = _levelBranchData;
+                        }
+                    }
                 }
                 
-                // Validate current branch: IfCondition must have an expression
+                // Validate current branch: IfCondition must have an expression; Switch must have an on expression
                 for (const _a of activities) {
                     if (_a.type === 'IfCondition' && (!_a.expression || _a.expression.trim() === '')) {
                         vscode.postMessage({ type: 'error', text: 'If Condition "' + _a.name + '" requires an expression.' });
+                        return;
+                    }
+                    if (_a.type === 'Switch' && (!_a.on || _a.on.trim() === '')) {
+                        vscode.postMessage({ type: 'error', text: 'Switch "' + _a.name + '" requires an On Expression.' });
                         return;
                     }
                 }
@@ -8977,6 +9354,45 @@ class PipelineEditorProvider {
                                 }
                             }
                             Object.assign(activity, cleanedPropsForEach);
+                        } else if (activityData.type === 'Switch') {
+                            // Handle Switch activities
+                            const tp = activityData.typeProperties;
+
+                            // Convert on expression object to string
+                            if (tp.on && typeof tp.on === 'object') {
+                                activity.on = tp.on.value || '';
+                            } else if (typeof tp.on === 'string') {
+                                activity.on = tp.on;
+                            } else {
+                                activity.on = '';
+                            }
+
+                            // Load cases array: [{value, activities}]
+                            if (tp.cases && Array.isArray(tp.cases)) {
+                                activity.cases = tp.cases.map(c => ({
+                                    value: c.value || '',
+                                    activities: Array.isArray(c.activities) ? c.activities : []
+                                }));
+                            } else {
+                                activity.cases = [];
+                            }
+
+                            // Load defaultActivities
+                            if (tp.defaultActivities && Array.isArray(tp.defaultActivities)) {
+                                activity.defaultActivities = tp.defaultActivities;
+                            } else {
+                                activity.defaultActivities = [];
+                            }
+
+                            // Copy remaining typeProperties (excluding the ones we handle manually)
+                            const excludePropsSwitch = ['on', 'cases', 'defaultActivities'];
+                            const cleanedPropsSwitch = {};
+                            for (const key in tp) {
+                                if (!excludePropsSwitch.includes(key)) {
+                                    cleanedPropsSwitch[key] = tp[key];
+                                }
+                            }
+                            Object.assign(activity, cleanedPropsSwitch);
                         } else {
                             Object.assign(activity, activityData.typeProperties);
                         }

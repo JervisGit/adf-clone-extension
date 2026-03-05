@@ -2149,6 +2149,13 @@ class PipelineEditorProvider {
                             });
                             throw new Error('Switch activity "' + a.name + '" is missing required On Expression field');
                         }
+                        if (!a.cases || a.cases.length === 0) {
+                            vscode.postMessage({
+                                type: 'validationError',
+                                message: 'Activity "' + a.name + '" must have at least one case. Please add a case in the Activities tab before saving.'
+                            });
+                            throw new Error('Switch activity "' + a.name + '" has no cases');
+                        }
                     }
                 }
             }
@@ -8503,6 +8510,10 @@ class PipelineEditorProvider {
                     }
                     if (_a.type === 'Switch' && (!_a.on || _a.on.trim() === '')) {
                         vscode.postMessage({ type: 'error', text: 'Switch "' + _a.name + '" requires an On Expression.' });
+                        return;
+                    }
+                    if (_a.type === 'Switch' && (!_a.cases || _a.cases.length === 0)) {
+                        vscode.postMessage({ type: 'error', text: 'Switch "' + _a.name + '" must have at least one case.' });
                         return;
                     }
                 }

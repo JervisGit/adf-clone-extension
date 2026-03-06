@@ -4540,7 +4540,7 @@ class PipelineEditorProvider {
                 'ForEach':     ['ForEach', 'Until'],
                 'IfCondition': ['IfCondition', 'ForEach', 'Until', 'Switch'],
                 'Switch':      ['IfCondition', 'ForEach', 'Until', 'Switch'],
-                'Until':       ['Validation']
+                'Until':       ['Validation', 'ForEach', 'Until']
             };
             let restrictedTypes = (isInBranch && restrictedByContainer[containerType]) || [];
             // Also union in restrictions from ancestor editing contexts.

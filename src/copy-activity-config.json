@@ -34,12 +34,18 @@
             "conditional": { "field": "src_useQuery", "value": "Stored procedure" },
             "jsonPath": "sqlReaderStoredProcedureName"
           },
+          "src_storedProcedureParameters": {
+            "type": "copy-sp-parameters",
+            "label": "Stored procedure parameters",
+            "conditional": { "field": "src_useQuery", "value": "Stored procedure" },
+            "jsonPath": "storedProcedureParameters"
+          },
           "src_queryTimeout": {
-            "type": "number",
-            "label": "Query timeout (minutes)",
-            "default": 120,
-            "min": 1,
-            "placeholder": "120",
+            "type": "text",
+            "label": "Query timeout (HH:MM:SS)",
+            "default": "02:00:00",
+            "placeholder": "02:00:00",
+            "writeDefault": true,
             "jsonPath": "queryTimeout"
           },
           "src_isolationLevel": {
@@ -83,11 +89,54 @@
             "nestedConditional": { "field": "src_useQuery", "value": "Table" },
             "jsonPath": "partitionSettings.partitionLowerBound"
           },
-          "src_maxConcurrentConnections": {
-            "type": "number",
-            "label": "Max concurrent connections",
-            "min": 1,
-            "jsonPath": "maxConcurrentConnections"
+          "src_partitionOption_query": {
+            "type": "radio",
+            "label": "Partition option",
+            "options": ["None", "Dynamic range"],
+            "optionValues": ["None", "DynamicRange"],
+            "default": "None",
+            "conditional": { "field": "src_useQuery", "value": "Query" },
+            "jsonPath": "partitionOption"
+          },
+          "src_partitionColumnName_q": {
+            "type": "text",
+            "label": "Partition column name",
+            "placeholder": "Column name",
+            "conditional": { "field": "src_partitionOption_query", "value": "DynamicRange" },
+            "nestedConditional": { "field": "src_useQuery", "value": "Query" },
+            "jsonPath": "partitionSettings.partitionColumnName"
+          },
+          "src_partitionUpperBound_q": {
+            "type": "text",
+            "label": "Partition upper bound",
+            "placeholder": "Upper bound value",
+            "conditional": { "field": "src_partitionOption_query", "value": "DynamicRange" },
+            "nestedConditional": { "field": "src_useQuery", "value": "Query" },
+            "jsonPath": "partitionSettings.partitionUpperBound"
+          },
+          "src_partitionLowerBound_q": {
+            "type": "text",
+            "label": "Partition lower bound",
+            "placeholder": "Lower bound value",
+            "conditional": { "field": "src_partitionOption_query", "value": "DynamicRange" },
+            "nestedConditional": { "field": "src_useQuery", "value": "Query" },
+            "jsonPath": "partitionSettings.partitionLowerBound"
+          },
+          "src_partitionOption_sp": {
+            "type": "radio",
+            "label": "Partition option",
+            "options": ["None", "Physical partitions of table", "Dynamic range"],
+            "optionValues": ["None", "PhysicalPartitionsOfTable", "DynamicRange"],
+            "disabledOptionValues": ["PhysicalPartitionsOfTable", "DynamicRange"],
+            "default": "None",
+            "conditional": { "field": "src_useQuery", "value": "Stored procedure" },
+            "jsonPath": "partitionOption"
+          },
+          "src_additionalColumns": {
+            "type": "additional-columns",
+            "label": "Additional columns",
+            "filterEmpty": "name",
+            "jsonPath": "additionalColumns"
           }
         },
         "sink": {

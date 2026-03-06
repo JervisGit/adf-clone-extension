@@ -2548,9 +2548,32 @@ class PipelineEditorProvider {
                             const _srcFields = (_srcTypeConf.fields && _srcTypeConf.fields.source) || {};
                             for (const [_fk, _fc] of Object.entries(_srcFields)) {
                                 if (!_fc.jsonPath) continue;
-                                const _v = a[_fk];
+                                // Check conditional
+                                if (_fc.conditional) {
+                                    const _condVal = a[_fc.conditional.field];
+                                    const _condExpected = _fc.conditional.value;
+                                    const _condMet = Array.isArray(_condExpected) ? _condExpected.includes(_condVal) : _condVal === _condExpected;
+                                    if (!_condMet) continue;
+                                }
+                                // Check nestedConditional
+                                if (_fc.nestedConditional) {
+                                    const _nCondVal = a[_fc.nestedConditional.field];
+                                    const _nCondExpected = _fc.nestedConditional.value;
+                                    const _nCondMet = Array.isArray(_nCondExpected) ? _nCondExpected.includes(_nCondVal) : _nCondVal === _nCondExpected;
+                                    if (!_nCondMet) continue;
+                                }
+                                let _v = a[_fk];
                                 if (_fc.omitWhenValue !== undefined && _v === _fc.omitWhenValue) continue;
-                                if (_v !== undefined && _v !== null && _v !== '') {
+                                // For filterEmpty arrays (e.g. additional-columns), strip blank-name entries
+                                if (_fc.filterEmpty && Array.isArray(_v)) {
+                                    _v = _v.filter(item => item[_fc.filterEmpty] && String(item[_fc.filterEmpty]).trim() !== '');
+                                } else if (_fc.filterEmpty && !Array.isArray(_v)) {
+                                    // Stale non-array value (e.g. from old plain-text save) — skip entirely
+                                    continue;
+                                }
+                                // Skip empty arrays and empty objects
+                                const _srcIsEmpty = (Array.isArray(_v) && _v.length === 0) || (_v !== undefined && _v !== null && typeof _v === 'object' && !Array.isArray(_v) && Object.keys(_v).length === 0);
+                                if (!_srcIsEmpty && _v !== undefined && _v !== null && _v !== '') {
                                     _setValueByPath(_src, _fc.jsonPath, _v);
                                 } else if (_fc.writeDefault === true && _fc.default !== undefined) {
                                     _setValueByPath(_src, _fc.jsonPath, _fc.default);
@@ -6468,6 +6491,7 @@ class PipelineEditorProvider {
                             // Use optionValues if available, otherwise use the option itself
                             const optValue = prop.optionValues ? prop.optionValues[idx] : opt;
                             const checked = optValue === value ? 'checked' : '';
+                            const isDisabledOpt = prop.disabledOptionValues && prop.disabledOptionValues.includes(optValue);
                             // Custom display names
                             let displayName;
                             if (opt === 'storedProcedure') displayName = 'Stored procedure';
@@ -6475,8 +6499,8 @@ class PipelineEditorProvider {
                             else if (opt === 'wildcardFilePath') displayName = 'Wildcard file path';
                             else if (opt === 'listOfFiles') displayName = 'List of files';
                             else displayName = opt.charAt(0).toUpperCase() + opt.slice(1);
-                            fieldHtml += \`<label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">\`;
-                            fieldHtml += \`<input type="radio" name="\${key}" data-key="\${key}" value="\${optValue}" \${checked} style="margin: 0;">\`;
+                            fieldHtml += \`<label style="display: flex; align-items: center; gap: 6px; cursor: \${isDisabledOpt ? 'not-allowed' : 'pointer'}; opacity: \${isDisabledOpt ? '0.4' : '1'};">\`;
+                            fieldHtml += \`<input type="radio" name="\${key}" data-key="\${key}" value="\${optValue}" \${checked} \${isDisabledOpt ? 'disabled' : ''} style="margin: 0;">\`;
                             fieldHtml += \`<span>\${displayName}</span>\`;
                             fieldHtml += \`</label>\`;
                         });
@@ -7040,6 +7064,29 @@ class PipelineEditorProvider {
                         fieldHtml += \`</div></div>\`;
                         break;
                     }
+                    case 'additional-columns': {
+                        // Renders a list of {name, value} entries.
+                        // Value is a free-text field pre-populated with $$COLUMN: but fully editable.
+                        const _acData = Array.isArray(activity[key]) ? activity[key] : [];
+                        fieldHtml += \`<div style="flex: 1;">\`;
+                        fieldHtml += \`<button type="button" class="add-additional-col-btn" data-key="\${key}" style="padding: 4px 8px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; font-size: 11px; margin-bottom: 8px;">+ New</button>\`;
+                        if (_acData.length > 0) {
+                            fieldHtml += \`
+                                <div style="display: grid; grid-template-columns: 1fr 1fr 26px; gap: 6px; margin-bottom: 4px; font-size: 11px; font-weight: 600; color: var(--vscode-descriptionForeground);">
+                                    <div>Name</div><div>Value</div><div></div>
+                                </div>\`;
+                            _acData.forEach((_acEntry, _acIdx) => {
+                                fieldHtml += \`
+                                <div class="additional-col-row" style="display: grid; grid-template-columns: 1fr 1fr 26px; gap: 6px; margin-bottom: 6px; align-items: center;">
+                                    <input type="text" class="property-input ac-name-input" data-key="\${key}" data-index="\${_acIdx}" value="\${_acEntry.name || ''}" placeholder="Column name" style="font-size: 11px; padding: 3px 6px;">
+                                    <input type="text" class="property-input ac-value-input" data-key="\${key}" data-index="\${_acIdx}" value="\${_acEntry.value || ''}" placeholder="$$COLUMN:columnName" style="font-size: 11px; padding: 3px 6px;">
+                                    <button type="button" class="remove-additional-col-btn" data-key="\${key}" data-index="\${_acIdx}" style="padding: 2px 4px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; font-size: 10px;">&times;</button>
+                                </div>\`;
+                            });
+                        }
+                        fieldHtml += \`</div>\`;
+                        break;
+                    }
                     case 'namespace-prefixes':
                         // Render the namespace prefix pairs UI for XML datasets
                         const namespacePairsData = value || {};
@@ -7497,6 +7544,8 @@ class PipelineEditorProvider {
                 if (input.classList.contains('storedprocedure-lsprop-value')) return;
                 // Skip web-secret fields (password, pfx, etc.) as they have their own handler
                 if (input.classList.contains('web-secret-store') || input.classList.contains('web-secret-name') || input.classList.contains('web-secret-version')) return;
+                // Skip additional-columns child inputs — they have their own ac- handlers
+                if (input.classList.contains('ac-name-input') || input.classList.contains('ac-value-input')) return;
                 
                 if (input.type === 'checkbox') {
                     input.addEventListener('change', (e) => {
@@ -8383,6 +8432,50 @@ class PipelineEditorProvider {
                     const idx = parseInt(e.target.getAttribute('data-item-index'));
                     if (Array.isArray(activity[fieldKey])) {
                         activity[fieldKey][idx] = e.target.value;
+                        markAsDirty();
+                    }
+                });
+            });
+
+            // Additional columns field handlers (source additionalColumns)
+            document.querySelectorAll('.add-additional-col-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const fieldKey = btn.getAttribute('data-key');
+                    if (!Array.isArray(activity[fieldKey])) activity[fieldKey] = [];
+                    activity[fieldKey].push({ name: '', value: '$$COLUMN:' });
+                    markAsDirty();
+                    const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                    showProperties(activity, activeTab);
+                });
+            });
+            document.querySelectorAll('.remove-additional-col-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const fieldKey = btn.getAttribute('data-key');
+                    const idx = parseInt(btn.getAttribute('data-index'));
+                    if (Array.isArray(activity[fieldKey])) {
+                        activity[fieldKey].splice(idx, 1);
+                        markAsDirty();
+                        const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                        showProperties(activity, activeTab);
+                    }
+                });
+            });
+            document.querySelectorAll('.ac-name-input').forEach(input => {
+                input.addEventListener('input', () => {
+                    const fieldKey = input.getAttribute('data-key');
+                    const idx = parseInt(input.getAttribute('data-index'));
+                    if (Array.isArray(activity[fieldKey]) && activity[fieldKey][idx]) {
+                        activity[fieldKey][idx].name = input.value;
+                        markAsDirty();
+                    }
+                });
+            });
+            document.querySelectorAll('.ac-value-input').forEach(input => {
+                input.addEventListener('input', () => {
+                    const fieldKey = input.getAttribute('data-key');
+                    const idx = parseInt(input.getAttribute('data-index'));
+                    if (Array.isArray(activity[fieldKey]) && activity[fieldKey][idx]) {
+                        activity[fieldKey][idx].value = input.value;
                         markAsDirty();
                     }
                 });
@@ -9321,14 +9414,25 @@ class PipelineEditorProvider {
             } else if (message.type === 'saveCompleted') {
                 // Clear dirty state after successful save
                 clearDirty();
-                // Strip empty entries from noEmpty arrays on all activities so the UI reflects clean state
+                // Strip empty entries from noEmpty/filterEmpty arrays on all activities so UI reflects clean state
                 activities.forEach(a => {
-                    if (a.type === 'Copy' && a._sinkDatasetType) {
-                        const _snkConf = copyActivityConfig.datasetTypes?.[a._sinkDatasetType];
-                        const _snkFields = _snkConf?.fields?.sink || {};
-                        for (const [_fk, _fc] of Object.entries(_snkFields)) {
-                            if (_fc.noEmpty && Array.isArray(a[_fk])) {
-                                a[_fk] = a[_fk].filter(s => typeof s === 'string' ? s.trim() !== '' : s !== null && s !== undefined);
+                    if (a.type === 'Copy') {
+                        if (a._sinkDatasetType) {
+                            const _snkConf = copyActivityConfig.datasetTypes?.[a._sinkDatasetType];
+                            const _snkFields = _snkConf?.fields?.sink || {};
+                            for (const [_fk, _fc] of Object.entries(_snkFields)) {
+                                if (_fc.noEmpty && Array.isArray(a[_fk])) {
+                                    a[_fk] = a[_fk].filter(s => typeof s === 'string' ? s.trim() !== '' : s !== null && s !== undefined);
+                                }
+                            }
+                        }
+                        if (a._sourceDatasetType) {
+                            const _srcConf = copyActivityConfig.datasetTypes?.[a._sourceDatasetType];
+                            const _srcFields = _srcConf?.fields?.source || {};
+                            for (const [_fk, _fc] of Object.entries(_srcFields)) {
+                                if (_fc.filterEmpty && Array.isArray(a[_fk])) {
+                                    a[_fk] = a[_fk].filter(item => item[_fc.filterEmpty] && String(item[_fc.filterEmpty]).trim() !== '');
+                                }
                             }
                         }
                     }
@@ -9502,7 +9606,9 @@ class PipelineEditorProvider {
                                         if (!_fc.jsonPath) continue;
                                         const _v = _getValueByPath(sourceObj, _fc.jsonPath);
                                         if (_v !== undefined) {
-                                            activity[_fk] = _v;
+                                            // Normalize filterEmpty fields (e.g. additional-columns): must be arrays;
+                                            // old JSON may store a plain string — treat that as empty
+                                            activity[_fk] = (_fc.filterEmpty && !Array.isArray(_v)) ? [] : _v;
                                         } else if (_fc.default !== undefined) {
                                             activity[_fk] = _fc.default;
                                         }

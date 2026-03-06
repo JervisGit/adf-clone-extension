@@ -46,9 +46,33 @@ function buildCopySource(formData, typeConfig, locationType, fallbackObj) {
     const sourceFields = (typeConfig.fields && typeConfig.fields.source) || {};
     for (const [fieldKey, fieldConfig] of Object.entries(sourceFields)) {
         if (!fieldConfig.jsonPath) continue;
-        const value = formData[fieldKey];
+        // Check conditional — skip if the controlling field doesn't match
+        if (fieldConfig.conditional) {
+            const condVal = formData[fieldConfig.conditional.field];
+            const condExpected = fieldConfig.conditional.value;
+            const condMet = Array.isArray(condExpected) ? condExpected.includes(condVal) : condVal === condExpected;
+            if (!condMet) continue;
+        }
+        // Check nestedConditional
+        if (fieldConfig.nestedConditional) {
+            const nCondVal = formData[fieldConfig.nestedConditional.field];
+            const nCondExpected = fieldConfig.nestedConditional.value;
+            const nCondMet = Array.isArray(nCondExpected) ? nCondExpected.includes(nCondVal) : nCondVal === nCondExpected;
+            if (!nCondMet) continue;
+        }
+        let value = formData[fieldKey];
         if (fieldConfig.omitWhenValue !== undefined && value === fieldConfig.omitWhenValue) continue;
-        if (value !== undefined && value !== null && value !== '') {
+        // For filterEmpty arrays (e.g. additional-columns), strip blank-name entries before writing
+        if (fieldConfig.filterEmpty && Array.isArray(value)) {
+            value = value.filter(item => item[fieldConfig.filterEmpty] && String(item[fieldConfig.filterEmpty]).trim() !== '');
+        } else if (fieldConfig.filterEmpty && !Array.isArray(value)) {
+            // Stale non-array value (e.g. from old plain-text save) — skip
+            continue;
+        }
+        // Skip empty arrays and empty objects
+        const isEmptyArr = Array.isArray(value) && value.length === 0;
+        const isEmptyObj = value !== undefined && value !== null && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0;
+        if (!isEmptyArr && !isEmptyObj && value !== undefined && value !== null && value !== '') {
             setValueByPath(source, fieldConfig.jsonPath, value);
         } else if (fieldConfig.writeDefault === true && fieldConfig.default !== undefined) {
             setValueByPath(source, fieldConfig.jsonPath, fieldConfig.default);

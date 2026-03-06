@@ -7,7 +7,6 @@
       "sourceTypeName": "AzureSqlSource",
       "sinkTypeName": "AzureSqlSink",
       "sinkDefaults": {
-        "writeBehavior": "insert",
         "sqlWriterUseTableLock": false
       },
       "fields": {
@@ -98,13 +97,45 @@
             "options": ["insert", "upsert", "storedProcedure"],
             "default": "insert",
             "writeDefault": true,
+            "omitWhenValue": "storedProcedure",
             "jsonPath": "writeBehavior"
+          },
+          "snk_sqlWriterStoredProcedureName": {
+            "type": "text",
+            "label": "Stored procedure name",
+            "placeholder": "sp_name",
+            "conditional": { "field": "snk_writeBehavior", "value": "storedProcedure" },
+            "jsonPath": "sqlWriterStoredProcedureName"
+          },
+          "snk_sqlWriterTableType": {
+            "type": "text",
+            "label": "Table type",
+            "required": true,
+            "placeholder": "TableTypeName",
+            "conditional": { "field": "snk_writeBehavior", "value": "storedProcedure" },
+            "jsonPath": "sqlWriterTableType"
+          },
+          "snk_storedProcedureTableTypeParameterName": {
+            "type": "text",
+            "label": "Table type parameter name",
+            "required": true,
+            "placeholder": "ParameterName",
+            "conditional": { "field": "snk_writeBehavior", "value": "storedProcedure" },
+            "jsonPath": "storedProcedureTableTypeParameterName"
+          },
+          "snk_storedProcedureParameters": {
+            "type": "copy-sp-parameters",
+            "label": "Stored procedure parameters",
+            "conditional": { "field": "snk_writeBehavior", "value": "storedProcedure" },
+            "jsonPath": "storedProcedureParameters"
           },
           "snk_tableOption": {
             "type": "radio",
             "label": "Table option",
-            "options": ["useExisting", "autoCreate"],
+            "options": ["Use Existing", "Auto Create"],
+            "optionValues": ["useExisting", "autoCreate"],
             "default": "useExisting",
+            "omitWhenValue": "useExisting",
             "jsonPath": "tableOption"
           },
           "snk_sqlWriterUseTableLock": {
@@ -144,6 +175,7 @@
             "type": "boolean",
             "label": "Disable performance metrics analytics",
             "default": false,
+            "writeDefault": true,
             "jsonPath": "disableMetricsCollection"
           }
         }
@@ -155,9 +187,7 @@
       "hasStoreSettings": false,
       "sourceTypeName": "SqlDWSource",
       "sinkTypeName": "SqlDWSink",
-      "sinkDefaults": {
-        "writeBehavior": "Insert"
-      },
+      "sinkDefaults": {},
       "fields": {
         "source": {
           "src_useQuery": {
@@ -257,8 +287,10 @@
           "snk_tableOption": {
             "type": "radio",
             "label": "Table option",
-            "options": ["useExisting", "autoCreate"],
+            "options": ["Use Existing", "Auto Create"],
+            "optionValues": ["useExisting", "autoCreate"],
             "default": "useExisting",
+            "omitWhenValue": "useExisting",
             "jsonPath": "tableOption"
           },
           "snk_preCopyScript": {
@@ -291,6 +323,7 @@
             "type": "boolean",
             "label": "Disable performance metrics analytics",
             "default": false,
+            "writeDefault": true,
             "jsonPath": "disableMetricsCollection"
           }
         }

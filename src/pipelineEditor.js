@@ -2549,7 +2549,12 @@ class PipelineEditorProvider {
                             for (const [_fk, _fc] of Object.entries(_srcFields)) {
                                 if (!_fc.jsonPath) continue;
                                 const _v = a[_fk];
-                                if (_v !== undefined && _v !== null && _v !== '') _setValueByPath(_src, _fc.jsonPath, _v);
+                                if (_fc.omitWhenValue !== undefined && _v === _fc.omitWhenValue) continue;
+                                if (_v !== undefined && _v !== null && _v !== '') {
+                                    _setValueByPath(_src, _fc.jsonPath, _v);
+                                } else if (_fc.writeDefault === true && _fc.default !== undefined) {
+                                    _setValueByPath(_src, _fc.jsonPath, _fc.default);
+                                }
                             }
                             if (!activity.typeProperties) activity.typeProperties = {};
                             activity.typeProperties.source = _src;
@@ -2574,8 +2579,20 @@ class PipelineEditorProvider {
                             const _snkFields = (_snkTypeConf.fields && _snkTypeConf.fields.sink) || {};
                             for (const [_fk, _fc] of Object.entries(_snkFields)) {
                                 if (!_fc.jsonPath) continue;
+                                // Skip if conditional is not met
+                                if (_fc.conditional) {
+                                    const _condVal = a[_fc.conditional.field];
+                                    if (_condVal !== _fc.conditional.value) continue;
+                                }
                                 const _v = a[_fk];
-                                if (_v !== undefined && _v !== null && _v !== '') _setValueByPath(_snk, _fc.jsonPath, _v);
+                                if (_fc.omitWhenValue !== undefined && _v === _fc.omitWhenValue) continue;
+                                // Skip empty objects (e.g. empty storedProcedureParameters)
+                                const _isEmpty = (_v !== undefined && _v !== null && typeof _v === 'object' && !Array.isArray(_v) && Object.keys(_v).length === 0);
+                                if (_v !== undefined && _v !== null && _v !== '' && !_isEmpty) {
+                                    _setValueByPath(_snk, _fc.jsonPath, _v);
+                                } else if (_fc.writeDefault === true && _fc.default !== undefined) {
+                                    _setValueByPath(_snk, _fc.jsonPath, _fc.default);
+                                }
                             }
                             if (!activity.typeProperties) activity.typeProperties = {};
                             activity.typeProperties.sink = _snk;
@@ -6964,6 +6981,43 @@ class PipelineEditorProvider {
                         
                         fieldHtml += \`</div></div>\`;
                         break;
+                    case 'copy-sp-parameters': {
+                        // Generic config-driven stored procedure parameters table.
+                        // Stores data into activity[key] (e.g. activity['snk_storedProcedureParameters']).
+                        const _cpSpData = (activity[key] && typeof activity[key] === 'object') ? activity[key] : {};
+                        fieldHtml += \`<div style="flex: 1;">\`;
+                        fieldHtml += \`<div style="font-size: 11px; color: var(--vscode-descriptionForeground); margin-bottom: 8px;">Configure stored procedure parameters</div>\`;
+                        fieldHtml += \`<button class="add-copy-sp-param-btn" data-key="\${key}" style="padding: 4px 8px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; font-size: 11px; margin-bottom: 8px;">+ Add Parameter</button>\`;
+                        // Header row
+                        fieldHtml += \`
+                            <div style="display: grid; grid-template-columns: 40px 1fr 130px 1fr 100px 30px; gap: 8px; margin-bottom: 4px; font-size: 11px; font-weight: 600; color: var(--vscode-descriptionForeground);">
+                                <div></div><div>Name</div><div>Type</div><div>Value</div><div>Treat as null</div><div></div>
+                            </div>\`;
+                        fieldHtml += \`<div class="copy-sp-params-container" data-key="\${key}">\`;
+                        const _cpSpTypeOptions = ['Byte[]','Boolean','Datetime','Datetimeoffset','Decimal','Double','Guid','Int16','Int32','Int64','Single','String','Timespan'];
+                        let _cpSpIdx = 0;
+                        for (const [_cpSpName, _cpSpParam] of Object.entries(_cpSpData)) {
+                            const _cpSpVal = (_cpSpParam.value !== undefined && _cpSpParam.value !== null) ? _cpSpParam.value : '';
+                            const _cpSpType = _cpSpParam.type || 'String';
+                            const _cpSpIsNull = _cpSpParam.value === null;
+                            const _cpSpTypeOpts = _cpSpTypeOptions.map(t => \`<option value="\${t}" \${_cpSpType === t ? 'selected' : ''}>\${t}</option>\`).join('');
+                            fieldHtml += \`
+                                <div class="copy-sp-param-row" data-field-key="\${key}" data-param-index="\${_cpSpIdx}" style="display: grid; grid-template-columns: 40px 1fr 130px 1fr 100px 30px; gap: 8px; margin-bottom: 8px; align-items: center; padding: 8px; background: var(--vscode-sideBar-background); border-radius: 3px;">
+                                    <div style="font-size: 11px; color: var(--vscode-descriptionForeground);">\${_cpSpIdx + 1}</div>
+                                    <input type="text" class="property-input copy-sp-param-name" data-field-key="\${key}" value="\${_cpSpName}" placeholder="Name" style="font-size: 11px; padding: 4px 6px;">
+                                    <select class="property-input copy-sp-param-type" data-field-key="\${key}" style="font-size: 11px; padding: 4px 6px;">\${_cpSpTypeOpts}</select>
+                                    <input type="text" class="property-input copy-sp-param-value" data-field-key="\${key}" value="\${_cpSpIsNull ? '' : _cpSpVal}" placeholder="Value" \${_cpSpIsNull ? 'disabled' : ''} style="font-size: 11px; padding: 4px 6px;\${_cpSpIsNull ? ' opacity: 0.5; cursor: not-allowed;' : ''}">
+                                    <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; cursor: pointer;">
+                                        <input type="checkbox" class="copy-sp-param-null" data-field-key="\${key}" \${_cpSpIsNull ? 'checked' : ''} style="margin: 0;">
+                                        <span>Null</span>
+                                    </label>
+                                    <button class="remove-copy-sp-param-btn" data-field-key="\${key}" style="padding: 2px 6px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; font-size: 10px;">×</button>
+                                </div>\`;
+                            _cpSpIdx++;
+                        }
+                        fieldHtml += \`</div></div>\`;
+                        break;
+                    }
                     case 'namespace-prefixes':
                         // Render the namespace prefix pairs UI for XML datasets
                         const namespacePairsData = value || {};
@@ -8177,6 +8231,108 @@ class PipelineEditorProvider {
                 });
             });
             
+            // Add event listeners for copy-sp-parameters (generic keyed SP params used by Copy activity sink)
+            document.querySelectorAll('.add-copy-sp-param-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const fieldKey = btn.getAttribute('data-key');
+                    if (!activity[fieldKey] || typeof activity[fieldKey] !== 'object') activity[fieldKey] = {};
+                    let paramName = '';
+                    let counter = 1;
+                    if (activity[fieldKey][''] !== undefined) {
+                        paramName = 'Name' + counter;
+                        while (activity[fieldKey][paramName] !== undefined) { counter++; paramName = 'Name' + counter; }
+                    }
+                    activity[fieldKey][paramName] = { type: 'String', value: '' };
+                    markAsDirty();
+                    const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                    showProperties(activity, activeTab);
+                });
+            });
+            document.querySelectorAll('.remove-copy-sp-param-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const fieldKey = e.target.getAttribute('data-field-key');
+                    const paramRow = e.target.closest('.copy-sp-param-row');
+                    const paramIndex = parseInt(paramRow.getAttribute('data-param-index'));
+                    if (activity[fieldKey]) {
+                        const paramNames = Object.keys(activity[fieldKey]);
+                        if (paramNames[paramIndex] !== undefined) {
+                            delete activity[fieldKey][paramNames[paramIndex]];
+                            markAsDirty();
+                            const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                            showProperties(activity, activeTab);
+                        }
+                    }
+                });
+            });
+            document.querySelectorAll('.copy-sp-param-name').forEach(input => {
+                input.addEventListener('change', (e) => {
+                    const fieldKey = e.target.getAttribute('data-field-key');
+                    const paramRow = e.target.closest('.copy-sp-param-row');
+                    const paramIndex = parseInt(paramRow.getAttribute('data-param-index'));
+                    const newName = e.target.value.trim();
+                    if (activity[fieldKey]) {
+                        const paramNames = Object.keys(activity[fieldKey]);
+                        const oldName = paramNames[paramIndex];
+                        if (oldName !== undefined && newName !== oldName) {
+                            if (newName && activity[fieldKey][newName] !== undefined) {
+                                // Duplicate — overwrite (last wins per spec)
+                                delete activity[fieldKey][oldName];
+                            } else {
+                                const paramData = activity[fieldKey][oldName];
+                                delete activity[fieldKey][oldName];
+                                activity[fieldKey][newName] = paramData;
+                            }
+                            markAsDirty();
+                            const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                            showProperties(activity, activeTab);
+                        }
+                    }
+                });
+            });
+            document.querySelectorAll('.copy-sp-param-type, .copy-sp-param-value').forEach(input => {
+                input.addEventListener('input', (e) => {
+                    const fieldKey = e.target.getAttribute('data-field-key');
+                    const paramRow = e.target.closest('.copy-sp-param-row');
+                    const paramIndex = parseInt(paramRow.getAttribute('data-param-index'));
+                    if (activity[fieldKey]) {
+                        const paramNames = Object.keys(activity[fieldKey]);
+                        const paramName = paramNames[paramIndex];
+                        if (paramName !== undefined && activity[fieldKey][paramName]) {
+                            if (e.target.classList.contains('copy-sp-param-type')) {
+                                activity[fieldKey][paramName].type = e.target.value;
+                            } else {
+                                activity[fieldKey][paramName].value = e.target.value;
+                            }
+                            markAsDirty();
+                        }
+                    }
+                });
+            });
+            document.querySelectorAll('.copy-sp-param-null').forEach(checkbox => {
+                checkbox.addEventListener('change', (e) => {
+                    const fieldKey = e.target.getAttribute('data-field-key');
+                    const paramRow = e.target.closest('.copy-sp-param-row');
+                    const paramIndex = parseInt(paramRow.getAttribute('data-param-index'));
+                    if (activity[fieldKey]) {
+                        const paramNames = Object.keys(activity[fieldKey]);
+                        const paramName = paramNames[paramIndex];
+                        if (paramName !== undefined && activity[fieldKey][paramName]) {
+                            const param = activity[fieldKey][paramName];
+                            if (e.target.checked) {
+                                param.value = null;
+                                const valueInput = paramRow.querySelector('.copy-sp-param-value');
+                                if (valueInput) { valueInput.value = ''; valueInput.disabled = true; valueInput.style.opacity = '0.5'; valueInput.style.cursor = 'not-allowed'; }
+                            } else {
+                                param.value = '';
+                                const valueInput = paramRow.querySelector('.copy-sp-param-value');
+                                if (valueInput) { valueInput.disabled = false; valueInput.style.opacity = '1'; valueInput.style.cursor = 'auto'; }
+                            }
+                            markAsDirty();
+                        }
+                    }
+                });
+            });
+
             // Add event listeners for Web activity - Authentication type dropdown
             document.querySelectorAll('#configContent select[data-key="authenticationType"]').forEach(select => {
                 select.addEventListener('change', (e) => {
@@ -8347,6 +8503,31 @@ class PipelineEditorProvider {
                 });
             });
             
+            // Build a config-driven map: { triggerKey -> tabId }
+            // Scans all field configs for conditional/nestedConditional references so any new
+            // conditional field added to a config automatically gets re-render support — no code change needed.
+            const reRenderKeyMap = {};
+            function _scanForConditionals(fieldsObj, tabId) {
+                for (const prop of Object.values(fieldsObj || {})) {
+                    if (prop.conditional?.field) reRenderKeyMap[prop.conditional.field] = tabId;
+                    if (prop.nestedConditional?.field) reRenderKeyMap[prop.nestedConditional.field] = tabId;
+                }
+            }
+            _scanForConditionals(schema?.commonProperties, 'general');
+            _scanForConditionals(schema?.typeProperties, 'settings');
+            _scanForConditionals(schema?.advancedProperties, 'advanced');
+            // Lookup activity: dataset-specific fields also go to settings
+            if (activity.type === 'Lookup' && activity._datasetType) {
+                _scanForConditionals(datasetSchemas?.[activity._datasetType]?.lookupFields, 'settings');
+            }
+            // Copy activity: source and sink fields map to their respective tabs
+            if (activity.type === 'Copy') {
+                const _cpSrcFields = copyActivityConfig.datasetTypes?.[activity._sourceDatasetType]?.fields?.source || {};
+                const _cpSnkFields = copyActivityConfig.datasetTypes?.[activity._sinkDatasetType]?.fields?.sink || {};
+                _scanForConditionals(_cpSrcFields, 'source');
+                _scanForConditionals(_cpSnkFields, 'sink');
+            }
+
             // Add event listeners for radio buttons
             document.querySelectorAll('#configContent input[type="radio"]').forEach(radio => {
                 radio.addEventListener('change', (e) => {
@@ -8355,21 +8536,11 @@ class PipelineEditorProvider {
                         activity[key] = e.target.value;
                         markAsDirty();
                         console.log('Updated ' + key + ':', activity[key]);
-                        
-                        // If dynamicAllocation, variableType, filePathType, useQuery, partitionOption, or Web activity auth fields changed, re-render to show/hide conditional fields
-                        if (key === 'dynamicAllocation' || key === 'variableType' || key === 'useQuery' || key === 'partitionOption' || key === 'partitionOptionQuery' || key === 'partitionOptionStoredProc' || key === 'filePathType') {
-                            const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
-                            if (activeTab === 'settings') {
-                                showProperties(activity, 'settings');
-                            } else if (activeTab === 'source') {
-                                showProperties(activity, 'source');
-                            }
-                        } else if (key === 'servicePrincipalAuthMethod' || key === 'servicePrincipalCredentialType') {
-                            // Web activity Service Principal fields - re-render settings tab
-                            const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
-                            if (activeTab === 'settings') {
-                                showProperties(activity, 'settings');
-                            }
+
+                        // Config-driven re-render: if this key is referenced by any conditional field, re-render that tab
+                        const reRenderTab = reRenderKeyMap[key];
+                        if (reRenderTab) {
+                            showProperties(activity, reRenderTab);
                         }
                     }
                 });

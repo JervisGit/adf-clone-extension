@@ -47,9 +47,11 @@ function buildCopySource(formData, typeConfig, locationType, fallbackObj) {
     for (const [fieldKey, fieldConfig] of Object.entries(sourceFields)) {
         if (!fieldConfig.jsonPath) continue;
         const value = formData[fieldKey];
-        // Include all non-null/non-undefined/non-empty values (booleans like false pass through correctly)
+        if (fieldConfig.omitWhenValue !== undefined && value === fieldConfig.omitWhenValue) continue;
         if (value !== undefined && value !== null && value !== '') {
             setValueByPath(source, fieldConfig.jsonPath, value);
+        } else if (fieldConfig.writeDefault === true && fieldConfig.default !== undefined) {
+            setValueByPath(source, fieldConfig.jsonPath, fieldConfig.default);
         }
     }
 
@@ -93,8 +95,11 @@ function buildCopySink(formData, typeConfig, locationType, fallbackObj) {
     for (const [fieldKey, fieldConfig] of Object.entries(sinkFields)) {
         if (!fieldConfig.jsonPath) continue;
         const value = formData[fieldKey];
+        if (fieldConfig.omitWhenValue !== undefined && value === fieldConfig.omitWhenValue) continue;
         if (value !== undefined && value !== null && value !== '') {
             setValueByPath(sink, fieldConfig.jsonPath, value);
+        } else if (fieldConfig.writeDefault === true && fieldConfig.default !== undefined) {
+            setValueByPath(sink, fieldConfig.jsonPath, fieldConfig.default);
         }
     }
 

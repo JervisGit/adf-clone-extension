@@ -2579,17 +2579,23 @@ class PipelineEditorProvider {
                             const _snkFields = (_snkTypeConf.fields && _snkTypeConf.fields.sink) || {};
                             for (const [_fk, _fc] of Object.entries(_snkFields)) {
                                 if (!_fc.jsonPath) continue;
-                                // Skip if conditional is not met
+                                // Skip if conditional is not met (supports single value or array of values)
                                 if (_fc.conditional) {
                                     const _condVal = a[_fc.conditional.field];
-                                    if (_condVal !== _fc.conditional.value) continue;
+                                    const _condExpected = _fc.conditional.value;
+                                    const _condMet = Array.isArray(_condExpected) ? _condExpected.includes(_condVal) : _condVal === _condExpected;
+                                    if (!_condMet) continue;
                                 }
                                 const _v = a[_fk];
                                 if (_fc.omitWhenValue !== undefined && _v === _fc.omitWhenValue) continue;
+                                // For noEmpty arrays, filter out blank entries before writing
+                                const _writeV = (_fc.noEmpty && Array.isArray(_v))
+                                    ? _v.filter(s => typeof s === 'string' ? s.trim() !== '' : s !== null && s !== undefined)
+                                    : _v;
                                 // Skip empty objects (e.g. empty storedProcedureParameters)
-                                const _isEmpty = (_v !== undefined && _v !== null && typeof _v === 'object' && !Array.isArray(_v) && Object.keys(_v).length === 0);
-                                if (_v !== undefined && _v !== null && _v !== '' && !_isEmpty) {
-                                    _setValueByPath(_snk, _fc.jsonPath, _v);
+                                const _isEmpty = (_writeV !== undefined && _writeV !== null && typeof _writeV === 'object' && !Array.isArray(_writeV) && Object.keys(_writeV).length === 0);
+                                if (_writeV !== undefined && _writeV !== null && _writeV !== '' && !_isEmpty) {
+                                    _setValueByPath(_snk, _fc.jsonPath, _writeV);
                                 } else if (_fc.writeDefault === true && _fc.default !== undefined) {
                                     _setValueByPath(_snk, _fc.jsonPath, _fc.default);
                                 }
@@ -6390,7 +6396,7 @@ class PipelineEditorProvider {
                     }
                 }
                 
-                let value = activity[key] || prop.default || '';
+                let value = (activity[key] !== undefined && activity[key] !== null) ? activity[key] : (prop.default !== undefined ? prop.default : '');
                 
                 // Handle reference objects (e.g., {referenceName: "...", type: "..."})
                 if (prop.type === 'reference' && typeof value === 'object' && value !== null) {
@@ -7018,6 +7024,22 @@ class PipelineEditorProvider {
                         fieldHtml += \`</div></div>\`;
                         break;
                     }
+                    case 'string-list': {
+                        // Renders a dynamic list of text inputs stored as a string array in activity[key]
+                        const _slData = Array.isArray(activity[key]) ? activity[key] : [];
+                        fieldHtml += \`<div style="flex: 1;">\`;
+                        fieldHtml += \`<button type="button" class="add-string-list-item-btn" data-key="\${key}" style="padding: 4px 8px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; font-size: 11px; margin-bottom: 8px;">+ Add Column</button>\`;
+                        fieldHtml += \`<div class="string-list-container" data-key="\${key}">\`;
+                        _slData.forEach((_slItem, _slIdx) => {
+                            fieldHtml += \`
+                                <div class="string-list-item-row" data-field-key="\${key}" data-item-index="\${_slIdx}" style="display: flex; gap: 8px; margin-bottom: 6px; align-items: center;">
+                                    <input type="text" class="property-input string-list-item-value" data-field-key="\${key}" data-item-index="\${_slIdx}" value="\${_slItem}" placeholder="Column name" style="flex: 1; font-size: 11px; padding: 4px 6px;">
+                                    <button type="button" class="remove-string-list-item-btn" data-field-key="\${key}" data-item-index="\${_slIdx}" style="padding: 2px 6px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; font-size: 10px;">&times;</button>
+                                </div>\`;
+                        });
+                        fieldHtml += \`</div></div>\`;
+                        break;
+                    }
                     case 'namespace-prefixes':
                         // Render the namespace prefix pairs UI for XML datasets
                         const namespacePairsData = value || {};
@@ -7481,13 +7503,12 @@ class PipelineEditorProvider {
                         activity[key] = e.target.checked;
                         markAsDirty();
                         console.log('Updated ' + key + ':', activity[key]);
-                        
-                        // If enablePartitionDiscovery or namespaces or isSequential changed, re-render to show/hide conditional fields
-                        if (key === 'enablePartitionDiscovery' || key === 'namespaces' || key === 'isSequential') {
-                            const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
-                            if (activeTab === 'settings') {
-                                showProperties(activity, 'settings');
-                            }
+
+                        // Config-driven re-render: if this checkbox key is referenced by any conditional
+                        // field, re-render that tab so dependents appear/hide immediately
+                        const reRenderTab = reRenderKeyMap[key];
+                        if (reRenderTab) {
+                            showProperties(activity, reRenderTab);
                         }
                     });
                 } else {
@@ -8329,6 +8350,40 @@ class PipelineEditorProvider {
                             }
                             markAsDirty();
                         }
+                    }
+                });
+            });
+
+            // Add event listeners for string-list fields (e.g. upsert key columns)
+            document.querySelectorAll('.add-string-list-item-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const fieldKey = btn.getAttribute('data-key');
+                    if (!Array.isArray(activity[fieldKey])) activity[fieldKey] = [];
+                    activity[fieldKey].push('');
+                    markAsDirty();
+                    const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                    showProperties(activity, activeTab);
+                });
+            });
+            document.querySelectorAll('.remove-string-list-item-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const fieldKey = e.target.getAttribute('data-field-key');
+                    const idx = parseInt(e.target.getAttribute('data-item-index'));
+                    if (Array.isArray(activity[fieldKey])) {
+                        activity[fieldKey].splice(idx, 1);
+                        markAsDirty();
+                        const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                        showProperties(activity, activeTab);
+                    }
+                });
+            });
+            document.querySelectorAll('.string-list-item-value').forEach(input => {
+                input.addEventListener('input', (e) => {
+                    const fieldKey = e.target.getAttribute('data-field-key');
+                    const idx = parseInt(e.target.getAttribute('data-item-index'));
+                    if (Array.isArray(activity[fieldKey])) {
+                        activity[fieldKey][idx] = e.target.value;
+                        markAsDirty();
                     }
                 });
             });
@@ -9266,6 +9321,23 @@ class PipelineEditorProvider {
             } else if (message.type === 'saveCompleted') {
                 // Clear dirty state after successful save
                 clearDirty();
+                // Strip empty entries from noEmpty arrays on all activities so the UI reflects clean state
+                activities.forEach(a => {
+                    if (a.type === 'Copy' && a._sinkDatasetType) {
+                        const _snkConf = copyActivityConfig.datasetTypes?.[a._sinkDatasetType];
+                        const _snkFields = _snkConf?.fields?.sink || {};
+                        for (const [_fk, _fc] of Object.entries(_snkFields)) {
+                            if (_fc.noEmpty && Array.isArray(a[_fk])) {
+                                a[_fk] = a[_fk].filter(s => typeof s === 'string' ? s.trim() !== '' : s !== null && s !== undefined);
+                            }
+                        }
+                    }
+                });
+                // Re-render current activity if one is selected
+                if (selectedActivity) {
+                    const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                    showProperties(selectedActivity, activeTab);
+                }
             }
         });
 

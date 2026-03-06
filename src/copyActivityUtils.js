@@ -96,8 +96,12 @@ function buildCopySink(formData, typeConfig, locationType, fallbackObj) {
         if (!fieldConfig.jsonPath) continue;
         const value = formData[fieldKey];
         if (fieldConfig.omitWhenValue !== undefined && value === fieldConfig.omitWhenValue) continue;
-        if (value !== undefined && value !== null && value !== '') {
-            setValueByPath(sink, fieldConfig.jsonPath, value);
+        // For noEmpty arrays, filter out blank entries before writing
+        const writeValue = (fieldConfig.noEmpty && Array.isArray(value))
+            ? value.filter(s => typeof s === 'string' ? s.trim() !== '' : s !== null && s !== undefined)
+            : value;
+        if (writeValue !== undefined && writeValue !== null && writeValue !== '') {
+            setValueByPath(sink, fieldConfig.jsonPath, writeValue);
         } else if (fieldConfig.writeDefault === true && fieldConfig.default !== undefined) {
             setValueByPath(sink, fieldConfig.jsonPath, fieldConfig.default);
         }

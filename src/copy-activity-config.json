@@ -100,6 +100,31 @@
             "omitWhenValue": "storedProcedure",
             "jsonPath": "writeBehavior"
           },
+          "snk_useTempDB": {
+            "type": "boolean",
+            "label": "Use tempdb",
+            "default": true,
+            "writeDefault": true,
+            "conditional": { "field": "snk_writeBehavior", "value": "upsert" },
+            "jsonPath": "upsertSettings.useTempDB"
+          },
+          "snk_interimSchemaName": {
+            "type": "text",
+            "label": "Interim table schema",
+            "placeholder": "InterimSchemaName",
+            "conditional": { "field": "snk_writeBehavior", "value": "upsert" },
+            "nestedConditional": { "field": "snk_useTempDB", "value": false },
+            "jsonPath": "upsertSettings.interimSchemaName"
+          },
+          "snk_upsertKeys": {
+            "type": "string-list",
+            "label": "Key columns",
+            "default": [],
+            "writeDefault": true,
+            "noEmpty": true,
+            "conditional": { "field": "snk_writeBehavior", "value": "upsert" },
+            "jsonPath": "upsertSettings.keys"
+          },
           "snk_sqlWriterStoredProcedureName": {
             "type": "text",
             "label": "Stored procedure name",
@@ -143,6 +168,7 @@
             "label": "Bulk insert table lock",
             "default": false,
             "writeDefault": true,
+            "conditional": { "field": "snk_writeBehavior", "value": ["insert", "upsert"] },
             "jsonPath": "sqlWriterUseTableLock"
           },
           "snk_preCopyScript": {

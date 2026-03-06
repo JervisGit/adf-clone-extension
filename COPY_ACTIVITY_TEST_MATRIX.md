@@ -12,10 +12,14 @@
 | `Avro` | Avro | ✅ | ✅ | ADLS / Blob |
 | `ORC` | ORC | ✅ | ✅ | ADLS / Blob |
 | `Xml` | XML | ✅ | ❌ source-only | ADLS / Blob |
+| `Iceberg` | Iceberg | ✅ | ✅ | ADLS Gen2 only |
+| `HttpFile` | HTTP | ✅ | ❌ source-only | HTTP |
 
 > **Azure Synapse Analytics** (`AzureSqlDW`) is implemented in the config but you don't currently have a Synapse-linked dataset in your workspace (`test-synapse-jervis-WorkspaceDefaultSqlServer` is linked service only). You would need a dataset pointing to it.
 >
-> **Iceberg** (`ADLSIceberg1`) — not in the copy-activity-config. Will show no source/sink fields in the Copy editor.
+> **Iceberg** (`ADLSIceberg1`) — now implemented. ADLS Gen2 only; supports Append/Overwrite table action on sink.
+>
+> **HTTP** (`HttpFile`) — now implemented. Source-only; request body field only appears when method is POST.
 
 ---
 
@@ -39,6 +43,8 @@ Source and sink are **fully independent** — the fields rendered for each side 
 | Avro | Blob Storage | 🔲 |
 | ORC | ADLS Gen2 | 🔲 |
 | XML | ADLS Gen2 | 🔲 |
+| Iceberg | ADLS Gen2 | 🔲 |
+| HTTP | HTTP | 🔲 |
 
 ### Sinks
 
@@ -53,6 +59,8 @@ Source and sink are **fully independent** — the fields rendered for each side 
 | Avro | ADLS Gen2 | 🔲 |
 | Avro | Blob Storage | 🔲 |
 | ORC | ADLS Gen2 | 🔲 |
+| Iceberg | ADLS Gen2 | 🔲 |
+| HTTP | HTTP | ❌ source-only in ADF |
 
 ---
 
@@ -143,8 +151,10 @@ High value because they cover most real ETL patterns:
 
 | Gap | Notes |
 |---|---|
-| `Iceberg` dataset type | Not in copy-activity-config; no source/sink fields rendered |
-| `HttpFile` dataset type | In dataset-schemas but not in copy-activity-config |
+| `Iceberg` sink — table action | Uses `formatSettings.tableActionOption` (Append/Overwrite). Verify ADF JSON output matches expected schema. |
+| `HttpFile` source — request body | Only appears when method is POST. Verify conditional rendering works. |
+| Azure Synapse Parquet/PolyBase | Synapse sink may have extra options beyond basic SQL (PolyBase, COPY command). |
+| Mapping tab | Placeholder only — column mapping not yet implemented. |
 | Azure Synapse Parquet/PolyBase copy settings | Synapse sink may have extra options beyond basic SQL |
 | Source partition settings for Synapse | May differ from SQL DB partition fields |
 | Mapping tab | Placeholder only — column mapping not yet implemented |

@@ -1045,6 +1045,173 @@
         },
         "sink": {}
       }
+    },
+
+    "Iceberg": {
+      "name": "Iceberg",
+      "hasStoreSettings": true,
+      "sourceTypeName": "IcebergSource",
+      "sinkTypeName": "IcebergSink",
+      "formatWriteType": "IcebergWriteSettings",
+      "_comment": "Iceberg is ADLS Gen2 only — no Blob Storage support in ADF",
+      "storeReadSettingsTypes": {
+        "AzureBlobFSLocation": "AzureBlobFSReadSettings"
+      },
+      "defaultStoreReadSettings": "AzureBlobFSReadSettings",
+      "storeWriteSettingsTypes": {
+        "AzureBlobFSLocation": "AzureBlobFSWriteSettings"
+      },
+      "defaultStoreWriteSettings": "AzureBlobFSWriteSettings",
+      "fields": {
+        "source": {
+          "src_filePathType": {
+            "type": "radio",
+            "label": "File path type",
+            "options": ["File path in dataset", "Wildcard file path", "List of files"],
+            "optionValues": ["filePathInDataset", "wildcardFilePath", "listOfFiles"],
+            "default": "filePathInDataset"
+          },
+          "src_wildcardFolderPath": {
+            "type": "text",
+            "label": "Wildcard folder path",
+            "placeholder": "folder/subfolder",
+            "conditional": { "field": "src_filePathType", "value": "wildcardFilePath" },
+            "jsonPath": "storeSettings.wildcardFolderPath"
+          },
+          "src_wildcardFileName": {
+            "type": "text",
+            "label": "Wildcard file name",
+            "placeholder": "*.iceberg",
+            "conditional": { "field": "src_filePathType", "value": "wildcardFilePath" },
+            "jsonPath": "storeSettings.wildcardFileName"
+          },
+          "src_fileListPath": {
+            "type": "text",
+            "label": "Path to file list",
+            "conditional": { "field": "src_filePathType", "value": "listOfFiles" },
+            "jsonPath": "storeSettings.fileListPath"
+          },
+          "src_modifiedDatetimeStart": {
+            "type": "datetime",
+            "label": "Start time (UTC)",
+            "placeholder": "2/18/2026, 12:00:00 AM",
+            "jsonPath": "storeSettings.modifiedDatetimeStart"
+          },
+          "src_modifiedDatetimeEnd": {
+            "type": "datetime",
+            "label": "End time (UTC)",
+            "placeholder": "2/18/2026, 12:00:00 AM",
+            "jsonPath": "storeSettings.modifiedDatetimeEnd"
+          },
+          "src_recursive": {
+            "type": "boolean",
+            "label": "Recursively",
+            "default": true,
+            "jsonPath": "storeSettings.recursive"
+          },
+          "src_enablePartitionDiscovery": {
+            "type": "boolean",
+            "label": "Enable partition discovery",
+            "default": false,
+            "jsonPath": "storeSettings.enablePartitionDiscovery"
+          },
+          "src_partitionRootPath": {
+            "type": "text",
+            "label": "Partition root path",
+            "conditional": { "field": "src_enablePartitionDiscovery", "value": true },
+            "jsonPath": "storeSettings.partitionRootPath"
+          },
+          "src_maxConcurrentConnections": {
+            "type": "number",
+            "label": "Max concurrent connections",
+            "min": 1,
+            "jsonPath": "storeSettings.maxConcurrentConnections"
+          },
+          "src_disableMetricsCollection": {
+            "type": "boolean",
+            "label": "Disable performance metrics analytics",
+            "default": false,
+            "jsonPath": "disableMetricsCollection"
+          }
+        },
+        "sink": {
+          "snk_tableActionOption": {
+            "type": "radio",
+            "label": "Table action",
+            "options": ["Append", "Overwrite"],
+            "optionValues": ["Append", "Overwrite"],
+            "default": "Append",
+            "writeDefault": true,
+            "jsonPath": "formatSettings.tableActionOption"
+          },
+          "snk_copyBehavior": {
+            "type": "select",
+            "label": "Copy behavior",
+            "options": ["None", "PreserveHierarchy", "FlattenHierarchy", "MergeFiles"],
+            "default": "None",
+            "jsonPath": "storeSettings.copyBehavior"
+          },
+          "snk_maxConcurrentConnections": {
+            "type": "number",
+            "label": "Max concurrent connections",
+            "min": 1,
+            "jsonPath": "storeSettings.maxConcurrentConnections"
+          },
+          "snk_disableMetricsCollection": {
+            "type": "boolean",
+            "label": "Disable performance metrics analytics",
+            "default": false,
+            "jsonPath": "disableMetricsCollection"
+          }
+        }
+      }
+    },
+
+    "HttpFile": {
+      "name": "HTTP",
+      "hasStoreSettings": false,
+      "sourceTypeName": "HttpSource",
+      "sinkTypeName": null,
+      "_comment_sink": "HTTP is source-only in ADF Copy; no sinkTypeName defined",
+      "fields": {
+        "source": {
+          "src_requestMethod": {
+            "type": "radio",
+            "label": "Request method",
+            "options": ["GET", "POST"],
+            "optionValues": ["GET", "POST"],
+            "default": "GET",
+            "writeDefault": true,
+            "jsonPath": "requestMethod"
+          },
+          "src_additionalHeaders": {
+            "type": "textarea",
+            "label": "Additional headers",
+            "placeholder": "header1: value1\nheader2: value2",
+            "jsonPath": "additionalHeaders"
+          },
+          "src_requestBody": {
+            "type": "textarea",
+            "label": "Request body",
+            "placeholder": "{ \"key\": \"value\" }",
+            "conditional": { "field": "src_requestMethod", "value": "POST" },
+            "jsonPath": "requestBody"
+          },
+          "src_requestTimeout": {
+            "type": "text",
+            "label": "Request timeout",
+            "placeholder": "00:01:40",
+            "jsonPath": "requestTimeout"
+          },
+          "src_maxConcurrentConnections": {
+            "type": "number",
+            "label": "Max concurrent connections",
+            "min": 1,
+            "jsonPath": "maxConcurrentConnections"
+          }
+        },
+        "sink": {}
+      }
     }
   },
 

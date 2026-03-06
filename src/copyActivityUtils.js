@@ -50,7 +50,9 @@ function buildCopySource(formData, typeConfig, locationType, fallbackObj) {
         if (fieldConfig.conditional) {
             const condVal = formData[fieldConfig.conditional.field];
             const condExpected = fieldConfig.conditional.value;
-            const condMet = Array.isArray(condExpected) ? condExpected.includes(condVal) : condVal === condExpected;
+            const condMet = fieldConfig.conditional.notEmpty
+                ? (condVal !== undefined && condVal !== null && condVal !== '')
+                : (Array.isArray(condExpected) ? condExpected.includes(condVal) : condVal === condExpected);
             if (!condMet) continue;
         }
         // Check nestedConditional
@@ -118,12 +120,27 @@ function buildCopySink(formData, typeConfig, locationType, fallbackObj) {
     const sinkFields = (typeConfig.fields && typeConfig.fields.sink) || {};
     for (const [fieldKey, fieldConfig] of Object.entries(sinkFields)) {
         if (!fieldConfig.jsonPath) continue;
+        // Check conditional — skip if the controlling field doesn't match
+        if (fieldConfig.conditional) {
+            const condVal = formData[fieldConfig.conditional.field];
+            const condExpected = fieldConfig.conditional.value;
+            const condMet = fieldConfig.conditional.notEmpty
+                ? (condVal !== undefined && condVal !== null && condVal !== '')
+                : (Array.isArray(condExpected) ? condExpected.includes(condVal) : condVal === condExpected);
+            if (!condMet) continue;
+        }
         const value = formData[fieldKey];
         if (fieldConfig.omitWhenValue !== undefined && value === fieldConfig.omitWhenValue) continue;
         // For noEmpty arrays, filter out blank entries before writing
-        const writeValue = (fieldConfig.noEmpty && Array.isArray(value))
+        let writeValue = (fieldConfig.noEmpty && Array.isArray(value))
             ? value.filter(s => typeof s === 'string' ? s.trim() !== '' : s !== null && s !== undefined)
             : value;
+        // For filterEmpty object-arrays, filter and guard against non-array stale values
+        if (fieldConfig.filterEmpty && Array.isArray(writeValue)) {
+            writeValue = writeValue.filter(item => item[fieldConfig.filterEmpty] && String(item[fieldConfig.filterEmpty]).trim() !== '');
+        } else if (fieldConfig.filterEmpty && !Array.isArray(writeValue)) {
+            continue;
+        }
         if (writeValue !== undefined && writeValue !== null && writeValue !== '') {
             setValueByPath(sink, fieldConfig.jsonPath, writeValue);
         } else if (fieldConfig.writeDefault === true && fieldConfig.default !== undefined) {

@@ -20,6 +20,8 @@
 > **Iceberg** (`ADLSIceberg1`) — now implemented. ADLS Gen2 only; supports Append/Overwrite table action on sink.
 >
 > **HTTP** (`HttpFile`) — now implemented. Source-only; request body field only appears when method is POST.
+>
+> **Excel** — ADF supports Excel as a source-only dataset type for ADLS/Blob. It is not currently in the config and would need to be added as a future gap item. See Known Gaps below.
 
 ---
 
@@ -31,49 +33,71 @@ Source and sink are **fully independent** — the fields rendered for each side 
 
 ### Sources
 
+#### Database / Warehouse
 | Source Dataset Type | Storage | Status |
 |---|---|---|
-| Azure SQL Database | — | 🔲 |
+| Azure SQL Database | — | ✅ |
 | Azure Synapse Analytics | — | 🔲 |
-| Parquet | ADLS Gen2 | 🔲 |
-| Parquet | Blob Storage | 🔲 |
-| Delimited Text (CSV/TSV) | ADLS Gen2 | 🔲 |
-| JSON | ADLS Gen2 | 🔲 |
-| Avro | ADLS Gen2 | ✅ |
-| Avro | Blob Storage | 🔲 |
-| ORC | ADLS Gen2 | 🔲 |
-| XML | ADLS Gen2 | 🔲 |
-| Iceberg | ADLS Gen2 | 🔲 |
-| HTTP | HTTP | 🔲 |
+
+#### ADLS Gen2
+| Source Dataset Type | Status |
+|---|---|
+| Parquet | 🔲 |
+| Delimited Text (CSV/TSV) | 🔲 |
+| JSON | 🔲 |
+| Avro | ✅ |
+| ORC | 🔲 |
+| XML | 🔲 |
+| Iceberg | 🔲 |
+
+#### Blob Storage
+| Source Dataset Type | Status |
+|---|---|
+| Parquet | 🔲 |
+| Avro | 🔲 |
+
+#### Other
+| Source Dataset Type | Status |
+|---|---|
+| HTTP | 🔲 |
 
 ### Sinks
 
+#### Database / Warehouse
 | Sink Dataset Type | Storage | Status |
 |---|---|---|
 | Azure SQL Database | — | ✅ |
 | Azure Synapse Analytics | — | 🔲 |
-| Parquet | ADLS Gen2 | 🔲 |
-| Parquet | Blob Storage | 🔲 |
-| Delimited Text (CSV/TSV) | ADLS Gen2 | 🔲 |
-| JSON | ADLS Gen2 | 🔲 |
-| Avro | ADLS Gen2 | 🔲 |
-| Avro | Blob Storage | 🔲 |
-| ORC | ADLS Gen2 | 🔲 |
-| Iceberg | ADLS Gen2 | 🔲 |
-| HTTP | HTTP | ❌ source-only in ADF |
+
+#### ADLS Gen2
+| Sink Dataset Type | Status |
+|---|---|
+| Parquet | ✅ |
+| Delimited Text (CSV/TSV) | 🔲 |
+| JSON | 🔲 |
+| Avro | 🔲 |
+| ORC | 🔲 |
+| Iceberg | 🔲 |
+
+#### Blob Storage
+| Sink Dataset Type | Status |
+|---|---|
+| Parquet | 🔲 |
+| Avro | 🔲 |
 
 ---
 
 ## What to Test Per Source Type
 
-### Azure SQL Database (source)
-- [ ] Use query = **Table** (no extra fields)
-- [ ] Use query = **Query** → SQL textarea appears, populates/saves correctly
-- [ ] Use query = **Stored procedure** → SP name field appears
-- [ ] Query timeout value saves correctly
-- [ ] Isolation level dropdown saves correctly
-- [ ] Partition option = **None** / **Physical partitions** / **Dynamic range**
+### Azure SQL Database (source) ✅ Validated
+- [x] Use query = **Table** (no extra fields, no max concurrent connections)
+- [x] Use query = **Query** → SQL textarea appears, populates/saves correctly
+- [x] Use query = **Stored procedure** → SP name + SP parameters grid appear; Physical partitions and Dynamic range greyed out
+- [x] Query timeout value writes to JSON by default
+- [x] Isolation level dropdown saves correctly
+- [x] Partition option = **None** / **Physical partitions** / **Dynamic range** (Table mode)
   - Dynamic range → partition column name + upper/lower bound fields appear
+- [x] Additional columns: add row, set name + value ($$COLUMN: or custom), saves as array
 
 ### Azure Synapse Analytics (source)
 - [ ] Same sub-cases as SQL DB above (same field structure)
@@ -120,6 +144,15 @@ Source and sink are **fully independent** — the fields rendered for each side 
 - [ ] Same write behaviour sub-cases as SQL DB above
 - [ ] Additional Synapse-only fields (COPY command, PolyBase, etc.) — *check if config has these*
 
+### Parquet (ADLS sink) ✅ Validated
+- [x] `formatSettings: { type: "ParquetWriteSettings" }` written correctly
+- [x] Copy behavior = **None** → omitted from JSON; other values written
+- [x] Block size in MB — range validation 4–100 enforced on save
+- [x] Max rows per file — empty stays empty (not defaulted to 0); written when set
+- [x] File name prefix — only shown when Max rows per file is set; written when non-empty
+- [x] Metadata — `additional-columns` style grid; saves as `storeSettings.metadata` array; blank-name rows filtered
+- [x] Max concurrent connections
+
 ### Parquet / Avro / ORC / JSON (file sinks, ADLS or Blob)
 - [ ] File path in dataset / wildcard / list of files
 - [ ] Compression codec + level
@@ -136,14 +169,15 @@ Source and sink are **fully independent** — the fields rendered for each side 
 
 High value because they cover most real ETL patterns:
 
-1. **Avro (ADLS) → Azure SQL DB** ← already tested (your current setup)
-2. **Azure SQL DB → Parquet (ADLS)** ← DB export, tests SQL source + file sink
-3. **Azure SQL DB → Azure SQL DB** ← DB copy/migration pattern
-4. **Parquet (ADLS) → Parquet (ADLS)** ← file transform pattern
-5. **DelimitedText → Azure SQL DB** ← CSV ingest (common)
+1. ~~**Avro (ADLS) → Azure SQL DB**~~ ← already tested
+2. ~~**Azure SQL DB as source**~~ ← validated ✅
+3. ~~**Azure SQL DB → Parquet (ADLS)**~~ ← Parquet sink validated ✅
+4. **➡️ NEXT: Parquet (ADLS) → Parquet (ADLS)** ← validates ADLS file source for the first time
+5. **DelimitedText → Azure SQL DB** ← CSV ingest (very common)
 6. **XML (ADLS) → Azure SQL DB** ← XML source (source-only type)
-7. **Azure SQL DB → Synapse** ← requires Synapse dataset setup first
-8. **Avro (Blob) → Azure SQL DB** ← tests Blob storage variant
+7. **Azure SQL DB → DelimitedText (ADLS)** ← validates DelimitedText sink
+8. **Azure SQL DB → Synapse** ← requires Synapse dataset setup first
+9. **Avro (Blob) → Azure SQL DB** ← tests Blob storage variant
 
 ---
 
@@ -151,10 +185,9 @@ High value because they cover most real ETL patterns:
 
 | Gap | Notes |
 |---|---|
+| **Excel** dataset type | ADF supports Excel as a source-only format on ADLS/Blob. Not in the config. Needs a new entry similar to `Xml` (source-only, no storeSettings format write type). |
 | `Iceberg` sink — table action | Uses `formatSettings.tableActionOption` (Append/Overwrite). Verify ADF JSON output matches expected schema. |
 | `HttpFile` source — request body | Only appears when method is POST. Verify conditional rendering works. |
 | Azure Synapse Parquet/PolyBase | Synapse sink may have extra options beyond basic SQL (PolyBase, COPY command). |
 | Mapping tab | Placeholder only — column mapping not yet implemented. |
-| Azure Synapse Parquet/PolyBase copy settings | Synapse sink may have extra options beyond basic SQL |
 | Source partition settings for Synapse | May differ from SQL DB partition fields |
-| Mapping tab | Placeholder only — column mapping not yet implemented |

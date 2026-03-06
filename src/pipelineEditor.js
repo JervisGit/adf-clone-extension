@@ -2184,6 +2184,30 @@ class PipelineEditorProvider {
                         }
                     }
                 }
+                if (a.type === 'Copy') {
+                    // Validate rangeError-annotated number fields in the sink dataset config
+                    const _snkConf = copyActivityConfig.datasetTypes?.[a._sinkDatasetType];
+                    for (const [_fk, _fc] of Object.entries(_snkConf?.fields?.sink || {})) {
+                        if (!_fc.rangeError) continue;
+                        const _v = a[_fk];
+                        if (_v === undefined || _v === null || _v === '') continue;
+                        const _num = Number(_v);
+                        if (isNaN(_num) || (_fc.min !== undefined && _num < _fc.min) || (_fc.max !== undefined && _num > _fc.max)) {
+                            invalidActivities.push(a.name + ' (Copy) - ' + _fc.rangeError);
+                        }
+                    }
+                    // Same for source dataset config
+                    const _srcConf = copyActivityConfig.datasetTypes?.[a._sourceDatasetType];
+                    for (const [_fk, _fc] of Object.entries(_srcConf?.fields?.source || {})) {
+                        if (!_fc.rangeError) continue;
+                        const _v = a[_fk];
+                        if (_v === undefined || _v === null || _v === '') continue;
+                        const _num = Number(_v);
+                        if (isNaN(_num) || (_fc.min !== undefined && _num < _fc.min) || (_fc.max !== undefined && _num > _fc.max)) {
+                            invalidActivities.push(a.name + ' (Copy) - ' + _fc.rangeError);
+                        }
+                    }
+                }
             });
             
             if (invalidActivities.length > 0) {
@@ -2552,7 +2576,9 @@ class PipelineEditorProvider {
                                 if (_fc.conditional) {
                                     const _condVal = a[_fc.conditional.field];
                                     const _condExpected = _fc.conditional.value;
-                                    const _condMet = Array.isArray(_condExpected) ? _condExpected.includes(_condVal) : _condVal === _condExpected;
+                                    const _condMet = _fc.conditional.notEmpty
+                                        ? (_condVal !== undefined && _condVal !== null && _condVal !== '')
+                                        : (Array.isArray(_condExpected) ? _condExpected.includes(_condVal) : _condVal === _condExpected);
                                     if (!_condMet) continue;
                                 }
                                 // Check nestedConditional
@@ -2606,15 +2632,23 @@ class PipelineEditorProvider {
                                 if (_fc.conditional) {
                                     const _condVal = a[_fc.conditional.field];
                                     const _condExpected = _fc.conditional.value;
-                                    const _condMet = Array.isArray(_condExpected) ? _condExpected.includes(_condVal) : _condVal === _condExpected;
+                                    const _condMet = _fc.conditional.notEmpty
+                                        ? (_condVal !== undefined && _condVal !== null && _condVal !== '')
+                                        : (Array.isArray(_condExpected) ? _condExpected.includes(_condVal) : _condVal === _condExpected);
                                     if (!_condMet) continue;
                                 }
                                 const _v = a[_fk];
                                 if (_fc.omitWhenValue !== undefined && _v === _fc.omitWhenValue) continue;
                                 // For noEmpty arrays, filter out blank entries before writing
-                                const _writeV = (_fc.noEmpty && Array.isArray(_v))
+                                let _writeV = (_fc.noEmpty && Array.isArray(_v))
                                     ? _v.filter(s => typeof s === 'string' ? s.trim() !== '' : s !== null && s !== undefined)
                                     : _v;
+                                // For filterEmpty object-arrays, filter and guard against non-array stale values
+                                if (_fc.filterEmpty && Array.isArray(_writeV)) {
+                                    _writeV = _writeV.filter(item => item[_fc.filterEmpty] && String(item[_fc.filterEmpty]).trim() !== '');
+                                } else if (_fc.filterEmpty && !Array.isArray(_writeV)) {
+                                    continue;
+                                }
                                 // Skip empty objects (e.g. empty storedProcedureParameters)
                                 const _isEmpty = (_writeV !== undefined && _writeV !== null && typeof _writeV === 'object' && !Array.isArray(_writeV) && Object.keys(_writeV).length === 0);
                                 if (_writeV !== undefined && _writeV !== null && _writeV !== '' && !_isEmpty) {
@@ -6342,20 +6376,27 @@ class PipelineEditorProvider {
                     const conditionValue = prop.conditional.value;
                     const actualValue = activity[conditionField];
                     
-                    // For dynamicAllocation: if undefined, default to 'Enabled' behavior (show min/max)
-                    const effectiveValue = (conditionField === 'dynamicAllocation' && actualValue === undefined) 
-                        ? 'Enabled' 
-                        : actualValue;
-                    
-                    // Skip this field if condition is not met
-                    // Support both single value and array of values
-                    if (Array.isArray(conditionValue)) {
-                        if (!conditionValue.includes(effectiveValue)) {
+                    if (prop.conditional.notEmpty) {
+                        // notEmpty: true — show only when field has a defined, non-empty value (0 counts as set)
+                        if (actualValue === undefined || actualValue === null || actualValue === '') {
                             return '';
                         }
                     } else {
-                        if (effectiveValue !== conditionValue) {
-                            return '';
+                        // For dynamicAllocation: if undefined, default to 'Enabled' behavior (show min/max)
+                        const effectiveValue = (conditionField === 'dynamicAllocation' && actualValue === undefined) 
+                            ? 'Enabled' 
+                            : actualValue;
+                        
+                        // Skip this field if condition is not met
+                        // Support both single value and array of values
+                        if (Array.isArray(conditionValue)) {
+                            if (!conditionValue.includes(effectiveValue)) {
+                                return '';
+                            }
+                        } else {
+                            if (effectiveValue !== conditionValue) {
+                                return '';
+                            }
                         }
                     }
                 }
@@ -6462,7 +6503,8 @@ class PipelineEditorProvider {
                     case 'number':
                         const min = prop.min !== undefined ? \`min="\${prop.min}"\` : '';
                         const max = prop.max !== undefined ? \`max="\${prop.max}"\` : '';
-                        fieldHtml += \`<input type="number" class="property-input" data-key="\${key}" value="\${value}" \${min} \${max}>\`;
+                        const numPlaceholder = prop.placeholder ? \`placeholder="\${prop.placeholder}"\` : '';
+                        fieldHtml += \`<input type="number" class="property-input" data-key="\${key}" value="\${value}" \${min} \${max} \${numPlaceholder}>\`;
                         break;
                     case 'boolean':
                         const checked = value ? 'checked' : '';
@@ -7066,7 +7108,7 @@ class PipelineEditorProvider {
                     }
                     case 'additional-columns': {
                         // Renders a list of {name, value} entries.
-                        // Value is a free-text field pre-populated with $$COLUMN: but fully editable.
+                        // Value is a free-text field (placeholder shown in grey; user types any value).
                         const _acData = Array.isArray(activity[key]) ? activity[key] : [];
                         fieldHtml += \`<div style="flex: 1;">\`;
                         fieldHtml += \`<button type="button" class="add-additional-col-btn" data-key="\${key}" style="padding: 4px 8px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; font-size: 11px; margin-bottom: 8px;">+ New</button>\`;
@@ -7079,7 +7121,7 @@ class PipelineEditorProvider {
                                 fieldHtml += \`
                                 <div class="additional-col-row" style="display: grid; grid-template-columns: 1fr 1fr 26px; gap: 6px; margin-bottom: 6px; align-items: center;">
                                     <input type="text" class="property-input ac-name-input" data-key="\${key}" data-index="\${_acIdx}" value="\${_acEntry.name || ''}" placeholder="Column name" style="font-size: 11px; padding: 3px 6px;">
-                                    <input type="text" class="property-input ac-value-input" data-key="\${key}" data-index="\${_acIdx}" value="\${_acEntry.value || ''}" placeholder="$$COLUMN:columnName" style="font-size: 11px; padding: 3px 6px;">
+                                    <input type="text" class="property-input ac-value-input" data-key="\${key}" data-index="\${_acIdx}" value="\${_acEntry.value || ''}" placeholder="Value" style="font-size: 11px; padding: 3px 6px; color: inherit;">
                                     <button type="button" class="remove-additional-col-btn" data-key="\${key}" data-index="\${_acIdx}" style="padding: 2px 4px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; font-size: 10px;">&times;</button>
                                 </div>\`;
                             });
@@ -7565,12 +7607,18 @@ class PipelineEditorProvider {
                         const value = e.target.value;
                         // Convert to appropriate type
                         if (input.type === 'number') {
-                            activity[key] = parseFloat(value) || 0;
+                            activity[key] = value === '' ? undefined : (parseFloat(value) || 0);
                         } else {
                             activity[key] = value;
                         }
                         markAsDirty();
                         console.log('Updated ' + key + ':', activity[key]);
+                        
+                        // Re-render current tab if this field is referenced by a conditional
+                        const reRenderTab = reRenderKeyMap[key];
+                        if (reRenderTab) {
+                            showProperties(activity, reRenderTab);
+                        }
                         
                         // Mirror executorSize to driverSize for SynapseNotebook activities
                         if (key === 'executorSize' && activity.type === 'SynapseNotebook') {
@@ -8442,7 +8490,7 @@ class PipelineEditorProvider {
                 btn.addEventListener('click', () => {
                     const fieldKey = btn.getAttribute('data-key');
                     if (!Array.isArray(activity[fieldKey])) activity[fieldKey] = [];
-                    activity[fieldKey].push({ name: '', value: '$$COLUMN:' });
+                    activity[fieldKey].push({ name: '', value: '' });
                     markAsDirty();
                     const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
                     showProperties(activity, activeTab);
@@ -9424,6 +9472,9 @@ class PipelineEditorProvider {
                                 if (_fc.noEmpty && Array.isArray(a[_fk])) {
                                     a[_fk] = a[_fk].filter(s => typeof s === 'string' ? s.trim() !== '' : s !== null && s !== undefined);
                                 }
+                                if (_fc.filterEmpty && Array.isArray(a[_fk])) {
+                                    a[_fk] = a[_fk].filter(item => item[_fc.filterEmpty] && String(item[_fc.filterEmpty]).trim() !== '');
+                                }
                             }
                         }
                         if (a._sourceDatasetType) {
@@ -9628,7 +9679,9 @@ class PipelineEditorProvider {
                                         if (!_fc.jsonPath) continue;
                                         const _v = _getValueByPath(sinkObj, _fc.jsonPath);
                                         if (_v !== undefined) {
-                                            activity[_fk] = _v;
+                                            activity[_fk] = (_fc.filterEmpty && !Array.isArray(_v)) ? [] : _v;
+                                        } else if (_fc.filterEmpty !== undefined) {
+                                            activity[_fk] = [];
                                         } else if (_fc.default !== undefined) {
                                             activity[_fk] = _fc.default;
                                         }

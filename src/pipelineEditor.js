@@ -4542,7 +4542,16 @@ class PipelineEditorProvider {
                 'Switch':      ['IfCondition', 'ForEach', 'Until', 'Switch'],
                 'Until':       ['Validation']
             };
-            const restrictedTypes = (isInBranch && restrictedByContainer[containerType]) || [];
+            let restrictedTypes = (isInBranch && restrictedByContainer[containerType]) || [];
+            // Also union in restrictions from ancestor editing contexts.
+            // E.g. when inside an IfCondition that is itself inside Until,
+            // Validation should still be greyed out (inherited from Until).
+            if (isInBranch) {
+                editingContextStack.forEach(ctx => {
+                    const ancRestricted = restrictedByContainer[ctx.parentActivity?.type] || [];
+                    restrictedTypes = [...new Set([...restrictedTypes, ...ancRestricted])];
+                });
+            }
             document.querySelectorAll('.activity-item').forEach(item => {
                 const activityType = item.getAttribute('data-type');
                 const isRestricted = restrictedTypes.includes(activityType);
@@ -5334,7 +5343,22 @@ class PipelineEditorProvider {
                     // Copy typeProperties without nesting
                     if (actData.typeProperties) {
                         Object.assign(act, actData.typeProperties);
+                        // Normalize expression-type properties to plain strings.
+                        // They may be Expression objects when loaded back from saved JSON,
+                        // and double- or triple-wrapping builds up on repeated save/load.
+                        const _unwrap = v => { while (v && typeof v === 'object' && 'value' in v) v = v.value; return typeof v === 'string' ? v : ''; };
+                        if (act.type === 'IfCondition' && act.expression && typeof act.expression === 'object') act.expression = _unwrap(act.expression);
+                        if (act.type === 'Until'       && act.expression && typeof act.expression === 'object') act.expression = _unwrap(act.expression);
+                        if (act.type === 'Switch'      && act.on         && typeof act.on         === 'object') act.on = act.on.value || '';
+                        if (act.type === 'ForEach'     && act.items      && typeof act.items      === 'object') act.items = _unwrap(act.items);
+                        if (act.type === 'Filter') {
+                            if (act.items     && typeof act.items     === 'object') act.items     = _unwrap(act.items);
+                            if (act.condition && typeof act.condition === 'object') act.condition = _unwrap(act.condition);
+                        }
                     }
+                    // Copy activity-level fields that live outside typeProperties in the JSON
+                    // (e.g. linkedServiceName for Script / SqlServerStoredProcedure).
+                    if (actData.linkedServiceName) act.linkedServiceName = actData.linkedServiceName;
                     
                     act.userProperties = actData.userProperties || [];
                     act.container = canvasWrapper;
@@ -5435,7 +5459,22 @@ class PipelineEditorProvider {
                     // Copy typeProperties without nesting
                     if (actData.typeProperties) {
                         Object.assign(act, actData.typeProperties);
+                        // Normalize expression-type properties to plain strings.
+                        // They may be Expression objects when loaded back from saved JSON,
+                        // and double- or triple-wrapping builds up on repeated save/load.
+                        const _unwrap = v => { while (v && typeof v === 'object' && 'value' in v) v = v.value; return typeof v === 'string' ? v : ''; };
+                        if (act.type === 'IfCondition' && act.expression && typeof act.expression === 'object') act.expression = _unwrap(act.expression);
+                        if (act.type === 'Until'       && act.expression && typeof act.expression === 'object') act.expression = _unwrap(act.expression);
+                        if (act.type === 'Switch'      && act.on         && typeof act.on         === 'object') act.on = act.on.value || '';
+                        if (act.type === 'ForEach'     && act.items      && typeof act.items      === 'object') act.items = _unwrap(act.items);
+                        if (act.type === 'Filter') {
+                            if (act.items     && typeof act.items     === 'object') act.items     = _unwrap(act.items);
+                            if (act.condition && typeof act.condition === 'object') act.condition = _unwrap(act.condition);
+                        }
                     }
+                    // Copy activity-level fields that live outside typeProperties in the JSON
+                    // (e.g. linkedServiceName for Script / SqlServerStoredProcedure).
+                    if (actData.linkedServiceName) act.linkedServiceName = actData.linkedServiceName;
                     
                     act.userProperties = actData.userProperties || [];
                     act.container = canvasWrapper;

@@ -629,11 +629,44 @@ class PipelineEditorProvider {
 						}
 					}
 				}
-						
-						activity.typeProperties = typeProperties;
-						console.log('[Extension] Final activity object:', JSON.stringify(activity, null, 2));
-						
-						return activity;
+
+					// For Copy activity: config-driven source/sink + inputs/outputs
+					// Must be OUTSIDE the for-loop because all Copy-specific keys are in commonProps
+					if (a.type === 'Copy') {
+						console.log('[Extension] Copy activity - config-driven build');
+						const srcTypeConfig = copyActivityConfig.datasetTypes && copyActivityConfig.datasetTypes[a._sourceDatasetType];
+						const snkTypeConfig = copyActivityConfig.datasetTypes && copyActivityConfig.datasetTypes[a._sinkDatasetType];
+
+						if (srcTypeConfig) {
+							const source = buildCopySource(a, srcTypeConfig, a._sourceLocationType, a._sourceObject);
+							if (source) typeProperties.source = source;
+							console.log('[Extension] Built source:', typeProperties.source?.type);
+						} else if (a._sourceObject) {
+							typeProperties.source = JSON.parse(JSON.stringify(a._sourceObject));
+						} else if (a._sourceDatasetType) {
+							typeProperties.source = { type: a._sourceDatasetType + 'Source' };
+						}
+
+						if (snkTypeConfig) {
+							const sink = buildCopySink(a, snkTypeConfig, a._sinkLocationType, a._sinkObject);
+							if (sink) typeProperties.sink = sink;
+							console.log('[Extension] Built sink:', typeProperties.sink?.type);
+						} else if (a._sinkObject) {
+							typeProperties.sink = JSON.parse(JSON.stringify(a._sinkObject));
+						} else if (a._sinkDatasetType) {
+							typeProperties.sink = { type: a._sinkDatasetType + 'Sink' };
+						}
+
+						if (a.sourceDataset) {
+							activity.inputs = [{ referenceName: a.sourceDataset, type: 'DatasetReference' }];
+						}
+						if (a.sinkDataset) {
+							activity.outputs = [{ referenceName: a.sinkDataset, type: 'DatasetReference' }];
+						}
+					}
+
+					activity.typeProperties = typeProperties;
+					return activity;
 					}),
                     ...(pipelineData.variables && Object.keys(pipelineData.variables).length > 0 ? { variables: pipelineData.variables } : {}),
                     ...(pipelineData.parameters && Object.keys(pipelineData.parameters).length > 0 ? { parameters: pipelineData.parameters } : {}),
@@ -3722,6 +3755,11 @@ class PipelineEditorProvider {
                         }
                     }
 
+                    // For Copy: merge pre-built source/sink (built before the generic loop) into typeProperties
+                    if (a.type === 'Copy' && activity.typeProperties) {
+                        if (activity.typeProperties.source) typeProperties.source = activity.typeProperties.source;
+                        if (activity.typeProperties.sink) typeProperties.sink = activity.typeProperties.sink;
+                    }
                     activity.typeProperties = typeProperties;
                     return activity;
                 })

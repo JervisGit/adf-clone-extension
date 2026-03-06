@@ -1,5 +1,5 @@
 {
-  "_comment": "Config-driven Copy Activity source/sink field definitions. Field keys prefixed with 'src_' (source) or 'snk_' (sink) to avoid naming collisions when both sides are flattened onto the same activity object. jsonPath is relative to the source or sink object.",
+  "_comment": "Config-driven Copy Activity source/sink field definitions. Field keys prefixed with 'src_' (source) or 'snk_' (sink) to avoid naming collisions when both sides are flattened onto the same activity object. jsonPath is relative to the source or sink object. Fields without a jsonPath are UI-only controls (e.g. filePathType, useQuery) used to drive conditional display.",
   "datasetTypes": {
     "AzureSqlTable": {
       "name": "Azure SQL Database",
@@ -8,24 +8,77 @@
       "sinkTypeName": "AzureSqlSink",
       "fields": {
         "source": {
+          "src_useQuery": {
+            "type": "radio",
+            "label": "Use query",
+            "options": ["Table", "Query", "Stored procedure"],
+            "optionValues": ["Table", "Query", "Stored procedure"],
+            "default": "Table"
+          },
           "src_sqlReaderQuery": {
             "type": "textarea",
             "label": "Query",
+            "required": true,
             "placeholder": "SELECT * FROM [schema].[table]",
+            "conditional": { "field": "src_useQuery", "value": "Query" },
             "jsonPath": "sqlReaderQuery"
+          },
+          "src_sqlReaderStoredProcedureName": {
+            "type": "text",
+            "label": "Stored procedure name",
+            "required": true,
+            "placeholder": "sp_name",
+            "conditional": { "field": "src_useQuery", "value": "Stored procedure" },
+            "jsonPath": "sqlReaderStoredProcedureName"
+          },
+          "src_queryTimeout": {
+            "type": "number",
+            "label": "Query timeout (minutes)",
+            "default": 120,
+            "min": 1,
+            "placeholder": "120",
+            "jsonPath": "queryTimeout"
           },
           "src_isolationLevel": {
             "type": "select",
             "label": "Isolation level",
-            "options": ["None", "ReadCommitted", "ReadUncommitted", "RepeatableRead", "Serializable", "Snapshot"],
+            "options": ["Read committed", "Read uncommitted", "Repeatable read", "Serializable", "Snapshot"],
+            "optionValues": ["ReadCommitted", "ReadUncommitted", "RepeatableRead", "Serializable", "Snapshot"],
+            "placeholder": "Select...",
             "jsonPath": "isolationLevel"
           },
           "src_partitionOption": {
-            "type": "select",
+            "type": "radio",
             "label": "Partition option",
-            "options": ["None", "PhysicalPartitionsOfTable", "DynamicRange"],
+            "options": ["None", "Physical partitions of table", "Dynamic range"],
+            "optionValues": ["None", "PhysicalPartitionsOfTable", "DynamicRange"],
             "default": "None",
+            "conditional": { "field": "src_useQuery", "value": "Table" },
             "jsonPath": "partitionOption"
+          },
+          "src_partitionColumnName": {
+            "type": "text",
+            "label": "Partition column name",
+            "placeholder": "Column name",
+            "conditional": { "field": "src_partitionOption", "value": "DynamicRange" },
+            "nestedConditional": { "field": "src_useQuery", "value": "Table" },
+            "jsonPath": "partitionSettings.partitionColumnName"
+          },
+          "src_partitionUpperBound": {
+            "type": "text",
+            "label": "Partition upper bound",
+            "placeholder": "Upper bound value",
+            "conditional": { "field": "src_partitionOption", "value": "DynamicRange" },
+            "nestedConditional": { "field": "src_useQuery", "value": "Table" },
+            "jsonPath": "partitionSettings.partitionUpperBound"
+          },
+          "src_partitionLowerBound": {
+            "type": "text",
+            "label": "Partition lower bound",
+            "placeholder": "Lower bound value",
+            "conditional": { "field": "src_partitionOption", "value": "DynamicRange" },
+            "nestedConditional": { "field": "src_useQuery", "value": "Table" },
+            "jsonPath": "partitionSettings.partitionLowerBound"
           },
           "src_maxConcurrentConnections": {
             "type": "number",
@@ -98,24 +151,77 @@
       "sinkTypeName": "SqlDWSink",
       "fields": {
         "source": {
+          "src_useQuery": {
+            "type": "radio",
+            "label": "Use query",
+            "options": ["Table", "Query", "Stored procedure"],
+            "optionValues": ["Table", "Query", "Stored procedure"],
+            "default": "Table"
+          },
           "src_sqlReaderQuery": {
             "type": "textarea",
             "label": "Query",
+            "required": true,
             "placeholder": "SELECT * FROM [schema].[table]",
+            "conditional": { "field": "src_useQuery", "value": "Query" },
             "jsonPath": "sqlReaderQuery"
+          },
+          "src_sqlReaderStoredProcedureName": {
+            "type": "text",
+            "label": "Stored procedure name",
+            "required": true,
+            "placeholder": "sp_name",
+            "conditional": { "field": "src_useQuery", "value": "Stored procedure" },
+            "jsonPath": "sqlReaderStoredProcedureName"
+          },
+          "src_queryTimeout": {
+            "type": "number",
+            "label": "Query timeout (minutes)",
+            "default": 120,
+            "min": 1,
+            "placeholder": "120",
+            "jsonPath": "queryTimeout"
           },
           "src_isolationLevel": {
             "type": "select",
             "label": "Isolation level",
-            "options": ["None", "ReadCommitted", "ReadUncommitted", "RepeatableRead", "Serializable", "Snapshot"],
+            "options": ["Read committed", "Read uncommitted", "Repeatable read", "Serializable", "Snapshot"],
+            "optionValues": ["ReadCommitted", "ReadUncommitted", "RepeatableRead", "Serializable", "Snapshot"],
+            "placeholder": "Select...",
             "jsonPath": "isolationLevel"
           },
           "src_partitionOption": {
-            "type": "select",
+            "type": "radio",
             "label": "Partition option",
-            "options": ["None", "PhysicalPartitionsOfTable", "DynamicRange"],
+            "options": ["None", "Physical partitions of table", "Dynamic range"],
+            "optionValues": ["None", "PhysicalPartitionsOfTable", "DynamicRange"],
             "default": "None",
+            "conditional": { "field": "src_useQuery", "value": "Table" },
             "jsonPath": "partitionOption"
+          },
+          "src_partitionColumnName": {
+            "type": "text",
+            "label": "Partition column name",
+            "placeholder": "Column name",
+            "conditional": { "field": "src_partitionOption", "value": "DynamicRange" },
+            "nestedConditional": { "field": "src_useQuery", "value": "Table" },
+            "jsonPath": "partitionSettings.partitionColumnName"
+          },
+          "src_partitionUpperBound": {
+            "type": "text",
+            "label": "Partition upper bound",
+            "placeholder": "Upper bound value",
+            "conditional": { "field": "src_partitionOption", "value": "DynamicRange" },
+            "nestedConditional": { "field": "src_useQuery", "value": "Table" },
+            "jsonPath": "partitionSettings.partitionUpperBound"
+          },
+          "src_partitionLowerBound": {
+            "type": "text",
+            "label": "Partition lower bound",
+            "placeholder": "Lower bound value",
+            "conditional": { "field": "src_partitionOption", "value": "DynamicRange" },
+            "nestedConditional": { "field": "src_useQuery", "value": "Table" },
+            "jsonPath": "partitionSettings.partitionLowerBound"
           },
           "src_maxConcurrentConnections": {
             "type": "number",
@@ -198,35 +304,57 @@
       "defaultStoreWriteSettings": "AzureBlobFSWriteSettings",
       "fields": {
         "source": {
-          "src_recursive": {
-            "type": "boolean",
-            "label": "Recursively",
-            "default": true,
-            "jsonPath": "storeSettings.recursive"
+          "src_filePathType": {
+            "type": "radio",
+            "label": "File path type",
+            "options": ["File path in dataset", "Prefix", "Wildcard file path", "List of files"],
+            "optionValues": ["filePathInDataset", "prefix", "wildcardFilePath", "listOfFiles"],
+            "default": "filePathInDataset"
+          },
+          "src_prefix": {
+            "type": "text",
+            "label": "Prefix",
+            "conditional": { "field": "src_filePathType", "value": "prefix" },
+            "jsonPath": "storeSettings.prefix"
           },
           "src_wildcardFolderPath": {
             "type": "text",
             "label": "Wildcard folder path",
             "placeholder": "folder/subfolder",
+            "conditional": { "field": "src_filePathType", "value": "wildcardFilePath" },
             "jsonPath": "storeSettings.wildcardFolderPath"
           },
           "src_wildcardFileName": {
             "type": "text",
             "label": "Wildcard file name",
             "placeholder": "*.parquet",
+            "default": "*.parquet",
+            "conditional": { "field": "src_filePathType", "value": "wildcardFilePath" },
             "jsonPath": "storeSettings.wildcardFileName"
           },
-          "src_modifiedDatetimeStart": {
+          "src_fileListPath": {
             "type": "text",
-            "label": "Modified start time (UTC)",
-            "placeholder": "e.g. 2026-01-01T00:00:00Z",
+            "label": "Path to file list",
+            "conditional": { "field": "src_filePathType", "value": "listOfFiles" },
+            "jsonPath": "storeSettings.fileListPath"
+          },
+          "src_modifiedDatetimeStart": {
+            "type": "datetime",
+            "label": "Start time (UTC)",
+            "placeholder": "2/18/2026, 12:00:00 AM",
             "jsonPath": "storeSettings.modifiedDatetimeStart"
           },
           "src_modifiedDatetimeEnd": {
-            "type": "text",
-            "label": "Modified end time (UTC)",
-            "placeholder": "e.g. 2026-12-31T23:59:59Z",
+            "type": "datetime",
+            "label": "End time (UTC)",
+            "placeholder": "2/18/2026, 12:00:00 AM",
             "jsonPath": "storeSettings.modifiedDatetimeEnd"
+          },
+          "src_recursive": {
+            "type": "boolean",
+            "label": "Recursively",
+            "default": true,
+            "jsonPath": "storeSettings.recursive"
           },
           "src_enablePartitionDiscovery": {
             "type": "boolean",
@@ -234,11 +362,11 @@
             "default": false,
             "jsonPath": "storeSettings.enablePartitionDiscovery"
           },
-          "src_deleteFilesAfterCompletion": {
-            "type": "boolean",
-            "label": "Delete files after completion",
-            "default": false,
-            "jsonPath": "storeSettings.deleteFilesAfterCompletion"
+          "src_partitionRootPath": {
+            "type": "text",
+            "label": "Partition root path",
+            "conditional": { "field": "src_enablePartitionDiscovery", "value": true },
+            "jsonPath": "storeSettings.partitionRootPath"
           },
           "src_maxConcurrentConnections": {
             "type": "number",
@@ -296,35 +424,57 @@
       "formatWriteType": "DelimitedTextWriteSettings",
       "fields": {
         "source": {
-          "src_recursive": {
-            "type": "boolean",
-            "label": "Recursively",
-            "default": true,
-            "jsonPath": "storeSettings.recursive"
+          "src_filePathType": {
+            "type": "radio",
+            "label": "File path type",
+            "options": ["File path in dataset", "Prefix", "Wildcard file path", "List of files"],
+            "optionValues": ["filePathInDataset", "prefix", "wildcardFilePath", "listOfFiles"],
+            "default": "filePathInDataset"
+          },
+          "src_prefix": {
+            "type": "text",
+            "label": "Prefix",
+            "conditional": { "field": "src_filePathType", "value": "prefix" },
+            "jsonPath": "storeSettings.prefix"
           },
           "src_wildcardFolderPath": {
             "type": "text",
             "label": "Wildcard folder path",
             "placeholder": "folder/subfolder",
+            "conditional": { "field": "src_filePathType", "value": "wildcardFilePath" },
             "jsonPath": "storeSettings.wildcardFolderPath"
           },
           "src_wildcardFileName": {
             "type": "text",
             "label": "Wildcard file name",
             "placeholder": "*.csv",
+            "default": "*",
+            "conditional": { "field": "src_filePathType", "value": "wildcardFilePath" },
             "jsonPath": "storeSettings.wildcardFileName"
           },
-          "src_modifiedDatetimeStart": {
+          "src_fileListPath": {
             "type": "text",
-            "label": "Modified start time (UTC)",
-            "placeholder": "e.g. 2026-01-01T00:00:00Z",
+            "label": "Path to file list",
+            "conditional": { "field": "src_filePathType", "value": "listOfFiles" },
+            "jsonPath": "storeSettings.fileListPath"
+          },
+          "src_modifiedDatetimeStart": {
+            "type": "datetime",
+            "label": "Start time (UTC)",
+            "placeholder": "2/18/2026, 12:00:00 AM",
             "jsonPath": "storeSettings.modifiedDatetimeStart"
           },
           "src_modifiedDatetimeEnd": {
-            "type": "text",
-            "label": "Modified end time (UTC)",
-            "placeholder": "e.g. 2026-12-31T23:59:59Z",
+            "type": "datetime",
+            "label": "End time (UTC)",
+            "placeholder": "2/18/2026, 12:00:00 AM",
             "jsonPath": "storeSettings.modifiedDatetimeEnd"
+          },
+          "src_recursive": {
+            "type": "boolean",
+            "label": "Recursively",
+            "default": true,
+            "jsonPath": "storeSettings.recursive"
           },
           "src_enablePartitionDiscovery": {
             "type": "boolean",
@@ -332,17 +482,24 @@
             "default": false,
             "jsonPath": "storeSettings.enablePartitionDiscovery"
           },
-          "src_deleteFilesAfterCompletion": {
-            "type": "boolean",
-            "label": "Delete files after completion",
-            "default": false,
-            "jsonPath": "storeSettings.deleteFilesAfterCompletion"
+          "src_partitionRootPath": {
+            "type": "text",
+            "label": "Partition root path",
+            "conditional": { "field": "src_enablePartitionDiscovery", "value": true },
+            "jsonPath": "storeSettings.partitionRootPath"
           },
           "src_maxConcurrentConnections": {
             "type": "number",
             "label": "Max concurrent connections",
             "min": 1,
             "jsonPath": "storeSettings.maxConcurrentConnections"
+          },
+          "src_skipLineCount": {
+            "type": "number",
+            "label": "Skip line count",
+            "min": 0,
+            "placeholder": "0",
+            "jsonPath": "formatSettings.skipLineCount"
           }
         },
         "sink": {
@@ -399,41 +556,69 @@
       "defaultStoreWriteSettings": "AzureBlobFSWriteSettings",
       "fields": {
         "source": {
-          "src_recursive": {
-            "type": "boolean",
-            "label": "Recursively",
-            "default": true,
-            "jsonPath": "storeSettings.recursive"
+          "src_filePathType": {
+            "type": "radio",
+            "label": "File path type",
+            "options": ["File path in dataset", "Prefix", "Wildcard file path", "List of files"],
+            "optionValues": ["filePathInDataset", "prefix", "wildcardFilePath", "listOfFiles"],
+            "default": "filePathInDataset"
+          },
+          "src_prefix": {
+            "type": "text",
+            "label": "Prefix",
+            "conditional": { "field": "src_filePathType", "value": "prefix" },
+            "jsonPath": "storeSettings.prefix"
           },
           "src_wildcardFolderPath": {
             "type": "text",
             "label": "Wildcard folder path",
             "placeholder": "folder/subfolder",
+            "conditional": { "field": "src_filePathType", "value": "wildcardFilePath" },
             "jsonPath": "storeSettings.wildcardFolderPath"
           },
           "src_wildcardFileName": {
             "type": "text",
             "label": "Wildcard file name",
             "placeholder": "*.json",
+            "default": "*.json",
+            "conditional": { "field": "src_filePathType", "value": "wildcardFilePath" },
             "jsonPath": "storeSettings.wildcardFileName"
           },
-          "src_modifiedDatetimeStart": {
+          "src_fileListPath": {
             "type": "text",
-            "label": "Modified start time (UTC)",
-            "placeholder": "e.g. 2026-01-01T00:00:00Z",
+            "label": "Path to file list",
+            "conditional": { "field": "src_filePathType", "value": "listOfFiles" },
+            "jsonPath": "storeSettings.fileListPath"
+          },
+          "src_modifiedDatetimeStart": {
+            "type": "datetime",
+            "label": "Start time (UTC)",
+            "placeholder": "2/18/2026, 12:00:00 AM",
             "jsonPath": "storeSettings.modifiedDatetimeStart"
           },
           "src_modifiedDatetimeEnd": {
-            "type": "text",
-            "label": "Modified end time (UTC)",
-            "placeholder": "e.g. 2026-12-31T23:59:59Z",
+            "type": "datetime",
+            "label": "End time (UTC)",
+            "placeholder": "2/18/2026, 12:00:00 AM",
             "jsonPath": "storeSettings.modifiedDatetimeEnd"
+          },
+          "src_recursive": {
+            "type": "boolean",
+            "label": "Recursively",
+            "default": true,
+            "jsonPath": "storeSettings.recursive"
           },
           "src_enablePartitionDiscovery": {
             "type": "boolean",
             "label": "Enable partition discovery",
             "default": false,
             "jsonPath": "storeSettings.enablePartitionDiscovery"
+          },
+          "src_partitionRootPath": {
+            "type": "text",
+            "label": "Partition root path",
+            "conditional": { "field": "src_enablePartitionDiscovery", "value": true },
+            "jsonPath": "storeSettings.partitionRootPath"
           },
           "src_maxConcurrentConnections": {
             "type": "number",
@@ -496,29 +681,69 @@
       "defaultStoreWriteSettings": "AzureBlobFSWriteSettings",
       "fields": {
         "source": {
-          "src_recursive": {
-            "type": "boolean",
-            "label": "Recursively",
-            "default": true,
-            "jsonPath": "storeSettings.recursive"
+          "src_filePathType": {
+            "type": "radio",
+            "label": "File path type",
+            "options": ["File path in dataset", "Prefix", "Wildcard file path", "List of files"],
+            "optionValues": ["filePathInDataset", "prefix", "wildcardFilePath", "listOfFiles"],
+            "default": "filePathInDataset"
+          },
+          "src_prefix": {
+            "type": "text",
+            "label": "Prefix",
+            "conditional": { "field": "src_filePathType", "value": "prefix" },
+            "jsonPath": "storeSettings.prefix"
           },
           "src_wildcardFolderPath": {
             "type": "text",
             "label": "Wildcard folder path",
             "placeholder": "folder/subfolder",
+            "conditional": { "field": "src_filePathType", "value": "wildcardFilePath" },
             "jsonPath": "storeSettings.wildcardFolderPath"
           },
           "src_wildcardFileName": {
             "type": "text",
             "label": "Wildcard file name",
             "placeholder": "*.avro",
+            "default": "*.avro",
+            "conditional": { "field": "src_filePathType", "value": "wildcardFilePath" },
             "jsonPath": "storeSettings.wildcardFileName"
+          },
+          "src_fileListPath": {
+            "type": "text",
+            "label": "Path to file list",
+            "conditional": { "field": "src_filePathType", "value": "listOfFiles" },
+            "jsonPath": "storeSettings.fileListPath"
+          },
+          "src_modifiedDatetimeStart": {
+            "type": "datetime",
+            "label": "Start time (UTC)",
+            "placeholder": "2/18/2026, 12:00:00 AM",
+            "jsonPath": "storeSettings.modifiedDatetimeStart"
+          },
+          "src_modifiedDatetimeEnd": {
+            "type": "datetime",
+            "label": "End time (UTC)",
+            "placeholder": "2/18/2026, 12:00:00 AM",
+            "jsonPath": "storeSettings.modifiedDatetimeEnd"
+          },
+          "src_recursive": {
+            "type": "boolean",
+            "label": "Recursively",
+            "default": true,
+            "jsonPath": "storeSettings.recursive"
           },
           "src_enablePartitionDiscovery": {
             "type": "boolean",
             "label": "Enable partition discovery",
             "default": false,
             "jsonPath": "storeSettings.enablePartitionDiscovery"
+          },
+          "src_partitionRootPath": {
+            "type": "text",
+            "label": "Partition root path",
+            "conditional": { "field": "src_enablePartitionDiscovery", "value": true },
+            "jsonPath": "storeSettings.partitionRootPath"
           },
           "src_maxConcurrentConnections": {
             "type": "number",
@@ -568,29 +793,69 @@
       "defaultStoreWriteSettings": "AzureBlobFSWriteSettings",
       "fields": {
         "source": {
-          "src_recursive": {
-            "type": "boolean",
-            "label": "Recursively",
-            "default": true,
-            "jsonPath": "storeSettings.recursive"
+          "src_filePathType": {
+            "type": "radio",
+            "label": "File path type",
+            "options": ["File path in dataset", "Prefix", "Wildcard file path", "List of files"],
+            "optionValues": ["filePathInDataset", "prefix", "wildcardFilePath", "listOfFiles"],
+            "default": "filePathInDataset"
+          },
+          "src_prefix": {
+            "type": "text",
+            "label": "Prefix",
+            "conditional": { "field": "src_filePathType", "value": "prefix" },
+            "jsonPath": "storeSettings.prefix"
           },
           "src_wildcardFolderPath": {
             "type": "text",
             "label": "Wildcard folder path",
             "placeholder": "folder/subfolder",
+            "conditional": { "field": "src_filePathType", "value": "wildcardFilePath" },
             "jsonPath": "storeSettings.wildcardFolderPath"
           },
           "src_wildcardFileName": {
             "type": "text",
             "label": "Wildcard file name",
             "placeholder": "*.orc",
+            "default": "*.orc",
+            "conditional": { "field": "src_filePathType", "value": "wildcardFilePath" },
             "jsonPath": "storeSettings.wildcardFileName"
+          },
+          "src_fileListPath": {
+            "type": "text",
+            "label": "Path to file list",
+            "conditional": { "field": "src_filePathType", "value": "listOfFiles" },
+            "jsonPath": "storeSettings.fileListPath"
+          },
+          "src_modifiedDatetimeStart": {
+            "type": "datetime",
+            "label": "Start time (UTC)",
+            "placeholder": "2/18/2026, 12:00:00 AM",
+            "jsonPath": "storeSettings.modifiedDatetimeStart"
+          },
+          "src_modifiedDatetimeEnd": {
+            "type": "datetime",
+            "label": "End time (UTC)",
+            "placeholder": "2/18/2026, 12:00:00 AM",
+            "jsonPath": "storeSettings.modifiedDatetimeEnd"
+          },
+          "src_recursive": {
+            "type": "boolean",
+            "label": "Recursively",
+            "default": true,
+            "jsonPath": "storeSettings.recursive"
           },
           "src_enablePartitionDiscovery": {
             "type": "boolean",
             "label": "Enable partition discovery",
             "default": false,
             "jsonPath": "storeSettings.enablePartitionDiscovery"
+          },
+          "src_partitionRootPath": {
+            "type": "text",
+            "label": "Partition root path",
+            "conditional": { "field": "src_enablePartitionDiscovery", "value": true },
+            "jsonPath": "storeSettings.partitionRootPath"
           },
           "src_maxConcurrentConnections": {
             "type": "number",
@@ -638,41 +903,69 @@
       "defaultStoreWriteSettings": null,
       "fields": {
         "source": {
-          "src_recursive": {
-            "type": "boolean",
-            "label": "Recursively",
-            "default": true,
-            "jsonPath": "storeSettings.recursive"
+          "src_filePathType": {
+            "type": "radio",
+            "label": "File path type",
+            "options": ["File path in dataset", "Prefix", "Wildcard file path", "List of files"],
+            "optionValues": ["filePathInDataset", "prefix", "wildcardFilePath", "listOfFiles"],
+            "default": "filePathInDataset"
+          },
+          "src_prefix": {
+            "type": "text",
+            "label": "Prefix",
+            "conditional": { "field": "src_filePathType", "value": "prefix" },
+            "jsonPath": "storeSettings.prefix"
           },
           "src_wildcardFolderPath": {
             "type": "text",
             "label": "Wildcard folder path",
             "placeholder": "folder/subfolder",
+            "conditional": { "field": "src_filePathType", "value": "wildcardFilePath" },
             "jsonPath": "storeSettings.wildcardFolderPath"
           },
           "src_wildcardFileName": {
             "type": "text",
             "label": "Wildcard file name",
             "placeholder": "*.xml",
+            "default": "*.xml",
+            "conditional": { "field": "src_filePathType", "value": "wildcardFilePath" },
             "jsonPath": "storeSettings.wildcardFileName"
           },
-          "src_modifiedDatetimeStart": {
+          "src_fileListPath": {
             "type": "text",
-            "label": "Modified start time (UTC)",
-            "placeholder": "e.g. 2026-01-01T00:00:00Z",
+            "label": "Path to file list",
+            "conditional": { "field": "src_filePathType", "value": "listOfFiles" },
+            "jsonPath": "storeSettings.fileListPath"
+          },
+          "src_modifiedDatetimeStart": {
+            "type": "datetime",
+            "label": "Start time (UTC)",
+            "placeholder": "2/18/2026, 12:00:00 AM",
             "jsonPath": "storeSettings.modifiedDatetimeStart"
           },
           "src_modifiedDatetimeEnd": {
-            "type": "text",
-            "label": "Modified end time (UTC)",
-            "placeholder": "e.g. 2026-12-31T23:59:59Z",
+            "type": "datetime",
+            "label": "End time (UTC)",
+            "placeholder": "2/18/2026, 12:00:00 AM",
             "jsonPath": "storeSettings.modifiedDatetimeEnd"
+          },
+          "src_recursive": {
+            "type": "boolean",
+            "label": "Recursively",
+            "default": true,
+            "jsonPath": "storeSettings.recursive"
           },
           "src_enablePartitionDiscovery": {
             "type": "boolean",
             "label": "Enable partition discovery",
             "default": false,
             "jsonPath": "storeSettings.enablePartitionDiscovery"
+          },
+          "src_partitionRootPath": {
+            "type": "text",
+            "label": "Partition root path",
+            "conditional": { "field": "src_enablePartitionDiscovery", "value": true },
+            "jsonPath": "storeSettings.partitionRootPath"
           },
           "src_maxConcurrentConnections": {
             "type": "number",

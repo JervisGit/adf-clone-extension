@@ -1,0 +1,713 @@
+{
+  "_comment": "Config-driven Copy Activity source/sink field definitions. Field keys prefixed with 'src_' (source) or 'snk_' (sink) to avoid naming collisions when both sides are flattened onto the same activity object. jsonPath is relative to the source or sink object.",
+  "datasetTypes": {
+    "AzureSqlTable": {
+      "name": "Azure SQL Database",
+      "hasStoreSettings": false,
+      "sourceTypeName": "AzureSqlSource",
+      "sinkTypeName": "AzureSqlSink",
+      "fields": {
+        "source": {
+          "src_sqlReaderQuery": {
+            "type": "textarea",
+            "label": "Query",
+            "placeholder": "SELECT * FROM [schema].[table]",
+            "jsonPath": "sqlReaderQuery"
+          },
+          "src_isolationLevel": {
+            "type": "select",
+            "label": "Isolation level",
+            "options": ["None", "ReadCommitted", "ReadUncommitted", "RepeatableRead", "Serializable", "Snapshot"],
+            "jsonPath": "isolationLevel"
+          },
+          "src_partitionOption": {
+            "type": "select",
+            "label": "Partition option",
+            "options": ["None", "PhysicalPartitionsOfTable", "DynamicRange"],
+            "default": "None",
+            "jsonPath": "partitionOption"
+          },
+          "src_maxConcurrentConnections": {
+            "type": "number",
+            "label": "Max concurrent connections",
+            "min": 1,
+            "jsonPath": "maxConcurrentConnections"
+          }
+        },
+        "sink": {
+          "snk_writeBehavior": {
+            "type": "radio",
+            "label": "Write behavior",
+            "options": ["insert", "upsert", "storedProcedure"],
+            "default": "insert",
+            "jsonPath": "writeBehavior"
+          },
+          "snk_tableOption": {
+            "type": "radio",
+            "label": "Table option",
+            "options": ["useExisting", "autoCreate"],
+            "default": "useExisting",
+            "jsonPath": "tableOption"
+          },
+          "snk_sqlWriterUseTableLock": {
+            "type": "boolean",
+            "label": "Bulk insert table lock",
+            "default": false,
+            "jsonPath": "sqlWriterUseTableLock"
+          },
+          "snk_preCopyScript": {
+            "type": "textarea",
+            "label": "Pre-copy script",
+            "placeholder": "TRUNCATE TABLE [schema].[table]",
+            "jsonPath": "preCopyScript"
+          },
+          "snk_writeBatchSize": {
+            "type": "number",
+            "label": "Write batch size",
+            "default": 10000,
+            "min": 1,
+            "jsonPath": "writeBatchSize"
+          },
+          "snk_writeBatchTimeout": {
+            "type": "text",
+            "label": "Write batch timeout",
+            "default": "00:30:00",
+            "placeholder": "00:30:00",
+            "jsonPath": "writeBatchTimeout"
+          },
+          "snk_maxConcurrentConnections": {
+            "type": "number",
+            "label": "Max concurrent connections",
+            "min": 1,
+            "jsonPath": "maxConcurrentConnections"
+          },
+          "snk_disableMetricsCollection": {
+            "type": "boolean",
+            "label": "Disable performance metrics analytics",
+            "default": false,
+            "jsonPath": "disableMetricsCollection"
+          }
+        }
+      }
+    },
+
+    "AzureSqlDWTable": {
+      "name": "Azure Synapse Analytics",
+      "hasStoreSettings": false,
+      "sourceTypeName": "SqlDWSource",
+      "sinkTypeName": "SqlDWSink",
+      "fields": {
+        "source": {
+          "src_sqlReaderQuery": {
+            "type": "textarea",
+            "label": "Query",
+            "placeholder": "SELECT * FROM [schema].[table]",
+            "jsonPath": "sqlReaderQuery"
+          },
+          "src_isolationLevel": {
+            "type": "select",
+            "label": "Isolation level",
+            "options": ["None", "ReadCommitted", "ReadUncommitted", "RepeatableRead", "Serializable", "Snapshot"],
+            "jsonPath": "isolationLevel"
+          },
+          "src_partitionOption": {
+            "type": "select",
+            "label": "Partition option",
+            "options": ["None", "PhysicalPartitionsOfTable", "DynamicRange"],
+            "default": "None",
+            "jsonPath": "partitionOption"
+          },
+          "src_maxConcurrentConnections": {
+            "type": "number",
+            "label": "Max concurrent connections",
+            "min": 1,
+            "jsonPath": "maxConcurrentConnections"
+          }
+        },
+        "sink": {
+          "snk_writeBehavior": {
+            "type": "radio",
+            "label": "Write behavior",
+            "options": ["Insert", "Upsert"],
+            "default": "Insert",
+            "jsonPath": "writeBehavior"
+          },
+          "snk_allowCopyCommand": {
+            "type": "boolean",
+            "label": "Allow COPY command",
+            "default": false,
+            "jsonPath": "allowCopyCommand"
+          },
+          "snk_tableOption": {
+            "type": "radio",
+            "label": "Table option",
+            "options": ["useExisting", "autoCreate"],
+            "default": "useExisting",
+            "jsonPath": "tableOption"
+          },
+          "snk_preCopyScript": {
+            "type": "textarea",
+            "label": "Pre-copy script",
+            "placeholder": "TRUNCATE TABLE [schema].[table]",
+            "jsonPath": "preCopyScript"
+          },
+          "snk_writeBatchSize": {
+            "type": "number",
+            "label": "Write batch size",
+            "default": 10000,
+            "min": 1,
+            "jsonPath": "writeBatchSize"
+          },
+          "snk_writeBatchTimeout": {
+            "type": "text",
+            "label": "Write batch timeout",
+            "default": "00:30:00",
+            "placeholder": "00:30:00",
+            "jsonPath": "writeBatchTimeout"
+          },
+          "snk_maxConcurrentConnections": {
+            "type": "number",
+            "label": "Max concurrent connections",
+            "min": 1,
+            "jsonPath": "maxConcurrentConnections"
+          },
+          "snk_disableMetricsCollection": {
+            "type": "boolean",
+            "label": "Disable performance metrics analytics",
+            "default": false,
+            "jsonPath": "disableMetricsCollection"
+          }
+        }
+      }
+    },
+
+    "Parquet": {
+      "name": "Parquet",
+      "hasStoreSettings": true,
+      "sourceTypeName": "ParquetSource",
+      "sinkTypeName": "ParquetSink",
+      "storeReadSettingsTypes": {
+        "AzureBlobFSLocation": "AzureBlobFSReadSettings",
+        "AzureBlobStorageLocation": "AzureBlobStorageReadSettings"
+      },
+      "defaultStoreReadSettings": "AzureBlobFSReadSettings",
+      "storeWriteSettingsTypes": {
+        "AzureBlobFSLocation": "AzureBlobFSWriteSettings",
+        "AzureBlobStorageLocation": "AzureBlobStorageWriteSettings"
+      },
+      "defaultStoreWriteSettings": "AzureBlobFSWriteSettings",
+      "fields": {
+        "source": {
+          "src_recursive": {
+            "type": "boolean",
+            "label": "Recursively",
+            "default": true,
+            "jsonPath": "storeSettings.recursive"
+          },
+          "src_wildcardFolderPath": {
+            "type": "text",
+            "label": "Wildcard folder path",
+            "placeholder": "folder/subfolder",
+            "jsonPath": "storeSettings.wildcardFolderPath"
+          },
+          "src_wildcardFileName": {
+            "type": "text",
+            "label": "Wildcard file name",
+            "placeholder": "*.parquet",
+            "jsonPath": "storeSettings.wildcardFileName"
+          },
+          "src_modifiedDatetimeStart": {
+            "type": "text",
+            "label": "Modified start time (UTC)",
+            "placeholder": "e.g. 2026-01-01T00:00:00Z",
+            "jsonPath": "storeSettings.modifiedDatetimeStart"
+          },
+          "src_modifiedDatetimeEnd": {
+            "type": "text",
+            "label": "Modified end time (UTC)",
+            "placeholder": "e.g. 2026-12-31T23:59:59Z",
+            "jsonPath": "storeSettings.modifiedDatetimeEnd"
+          },
+          "src_enablePartitionDiscovery": {
+            "type": "boolean",
+            "label": "Enable partition discovery",
+            "default": false,
+            "jsonPath": "storeSettings.enablePartitionDiscovery"
+          },
+          "src_deleteFilesAfterCompletion": {
+            "type": "boolean",
+            "label": "Delete files after completion",
+            "default": false,
+            "jsonPath": "storeSettings.deleteFilesAfterCompletion"
+          },
+          "src_maxConcurrentConnections": {
+            "type": "number",
+            "label": "Max concurrent connections",
+            "min": 1,
+            "jsonPath": "storeSettings.maxConcurrentConnections"
+          }
+        },
+        "sink": {
+          "snk_copyBehavior": {
+            "type": "select",
+            "label": "Copy behavior",
+            "options": ["None", "PreserveHierarchy", "FlattenHierarchy", "MergeFiles"],
+            "default": "None",
+            "jsonPath": "storeSettings.copyBehavior"
+          },
+          "snk_blockSizeInMB": {
+            "type": "number",
+            "label": "Block size in MB",
+            "min": 1,
+            "jsonPath": "storeSettings.blockSizeInMB"
+          },
+          "snk_maxConcurrentConnections": {
+            "type": "number",
+            "label": "Max concurrent connections",
+            "min": 1,
+            "jsonPath": "storeSettings.maxConcurrentConnections"
+          },
+          "snk_disableMetricsCollection": {
+            "type": "boolean",
+            "label": "Disable performance metrics analytics",
+            "default": false,
+            "jsonPath": "disableMetricsCollection"
+          }
+        }
+      }
+    },
+
+    "DelimitedText": {
+      "name": "Delimited Text (CSV/TSV)",
+      "hasStoreSettings": true,
+      "sourceTypeName": "DelimitedTextSource",
+      "sinkTypeName": "DelimitedTextSink",
+      "storeReadSettingsTypes": {
+        "AzureBlobFSLocation": "AzureBlobFSReadSettings",
+        "AzureBlobStorageLocation": "AzureBlobStorageReadSettings"
+      },
+      "defaultStoreReadSettings": "AzureBlobFSReadSettings",
+      "storeWriteSettingsTypes": {
+        "AzureBlobFSLocation": "AzureBlobFSWriteSettings",
+        "AzureBlobStorageLocation": "AzureBlobStorageWriteSettings"
+      },
+      "defaultStoreWriteSettings": "AzureBlobFSWriteSettings",
+      "formatReadType": "DelimitedTextReadSettings",
+      "formatWriteType": "DelimitedTextWriteSettings",
+      "fields": {
+        "source": {
+          "src_recursive": {
+            "type": "boolean",
+            "label": "Recursively",
+            "default": true,
+            "jsonPath": "storeSettings.recursive"
+          },
+          "src_wildcardFolderPath": {
+            "type": "text",
+            "label": "Wildcard folder path",
+            "placeholder": "folder/subfolder",
+            "jsonPath": "storeSettings.wildcardFolderPath"
+          },
+          "src_wildcardFileName": {
+            "type": "text",
+            "label": "Wildcard file name",
+            "placeholder": "*.csv",
+            "jsonPath": "storeSettings.wildcardFileName"
+          },
+          "src_modifiedDatetimeStart": {
+            "type": "text",
+            "label": "Modified start time (UTC)",
+            "placeholder": "e.g. 2026-01-01T00:00:00Z",
+            "jsonPath": "storeSettings.modifiedDatetimeStart"
+          },
+          "src_modifiedDatetimeEnd": {
+            "type": "text",
+            "label": "Modified end time (UTC)",
+            "placeholder": "e.g. 2026-12-31T23:59:59Z",
+            "jsonPath": "storeSettings.modifiedDatetimeEnd"
+          },
+          "src_enablePartitionDiscovery": {
+            "type": "boolean",
+            "label": "Enable partition discovery",
+            "default": false,
+            "jsonPath": "storeSettings.enablePartitionDiscovery"
+          },
+          "src_deleteFilesAfterCompletion": {
+            "type": "boolean",
+            "label": "Delete files after completion",
+            "default": false,
+            "jsonPath": "storeSettings.deleteFilesAfterCompletion"
+          },
+          "src_maxConcurrentConnections": {
+            "type": "number",
+            "label": "Max concurrent connections",
+            "min": 1,
+            "jsonPath": "storeSettings.maxConcurrentConnections"
+          }
+        },
+        "sink": {
+          "snk_copyBehavior": {
+            "type": "select",
+            "label": "Copy behavior",
+            "options": ["None", "PreserveHierarchy", "FlattenHierarchy", "MergeFiles"],
+            "default": "None",
+            "jsonPath": "storeSettings.copyBehavior"
+          },
+          "snk_fileExtension": {
+            "type": "text",
+            "label": "File extension",
+            "default": ".csv",
+            "placeholder": ".csv",
+            "jsonPath": "formatSettings.fileExtension"
+          },
+          "snk_blockSizeInMB": {
+            "type": "number",
+            "label": "Block size in MB",
+            "min": 1,
+            "jsonPath": "storeSettings.blockSizeInMB"
+          },
+          "snk_maxConcurrentConnections": {
+            "type": "number",
+            "label": "Max concurrent connections",
+            "min": 1,
+            "jsonPath": "storeSettings.maxConcurrentConnections"
+          },
+          "snk_disableMetricsCollection": {
+            "type": "boolean",
+            "label": "Disable performance metrics analytics",
+            "default": false,
+            "jsonPath": "disableMetricsCollection"
+          }
+        }
+      }
+    },
+
+    "Json": {
+      "name": "JSON",
+      "hasStoreSettings": true,
+      "sourceTypeName": "JsonSource",
+      "sinkTypeName": "JsonSink",
+      "storeReadSettingsTypes": {
+        "AzureBlobFSLocation": "AzureBlobFSReadSettings",
+        "AzureBlobStorageLocation": "AzureBlobStorageReadSettings"
+      },
+      "defaultStoreReadSettings": "AzureBlobFSReadSettings",
+      "storeWriteSettingsTypes": {
+        "AzureBlobFSLocation": "AzureBlobFSWriteSettings",
+        "AzureBlobStorageLocation": "AzureBlobStorageWriteSettings"
+      },
+      "defaultStoreWriteSettings": "AzureBlobFSWriteSettings",
+      "fields": {
+        "source": {
+          "src_recursive": {
+            "type": "boolean",
+            "label": "Recursively",
+            "default": true,
+            "jsonPath": "storeSettings.recursive"
+          },
+          "src_wildcardFolderPath": {
+            "type": "text",
+            "label": "Wildcard folder path",
+            "placeholder": "folder/subfolder",
+            "jsonPath": "storeSettings.wildcardFolderPath"
+          },
+          "src_wildcardFileName": {
+            "type": "text",
+            "label": "Wildcard file name",
+            "placeholder": "*.json",
+            "jsonPath": "storeSettings.wildcardFileName"
+          },
+          "src_modifiedDatetimeStart": {
+            "type": "text",
+            "label": "Modified start time (UTC)",
+            "placeholder": "e.g. 2026-01-01T00:00:00Z",
+            "jsonPath": "storeSettings.modifiedDatetimeStart"
+          },
+          "src_modifiedDatetimeEnd": {
+            "type": "text",
+            "label": "Modified end time (UTC)",
+            "placeholder": "e.g. 2026-12-31T23:59:59Z",
+            "jsonPath": "storeSettings.modifiedDatetimeEnd"
+          },
+          "src_enablePartitionDiscovery": {
+            "type": "boolean",
+            "label": "Enable partition discovery",
+            "default": false,
+            "jsonPath": "storeSettings.enablePartitionDiscovery"
+          },
+          "src_maxConcurrentConnections": {
+            "type": "number",
+            "label": "Max concurrent connections",
+            "min": 1,
+            "jsonPath": "storeSettings.maxConcurrentConnections"
+          }
+        },
+        "sink": {
+          "snk_filePattern": {
+            "type": "select",
+            "label": "File pattern",
+            "options": ["setOfObjects", "arrayOfObjects"],
+            "default": "setOfObjects",
+            "jsonPath": "formatSettings.filePattern"
+          },
+          "snk_copyBehavior": {
+            "type": "select",
+            "label": "Copy behavior",
+            "options": ["None", "PreserveHierarchy", "FlattenHierarchy", "MergeFiles"],
+            "default": "None",
+            "jsonPath": "storeSettings.copyBehavior"
+          },
+          "snk_blockSizeInMB": {
+            "type": "number",
+            "label": "Block size in MB",
+            "min": 1,
+            "jsonPath": "storeSettings.blockSizeInMB"
+          },
+          "snk_maxConcurrentConnections": {
+            "type": "number",
+            "label": "Max concurrent connections",
+            "min": 1,
+            "jsonPath": "storeSettings.maxConcurrentConnections"
+          },
+          "snk_disableMetricsCollection": {
+            "type": "boolean",
+            "label": "Disable performance metrics analytics",
+            "default": false,
+            "jsonPath": "disableMetricsCollection"
+          }
+        }
+      }
+    },
+
+    "Avro": {
+      "name": "Avro",
+      "hasStoreSettings": true,
+      "sourceTypeName": "AvroSource",
+      "sinkTypeName": "AvroSink",
+      "storeReadSettingsTypes": {
+        "AzureBlobFSLocation": "AzureBlobFSReadSettings",
+        "AzureBlobStorageLocation": "AzureBlobStorageReadSettings"
+      },
+      "defaultStoreReadSettings": "AzureBlobFSReadSettings",
+      "storeWriteSettingsTypes": {
+        "AzureBlobFSLocation": "AzureBlobFSWriteSettings",
+        "AzureBlobStorageLocation": "AzureBlobStorageWriteSettings"
+      },
+      "defaultStoreWriteSettings": "AzureBlobFSWriteSettings",
+      "fields": {
+        "source": {
+          "src_recursive": {
+            "type": "boolean",
+            "label": "Recursively",
+            "default": true,
+            "jsonPath": "storeSettings.recursive"
+          },
+          "src_wildcardFolderPath": {
+            "type": "text",
+            "label": "Wildcard folder path",
+            "placeholder": "folder/subfolder",
+            "jsonPath": "storeSettings.wildcardFolderPath"
+          },
+          "src_wildcardFileName": {
+            "type": "text",
+            "label": "Wildcard file name",
+            "placeholder": "*.avro",
+            "jsonPath": "storeSettings.wildcardFileName"
+          },
+          "src_enablePartitionDiscovery": {
+            "type": "boolean",
+            "label": "Enable partition discovery",
+            "default": false,
+            "jsonPath": "storeSettings.enablePartitionDiscovery"
+          },
+          "src_maxConcurrentConnections": {
+            "type": "number",
+            "label": "Max concurrent connections",
+            "min": 1,
+            "jsonPath": "storeSettings.maxConcurrentConnections"
+          }
+        },
+        "sink": {
+          "snk_copyBehavior": {
+            "type": "select",
+            "label": "Copy behavior",
+            "options": ["None", "PreserveHierarchy", "FlattenHierarchy", "MergeFiles"],
+            "default": "None",
+            "jsonPath": "storeSettings.copyBehavior"
+          },
+          "snk_maxConcurrentConnections": {
+            "type": "number",
+            "label": "Max concurrent connections",
+            "min": 1,
+            "jsonPath": "storeSettings.maxConcurrentConnections"
+          },
+          "snk_disableMetricsCollection": {
+            "type": "boolean",
+            "label": "Disable performance metrics analytics",
+            "default": false,
+            "jsonPath": "disableMetricsCollection"
+          }
+        }
+      }
+    },
+
+    "ORC": {
+      "name": "ORC",
+      "hasStoreSettings": true,
+      "sourceTypeName": "OrcSource",
+      "sinkTypeName": "OrcSink",
+      "storeReadSettingsTypes": {
+        "AzureBlobFSLocation": "AzureBlobFSReadSettings",
+        "AzureBlobStorageLocation": "AzureBlobStorageReadSettings"
+      },
+      "defaultStoreReadSettings": "AzureBlobFSReadSettings",
+      "storeWriteSettingsTypes": {
+        "AzureBlobFSLocation": "AzureBlobFSWriteSettings",
+        "AzureBlobStorageLocation": "AzureBlobStorageWriteSettings"
+      },
+      "defaultStoreWriteSettings": "AzureBlobFSWriteSettings",
+      "fields": {
+        "source": {
+          "src_recursive": {
+            "type": "boolean",
+            "label": "Recursively",
+            "default": true,
+            "jsonPath": "storeSettings.recursive"
+          },
+          "src_wildcardFolderPath": {
+            "type": "text",
+            "label": "Wildcard folder path",
+            "placeholder": "folder/subfolder",
+            "jsonPath": "storeSettings.wildcardFolderPath"
+          },
+          "src_wildcardFileName": {
+            "type": "text",
+            "label": "Wildcard file name",
+            "placeholder": "*.orc",
+            "jsonPath": "storeSettings.wildcardFileName"
+          },
+          "src_enablePartitionDiscovery": {
+            "type": "boolean",
+            "label": "Enable partition discovery",
+            "default": false,
+            "jsonPath": "storeSettings.enablePartitionDiscovery"
+          },
+          "src_maxConcurrentConnections": {
+            "type": "number",
+            "label": "Max concurrent connections",
+            "min": 1,
+            "jsonPath": "storeSettings.maxConcurrentConnections"
+          }
+        },
+        "sink": {
+          "snk_copyBehavior": {
+            "type": "select",
+            "label": "Copy behavior",
+            "options": ["None", "PreserveHierarchy", "FlattenHierarchy", "MergeFiles"],
+            "default": "None",
+            "jsonPath": "storeSettings.copyBehavior"
+          },
+          "snk_maxConcurrentConnections": {
+            "type": "number",
+            "label": "Max concurrent connections",
+            "min": 1,
+            "jsonPath": "storeSettings.maxConcurrentConnections"
+          },
+          "snk_disableMetricsCollection": {
+            "type": "boolean",
+            "label": "Disable performance metrics analytics",
+            "default": false,
+            "jsonPath": "disableMetricsCollection"
+          }
+        }
+      }
+    },
+
+    "Xml": {
+      "name": "XML",
+      "hasStoreSettings": true,
+      "sourceTypeName": "XmlSource",
+      "sinkTypeName": null,
+      "_comment_sink": "XML is source-only in ADF Copy; no sinkTypeName defined",
+      "storeReadSettingsTypes": {
+        "AzureBlobFSLocation": "AzureBlobFSReadSettings",
+        "AzureBlobStorageLocation": "AzureBlobStorageReadSettings"
+      },
+      "defaultStoreReadSettings": "AzureBlobFSReadSettings",
+      "storeWriteSettingsTypes": {},
+      "defaultStoreWriteSettings": null,
+      "fields": {
+        "source": {
+          "src_recursive": {
+            "type": "boolean",
+            "label": "Recursively",
+            "default": true,
+            "jsonPath": "storeSettings.recursive"
+          },
+          "src_wildcardFolderPath": {
+            "type": "text",
+            "label": "Wildcard folder path",
+            "placeholder": "folder/subfolder",
+            "jsonPath": "storeSettings.wildcardFolderPath"
+          },
+          "src_wildcardFileName": {
+            "type": "text",
+            "label": "Wildcard file name",
+            "placeholder": "*.xml",
+            "jsonPath": "storeSettings.wildcardFileName"
+          },
+          "src_modifiedDatetimeStart": {
+            "type": "text",
+            "label": "Modified start time (UTC)",
+            "placeholder": "e.g. 2026-01-01T00:00:00Z",
+            "jsonPath": "storeSettings.modifiedDatetimeStart"
+          },
+          "src_modifiedDatetimeEnd": {
+            "type": "text",
+            "label": "Modified end time (UTC)",
+            "placeholder": "e.g. 2026-12-31T23:59:59Z",
+            "jsonPath": "storeSettings.modifiedDatetimeEnd"
+          },
+          "src_enablePartitionDiscovery": {
+            "type": "boolean",
+            "label": "Enable partition discovery",
+            "default": false,
+            "jsonPath": "storeSettings.enablePartitionDiscovery"
+          },
+          "src_maxConcurrentConnections": {
+            "type": "number",
+            "label": "Max concurrent connections",
+            "min": 1,
+            "jsonPath": "storeSettings.maxConcurrentConnections"
+          }
+        },
+        "sink": {}
+      }
+    }
+  },
+
+  "advancedFields": {
+    "dataIntegrationUnits": {
+      "type": "number",
+      "label": "Maximum data integration units",
+      "default": 4,
+      "min": 2,
+      "max": 256,
+      "placeholder": "4",
+      "jsonPath": "dataIntegrationUnits"
+    },
+    "parallelCopies": {
+      "type": "number",
+      "label": "Degree of copy parallelism",
+      "min": 1,
+      "placeholder": "Auto",
+      "jsonPath": "parallelCopies"
+    },
+    "enableSkipIncompatibleRow": {
+      "type": "boolean",
+      "label": "Skip incompatible rows (fault tolerance)",
+      "default": false,
+      "jsonPath": "enableSkipIncompatibleRow"
+    }
+  }
+}

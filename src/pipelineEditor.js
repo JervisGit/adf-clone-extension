@@ -3,6 +3,8 @@ const activitiesConfig = require('./activities-config-verified.json');
 const activitySchemas = require('./activity-schemas.json');
 const datasetSchemas = require('./dataset-schemas.json');
 const irConfig = require('./ir-config.json');
+const copyActivityConfig = require('./copy-activity-config.json');
+const { buildCopySource, buildCopySink } = require('./copyActivityUtils');
 
 class PipelineEditorProvider {
 	static panels = new Map(); // Map<filePath, panel>
@@ -169,7 +171,8 @@ class PipelineEditorProvider {
 				datasetList: datasetList,
 				datasetContents: datasetContents,
 				pipelineList: pipelineList,
-				linkedServicesList: linkedServicesList
+				linkedServicesList: linkedServicesList,
+				copyActivityConfig: copyActivityConfig
 			});
 		});
 
@@ -431,21 +434,15 @@ class PipelineEditorProvider {
                                              'wildcardFolderPath', 'wildcardFileName', 'enablePartitionDiscovery',
                                              'writeBatchSize', 'writeBatchTimeout', 'preCopyScript', 'maxConcurrentConnections', 'writeBehavior', 
                                              'sqlWriterUseTableLock', 'disableMetricsCollection', '_sourceObject', '_sinkObject',
-                                             '_sourceDatasetType', '_sinkDatasetType', '_datasetLocationType', 'inputs', 'outputs', 'sink', 'typeProperties',
+                                             '_sourceDatasetType', '_sinkDatasetType', '_sourceLocationType', '_sinkLocationType',
+                                             '_datasetLocationType', 'inputs', 'outputs', 'source', 'sink', 'typeProperties',
                                              'linkedServiceName', '_selectedLinkedServiceType', 'linkedServiceProperties',
                                              'null'];
-						
-						for (const key in a) {
-							if (!commonProps.includes(key) && a.hasOwnProperty(key) && typeof a[key] !== 'function') {
-								typeProperties[key] = a[key];
-							}
-						}
-						
-						// For WebHook, timeout should be in typeProperties, not policy
-						if (a.type === 'WebHook' && a.timeout) {
-							typeProperties.timeout = a.timeout;
-						}
-						
+				
+					for (const key in a) {
+						// Skip src_/snk_ prefixed fields — these are Copy activity form fields handled separately
+						if (!commonProps.includes(key) && a.hasOwnProperty(key) && typeof a[key] !== 'function'
+							&& !key.startsWith('src_') && !key.startsWith('snk_')) {
 						// For SynapseNotebook, convert dynamicAllocation fields back to conf object
 						if (a.type === 'SynapseNotebook') {
 							// Always add snapshot: true
@@ -540,85 +537,57 @@ class PipelineEditorProvider {
 							// Else: Pipeline variable - variableName and value are already in typeProperties
 						}
 						
-						// For Copy activity, reconstruct nested source/sink structures and inputs/outputs
-						if (a.type === 'Copy') {
-							console.log('[Extension] Copy activity - reconstructing source/sink');
-							console.log('[Extension] Source dataset:', a.sourceDataset);
-							console.log('[Extension] Sink dataset:', a.sinkDataset);
-							console.log('[Extension] Inputs from activity:', a.inputs);
-							console.log('[Extension] Outputs from activity:', a.outputs);
-							
-						// Use the already-constructed source/sink from typeProperties if available
-						// (the webview already built these with updated values)
-						if (a.typeProperties && a.typeProperties.source) {
-							typeProperties.source = a.typeProperties.source;
-							console.log('[Extension] Using source from a.typeProperties.source (already updated)');
+// For Copy activity: config-driven source/sink reconstruction + inputs/outputs
+					if (a.type === 'Copy') {
+						console.log('[Extension] Copy activity - config-driven source/sink build');
+						const srcTypeConfig = copyActivityConfig.datasetTypes && copyActivityConfig.datasetTypes[a._sourceDatasetType];
+						const snkTypeConfig = copyActivityConfig.datasetTypes && copyActivityConfig.datasetTypes[a._sinkDatasetType];
+
+						// Build source
+						if (srcTypeConfig) {
+							// Config-driven: reads src_ prefixed fields from activity object
+							const source = buildCopySource(a, srcTypeConfig, a._sourceLocationType, a._sourceObject);
+							if (source) typeProperties.source = source;
+							console.log('[Extension] Built source from config:', typeProperties.source?.type);
 						} else if (a._sourceObject) {
-							// Fallback: reconstruct from _sourceObject
+							// Fallback for dataset types not yet in config
 							typeProperties.source = JSON.parse(JSON.stringify(a._sourceObject));
-							console.log('[Extension] Reconstructed source from _sourceObject');
-							// Update with any changed values
-							if (typeProperties.source.storeSettings) {
-								if (a.recursive !== undefined) typeProperties.source.storeSettings.recursive = a.recursive;
-								if (a.modifiedDatetimeStart !== undefined && a.modifiedDatetimeStart !== '') typeProperties.source.storeSettings.modifiedDatetimeStart = a.modifiedDatetimeStart;
-								if (a.modifiedDatetimeEnd !== undefined && a.modifiedDatetimeEnd !== '') typeProperties.source.storeSettings.modifiedDatetimeEnd = a.modifiedDatetimeEnd;
-								if (a.wildcardFolderPath !== undefined && a.wildcardFolderPath !== '') typeProperties.source.storeSettings.wildcardFolderPath = a.wildcardFolderPath;
-								if (a.wildcardFileName !== undefined && a.wildcardFileName !== '') typeProperties.source.storeSettings.wildcardFileName = a.wildcardFileName;
-								if (a.enablePartitionDiscovery !== undefined) typeProperties.source.storeSettings.enablePartitionDiscovery = a.enablePartitionDiscovery;
-								if (a.maxConcurrentConnections !== undefined) typeProperties.source.storeSettings.maxConcurrentConnections = a.maxConcurrentConnections;
-							}
+							console.log('[Extension] Fallback: using _sourceObject for unknown type', a._sourceDatasetType);
+						} else if (a.typeProperties && a.typeProperties.source) {
+							// Pre-built by webview
+							typeProperties.source = a.typeProperties.source;
 						} else if (a._sourceDatasetType) {
-							// Create basic source structure based on dataset type
-							typeProperties.source = {
-								type: a._sourceDatasetType + 'Source',
-								storeSettings: {
-									type: a._sourceDatasetType.includes('Sql') ? 'AzureSqlDatabaseReadSettings' : 'AzureBlobStorageReadSettings'
-								}
-							};
-							console.log('[Extension] Created new source from dataset type');
+							// Minimal fallback for brand-new activities
+							typeProperties.source = { type: a._sourceDatasetType + 'Source' };
 						}
-						
-						// Use the already-constructed sink from typeProperties if available
-						if (a.typeProperties && a.typeProperties.sink) {
-							typeProperties.sink = a.typeProperties.sink;
-							console.log('[Extension] Using sink from a.typeProperties.sink (already updated)');
+
+						// Build sink
+						if (snkTypeConfig) {
+							// Config-driven: reads snk_ prefixed fields from activity object
+							const sink = buildCopySink(a, snkTypeConfig, a._sinkLocationType, a._sinkObject);
+							if (sink) typeProperties.sink = sink;
+							console.log('[Extension] Built sink from config:', typeProperties.sink?.type);
 						} else if (a._sinkObject) {
-							// Fallback: reconstruct from _sinkObject
+							// Fallback for dataset types not yet in config
 							typeProperties.sink = JSON.parse(JSON.stringify(a._sinkObject));
-							console.log('[Extension] Reconstructed sink from _sinkObject');
-							// Update with any changed values
-							if (a.writeBatchSize !== undefined && a.writeBatchSize !== '') typeProperties.sink.writeBatchSize = a.writeBatchSize;
-							if (a.writeBatchTimeout !== undefined && a.writeBatchTimeout !== '') typeProperties.sink.writeBatchTimeout = a.writeBatchTimeout;
-							if (a.preCopyScript !== undefined && a.preCopyScript !== '') typeProperties.sink.preCopyScript = a.preCopyScript;
-							if (a.maxConcurrentConnections !== undefined) typeProperties.sink.maxConcurrentConnections = a.maxConcurrentConnections;
-							if (a.writeBehavior !== undefined && a.writeBehavior !== '') typeProperties.sink.writeBehavior = a.writeBehavior;
-							if (a.sqlWriterUseTableLock !== undefined) typeProperties.sink.sqlWriterUseTableLock = a.sqlWriterUseTableLock;
-							if (a.disableMetricsCollection !== undefined) typeProperties.sink.disableMetricsCollection = a.disableMetricsCollection;
-							console.log('[Extension] Reconstructed sink:', typeProperties.sink);
+							console.log('[Extension] Fallback: using _sinkObject for unknown type', a._sinkDatasetType);
+						} else if (a.typeProperties && a.typeProperties.sink) {
+							// Pre-built by webview
+							typeProperties.sink = a.typeProperties.sink;
 						} else if (a._sinkDatasetType) {
-							// Create basic sink structure based on dataset type
-							typeProperties.sink = {
-								type: a._sinkDatasetType + 'Sink',
-								writeBehavior: 'insert'
-							};
-							console.log('[Extension] Created new sink from dataset type');
+							// Minimal fallback
+							typeProperties.sink = { type: a._sinkDatasetType + 'Sink' };
 						}
-						
-						// Add inputs/outputs from activity
+
+						// Build inputs/outputs
 						if (a.sourceDataset || (a.inputs && a.inputs.length > 0)) {
 							const sourceRef = a.sourceDataset || (a.inputs[0].referenceName || a.inputs[0]);
-							activity.inputs = [{
-								referenceName: sourceRef,
-								type: 'DatasetReference'
-							}];
+							activity.inputs = [{ referenceName: sourceRef, type: 'DatasetReference' }];
 							console.log('[Extension] Added inputs:', activity.inputs);
 						}
 						if (a.sinkDataset || (a.outputs && a.outputs.length > 0)) {
 							const sinkRef = a.sinkDataset || (a.outputs[0].referenceName || a.outputs[0]);
-							activity.outputs = [{
-								referenceName: sinkRef,
-								type: 'DatasetReference'
-							}];
+							activity.outputs = [{ referenceName: sinkRef, type: 'DatasetReference' }];
 							console.log('[Extension] Added outputs:', activity.outputs);
 						}
 					}
@@ -658,6 +627,8 @@ class PipelineEditorProvider {
 							// Remove internal tracking fields
 							delete typeProperties._datasetLocationType;
 						}
+					}
+				}
 						
 						activity.typeProperties = typeProperties;
 						console.log('[Extension] Final activity object:', JSON.stringify(activity, null, 2));
@@ -1555,6 +1526,35 @@ class PipelineEditorProvider {
         
         // Pipeline list will be sent via message
         let pipelineList = [];
+
+        // Copy activity config — populated from initSchemas message
+        let copyActivityConfig = {};
+
+        // ── Path helpers for config-driven Copy activity ──────────────────────────────
+        // (mirrors setValueByPath / getValueByPath from datasetUtils.js, usable in browser)
+        function _setValueByPath(obj, path, value) {
+            if (!obj || !path) return obj;
+            const keys = path.split('.');
+            let cur = obj;
+            for (let i = 0; i < keys.length - 1; i++) {
+                if (!cur[keys[i]] || typeof cur[keys[i]] !== 'object') cur[keys[i]] = {};
+                cur = cur[keys[i]];
+            }
+            if (value !== undefined && value !== null) {
+                cur[keys[keys.length - 1]] = value;
+            }
+            return obj;
+        }
+        function _getValueByPath(obj, path) {
+            if (!obj || !path) return undefined;
+            const keys = path.split('.');
+            let cur = obj;
+            for (const k of keys) {
+                if (cur === undefined || cur === null) return undefined;
+                cur = cur[k];
+            }
+            return cur;
+        }
         
         // Toggle properties panel
         function toggleProperties() {
@@ -2439,14 +2439,69 @@ class PipelineEditorProvider {
                         if (a.linkedServiceProperties) activity.linkedServiceProperties = a.linkedServiceProperties;
                     }
                     
-                    // For Copy activities, preserve dataset references
+                    // For Copy activities, preserve dataset references and build config-driven source/sink
                     if (a.type === 'Copy') {
                         if (a.sourceDataset) activity.sourceDataset = a.sourceDataset;
                         if (a.sinkDataset) activity.sinkDataset = a.sinkDataset;
                         if (a._sourceDatasetType) activity._sourceDatasetType = a._sourceDatasetType;
                         if (a._sinkDatasetType) activity._sinkDatasetType = a._sinkDatasetType;
+                        if (a._sourceLocationType) activity._sourceLocationType = a._sourceLocationType;
+                        if (a._sinkLocationType) activity._sinkLocationType = a._sinkLocationType;
+                        // Keep _sourceObject/_sinkObject as fallback for types not yet in config
                         if (a._sourceObject) activity._sourceObject = a._sourceObject;
                         if (a._sinkObject) activity._sinkObject = a._sinkObject;
+
+                        // --- Build source from config ---
+                        const _srcTypeConf = copyActivityConfig.datasetTypes && copyActivityConfig.datasetTypes[a._sourceDatasetType];
+                        if (_srcTypeConf && _srcTypeConf.sourceTypeName) {
+                            const _src = { type: _srcTypeConf.sourceTypeName };
+                            if (_srcTypeConf.hasStoreSettings) {
+                                const _locT = a._sourceLocationType;
+                                const _rType = (_locT && _srcTypeConf.storeReadSettingsTypes && _srcTypeConf.storeReadSettingsTypes[_locT])
+                                    || (a._sourceObject && a._sourceObject.storeSettings && a._sourceObject.storeSettings.type)
+                                    || _srcTypeConf.defaultStoreReadSettings
+                                    || 'AzureBlobFSReadSettings';
+                                _src.storeSettings = { type: _rType };
+                                if (_srcTypeConf.formatReadType) _src.formatSettings = { type: _srcTypeConf.formatReadType };
+                            }
+                            const _srcFields = (_srcTypeConf.fields && _srcTypeConf.fields.source) || {};
+                            for (const [_fk, _fc] of Object.entries(_srcFields)) {
+                                if (!_fc.jsonPath) continue;
+                                const _v = a[_fk];
+                                if (_v !== undefined && _v !== null && _v !== '') _setValueByPath(_src, _fc.jsonPath, _v);
+                            }
+                            if (!activity.typeProperties) activity.typeProperties = {};
+                            activity.typeProperties.source = _src;
+                        } else if (a._sourceObject) {
+                            if (!activity.typeProperties) activity.typeProperties = {};
+                            activity.typeProperties.source = JSON.parse(JSON.stringify(a._sourceObject));
+                        }
+
+                        // --- Build sink from config ---
+                        const _snkTypeConf = copyActivityConfig.datasetTypes && copyActivityConfig.datasetTypes[a._sinkDatasetType];
+                        if (_snkTypeConf && _snkTypeConf.sinkTypeName) {
+                            const _snk = { type: _snkTypeConf.sinkTypeName };
+                            if (_snkTypeConf.hasStoreSettings) {
+                                const _locT = a._sinkLocationType;
+                                const _wType = (_locT && _snkTypeConf.storeWriteSettingsTypes && _snkTypeConf.storeWriteSettingsTypes[_locT])
+                                    || (a._sinkObject && a._sinkObject.storeSettings && a._sinkObject.storeSettings.type)
+                                    || _snkTypeConf.defaultStoreWriteSettings
+                                    || 'AzureBlobFSWriteSettings';
+                                _snk.storeSettings = { type: _wType };
+                                if (_snkTypeConf.formatWriteType) _snk.formatSettings = { type: _snkTypeConf.formatWriteType };
+                            }
+                            const _snkFields = (_snkTypeConf.fields && _snkTypeConf.fields.sink) || {};
+                            for (const [_fk, _fc] of Object.entries(_snkFields)) {
+                                if (!_fc.jsonPath) continue;
+                                const _v = a[_fk];
+                                if (_v !== undefined && _v !== null && _v !== '') _setValueByPath(_snk, _fc.jsonPath, _v);
+                            }
+                            if (!activity.typeProperties) activity.typeProperties = {};
+                            activity.typeProperties.sink = _snk;
+                        } else if (a._sinkObject) {
+                            if (!activity.typeProperties) activity.typeProperties = {};
+                            activity.typeProperties.sink = JSON.parse(JSON.stringify(a._sinkObject));
+                        }
                     }
                     
                     // Collect typeProperties
@@ -2458,13 +2513,16 @@ class PipelineEditorProvider {
                                          'wildcardFolderPath', 'wildcardFileName', 'enablePartitionDiscovery',
                                          'writeBatchSize', 'writeBatchTimeout', 'preCopyScript', 'maxConcurrentConnections', 'writeBehavior', 
                                          'sqlWriterUseTableLock', 'disableMetricsCollection', '_sourceObject', '_sinkObject', '_sourceDatasetType', '_sinkDatasetType',
-                                         'typeProperties', 'inputs', 'outputs', 'sink', 'linkedServiceName', '_selectedLinkedServiceType', 'linkedServiceProperties',
+                                         '_sourceLocationType', '_sinkLocationType',
+                                         'typeProperties', 'inputs', 'outputs', 'source', 'sink', 'linkedServiceName', '_selectedLinkedServiceType', 'linkedServiceProperties',
                                          'storedProcedureName', 'storedProcedureParameters',
                                          'isContainer', 'ifTrueActivities', 'ifFalseActivities', 'expression', 'activities', 'cases', 'defaultActivities',
                                          'null']; // safeguard against spurious 'null'-keyed UI artefacts
                     
                     for (const key in a) {
-                        if (!commonProps.includes(key) && a.hasOwnProperty(key) && typeof a[key] !== 'function') {
+                        if (!commonProps.includes(key) && a.hasOwnProperty(key) && typeof a[key] !== 'function'
+                            // Skip src_/snk_ prefixed fields — handled in the Copy build block above
+                            && !key.startsWith('src_') && !key.startsWith('snk_')) {
                             // Convert notebook and sparkPool strings to reference objects with Expression format
                             if (key === 'notebook' && typeof a[key] === 'string' && a[key]) {
                                 typeProperties[key] = {
@@ -7084,7 +7142,18 @@ class PipelineEditorProvider {
                 if (activity.sourceDataset && activity._sourceDatasetType) {
                     const datasetType = activity._sourceDatasetType;
                     console.log('Adding source fields for dataset type:', datasetType);
-                    if (datasetSchemas[datasetType] && datasetSchemas[datasetType].sourceFields) {
+                    // For Copy activity: use copyActivityConfig; for others: use datasetSchemas
+                    const _copySourceConf = (activity.type === 'Copy')
+                        ? (copyActivityConfig.datasetTypes && copyActivityConfig.datasetTypes[datasetType])
+                        : null;
+                    if (_copySourceConf && _copySourceConf.fields && _copySourceConf.fields.source && Object.keys(_copySourceConf.fields.source).length > 0) {
+                        sourceContent += '<div style="border-top: 1px solid var(--vscode-panel-border); margin: 16px 0; padding-top: 16px;"></div>';
+                        sourceContent += '<div style="font-size: 13px; font-weight: bold; color: var(--vscode-foreground); margin-bottom: 12px;">Source Settings (' + (_copySourceConf.name || datasetType) + ')</div>';
+                        for (const [key, prop] of Object.entries(_copySourceConf.fields.source)) {
+                            sourceContent += generateFormField(key, prop, activity);
+                        }
+                        console.log('Added', Object.keys(_copySourceConf.fields.source).length, 'copy source fields from config');
+                    } else if (datasetSchemas[datasetType] && datasetSchemas[datasetType].sourceFields) {
                         sourceContent += '<div style="border-top: 1px solid var(--vscode-panel-border); margin: 16px 0; padding-top: 16px;"></div>';
                         sourceContent += '<div style="font-size: 13px; font-weight: bold; color: var(--vscode-foreground); margin-bottom: 12px;">Source Settings (' + datasetSchemas[datasetType].name + ')</div>';
                         for (const [key, prop] of Object.entries(datasetSchemas[datasetType].sourceFields)) {
@@ -7112,7 +7181,18 @@ class PipelineEditorProvider {
                 if (activity.sinkDataset && activity._sinkDatasetType) {
                     const datasetType = activity._sinkDatasetType;
                     console.log('Adding sink fields for dataset type:', datasetType);
-                    if (datasetSchemas[datasetType] && datasetSchemas[datasetType].sinkFields) {
+                    // For Copy activity: use copyActivityConfig; for others: use datasetSchemas
+                    const _copySinkConf = (activity.type === 'Copy')
+                        ? (copyActivityConfig.datasetTypes && copyActivityConfig.datasetTypes[datasetType])
+                        : null;
+                    if (_copySinkConf && _copySinkConf.fields && _copySinkConf.fields.sink && Object.keys(_copySinkConf.fields.sink).length > 0) {
+                        sinkContent += '<div style="border-top: 1px solid var(--vscode-panel-border); margin: 16px 0; padding-top: 16px;"></div>';
+                        sinkContent += '<div style="font-size: 13px; font-weight: bold; color: var(--vscode-foreground); margin-bottom: 12px;">Sink Settings (' + (_copySinkConf.name || datasetType) + ')</div>';
+                        for (const [key, prop] of Object.entries(_copySinkConf.fields.sink)) {
+                            sinkContent += generateFormField(key, prop, activity);
+                        }
+                        console.log('Added', Object.keys(_copySinkConf.fields.sink).length, 'copy sink fields from config');
+                    } else if (datasetSchemas[datasetType] && datasetSchemas[datasetType].sinkFields) {
                         sinkContent += '<div style="border-top: 1px solid var(--vscode-panel-border); margin: 16px 0; padding-top: 16px;"></div>';
                         sinkContent += '<div style="font-size: 13px; font-weight: bold; color: var(--vscode-foreground); margin-bottom: 12px;">Sink Settings (' + datasetSchemas[datasetType].name + ')</div>';
                         for (const [key, prop] of Object.entries(datasetSchemas[datasetType].sinkFields)) {
@@ -7311,8 +7391,10 @@ class PipelineEditorProvider {
                         // Store dataset type in activity for later use
                         if (key === 'sourceDataset') {
                             activity._sourceDatasetType = datasetType;
+                            activity._sourceLocationType = datasetContents[datasetName].properties?.typeProperties?.location?.type;
                         } else if (key === 'sinkDataset') {
                             activity._sinkDatasetType = datasetType;
+                            activity._sinkLocationType = datasetContents[datasetName].properties?.typeProperties?.location?.type;
                         } else if (key === 'dataset' && activity.type === 'Delete') {
                             // Track location type for Delete (used for future conditional logic)
                             activity._datasetLocationType = datasetContents[datasetName].properties?.typeProperties?.location?.type;
@@ -8908,11 +8990,13 @@ class PipelineEditorProvider {
                 datasetContents = message.datasetContents || {};
                 pipelineList = message.pipelineList || [];
                 window.linkedServicesList = message.linkedServicesList || [];
+                copyActivityConfig = message.copyActivityConfig || {};
                 console.log('Dataset schemas loaded:', Object.keys(datasetSchemas));
                 console.log('Dataset list loaded:', datasetList);
                 console.log('Dataset contents loaded:', Object.keys(datasetContents).length, 'datasets');
                 console.log('Pipeline list loaded:', pipelineList);
                 console.log('Linked services list loaded:', window.linkedServicesList);
+                console.log('Copy activity config loaded:', Object.keys(copyActivityConfig.datasetTypes || {}).length, 'dataset types');
             } else if (message.type === 'addActivity') {
                 const canvasWrapper = document.getElementById('canvasWrapper');
                 const activity = new Activity(message.activityType, 100, 100, canvasWrapper);
@@ -9036,108 +9120,100 @@ class PipelineEditorProvider {
                         
                         // Handle Copy activity source/sink nested structures
                         if (activityData.type === 'Copy') {
-                            const tp = activityData.typeProperties;
-                            
+                            const tp = activityData.typeProperties || {};
+
                             console.log('[Load] Copy activity detected:', activityData.name);
-                            console.log('[Load] inputs:', activityData.inputs);
-                            console.log('[Load] outputs:', activityData.outputs);
-                            console.log('[Load] typeProperties keys:', Object.keys(tp));
-                            
-                            // Parse inputs (source dataset)
+
+                            // ── Parse source dataset reference ──────────────────────────────────────────
                             if (activityData.inputs && activityData.inputs.length > 0) {
-                                if (typeof activityData.inputs[0] === 'object' && activityData.inputs[0].referenceName) {
-                                    activity.sourceDataset = activityData.inputs[0].referenceName;
-                                } else {
-                                    activity.sourceDataset = activityData.inputs[0];
-                                }
-                                console.log('[Load] Set sourceDataset to:', activity.sourceDataset);
-                                
-                                // Get dataset type from loaded contents
+                                const ref = activityData.inputs[0];
+                                activity.sourceDataset = (typeof ref === 'object' && ref.referenceName) ? ref.referenceName : ref;
+                                console.log('[Load] sourceDataset:', activity.sourceDataset);
                                 if (activity.sourceDataset && datasetContents[activity.sourceDataset]) {
-                                    activity._sourceDatasetType = datasetContents[activity.sourceDataset].properties?.type;
-                                    console.log('[Load] Source dataset type:', activity._sourceDatasetType);
+                                    const ds = datasetContents[activity.sourceDataset].properties || {};
+                                    activity._sourceDatasetType = ds.type;
+                                    activity._sourceLocationType = ds.typeProperties && ds.typeProperties.location && ds.typeProperties.location.type;
+                                    console.log('[Load] Source type:', activity._sourceDatasetType, 'loc:', activity._sourceLocationType);
                                 }
-                            } else {
-                                console.log('[Load] No inputs found for Copy activity');
                             }
-                            
-                            // Parse outputs (sink dataset)
+
+                            // ── Parse sink dataset reference ────────────────────────────────────────────
                             if (activityData.outputs && activityData.outputs.length > 0) {
-                                if (typeof activityData.outputs[0] === 'object' && activityData.outputs[0].referenceName) {
-                                    activity.sinkDataset = activityData.outputs[0].referenceName;
-                                } else {
-                                    activity.sinkDataset = activityData.outputs[0];
-                                }
-                                console.log('[Load] Set sinkDataset to:', activity.sinkDataset);
-                                
-                                // Get dataset type from loaded contents
+                                const ref = activityData.outputs[0];
+                                activity.sinkDataset = (typeof ref === 'object' && ref.referenceName) ? ref.referenceName : ref;
+                                console.log('[Load] sinkDataset:', activity.sinkDataset);
                                 if (activity.sinkDataset && datasetContents[activity.sinkDataset]) {
-                                    activity._sinkDatasetType = datasetContents[activity.sinkDataset].properties?.type;
-                                    console.log('[Load] Sink dataset type:', activity._sinkDatasetType);
+                                    const ds = datasetContents[activity.sinkDataset].properties || {};
+                                    activity._sinkDatasetType = ds.type;
+                                    activity._sinkLocationType = ds.typeProperties && ds.typeProperties.location && ds.typeProperties.location.type;
+                                    console.log('[Load] Sink type:', activity._sinkDatasetType, 'loc:', activity._sinkLocationType);
                                 }
-                            } else {
-                                console.log('[Load] No outputs found for Copy activity');
                             }
-                            
-                            // Handle incorrectly nested structure (typeProperties.typeProperties)
-                            // This happens when the save created a double-nested structure
-                            // Prioritize the nested structure if both exist (use the more deeply nested one as it's likely newer)
+
+                            // ── Resolve source/sink JSON objects (handle double-nesting edge case) ──────
                             let sourceObj = null;
                             let sinkObj = null;
-                            
                             if (tp.typeProperties && (tp.typeProperties.source || tp.typeProperties.sink)) {
                                 console.log('[Load] Found nested typeProperties, using deeper level');
                                 sourceObj = tp.typeProperties.source || null;
-                                sinkObj = tp.typeProperties.sink || null;
+                                sinkObj   = tp.typeProperties.sink   || null;
                             } else {
                                 sourceObj = tp.source || null;
-                                sinkObj = tp.sink || null;
+                                sinkObj   = tp.sink   || null;
                             }
-                            
-                            // Flatten source properties
+
+                            // ── Flatten source into src_ prefixed fields using config ─────────────────
                             if (sourceObj) {
-                                // Store the full source object for saving later
                                 activity._sourceObject = sourceObj;
-                                console.log('[Load] Source object:', sourceObj);
-                                
-                                // Flatten storeSettings
-                                if (sourceObj.storeSettings) {
-                                    const store = sourceObj.storeSettings;
-                                    activity.recursive = store.recursive;
-                                    activity.modifiedDatetimeStart = store.modifiedDatetimeStart;
-                                    activity.modifiedDatetimeEnd = store.modifiedDatetimeEnd;
-                                    activity.wildcardFolderPath = store.wildcardFolderPath;
-                                    activity.wildcardFileName = store.wildcardFileName;
-                                    activity.enablePartitionDiscovery = store.enablePartitionDiscovery;
-                                    activity.maxConcurrentConnections = store.maxConcurrentConnections;
-                                    console.log('[Load] Flattened source fields - wildcardFolderPath:', activity.wildcardFolderPath);
+                                console.log('[Load] Source object type:', sourceObj.type);
+                                const _srcConf = copyActivityConfig.datasetTypes && copyActivityConfig.datasetTypes[activity._sourceDatasetType];
+                                if (_srcConf && _srcConf.fields && _srcConf.fields.source) {
+                                    // Config-driven: read values using jsonPath and store with src_ prefix
+                                    for (const [_fk, _fc] of Object.entries(_srcConf.fields.source)) {
+                                        if (!_fc.jsonPath) continue;
+                                        const _v = _getValueByPath(sourceObj, _fc.jsonPath);
+                                        if (_v !== undefined) {
+                                            activity[_fk] = _v;
+                                        } else if (_fc.default !== undefined) {
+                                            activity[_fk] = _fc.default;
+                                        }
+                                    }
+                                    console.log('[Load] Config-parsed source fields for', activity._sourceDatasetType);
+                                }
+                                // Always keep _sourceObject as fallback for unknown types / extension save
+                            }
+
+                            // ── Flatten sink into snk_ prefixed fields using config ───────────────────
+                            if (sinkObj) {
+                                activity._sinkObject = sinkObj;
+                                console.log('[Load] Sink object type:', sinkObj.type);
+                                const _snkConf = copyActivityConfig.datasetTypes && copyActivityConfig.datasetTypes[activity._sinkDatasetType];
+                                if (_snkConf && _snkConf.fields && _snkConf.fields.sink) {
+                                    for (const [_fk, _fc] of Object.entries(_snkConf.fields.sink)) {
+                                        if (!_fc.jsonPath) continue;
+                                        const _v = _getValueByPath(sinkObj, _fc.jsonPath);
+                                        if (_v !== undefined) {
+                                            activity[_fk] = _v;
+                                        } else if (_fc.default !== undefined) {
+                                            activity[_fk] = _fc.default;
+                                        }
+                                    }
+                                    console.log('[Load] Config-parsed sink fields for', activity._sinkDatasetType);
                                 }
                             }
-                            
-                            // Flatten sink properties
-                            if (sinkObj) {
-                                // Store the full sink object for saving later
-                                activity._sinkObject = sinkObj;
-                                console.log('[Load] Sink object:', sinkObj);
-                                
-                                activity.writeBatchSize = sinkObj.writeBatchSize;
-                                activity.writeBatchTimeout = sinkObj.writeBatchTimeout;
-                                activity.preCopyScript = sinkObj.preCopyScript;
-                                activity.maxConcurrentConnections = sinkObj.maxConcurrentConnections;
-                                activity.writeBehavior = sinkObj.writeBehavior;
-                                activity.sqlWriterUseTableLock = sinkObj.sqlWriterUseTableLock;
-                                activity.disableMetricsCollection = sinkObj.disableMetricsCollection;
-                                console.log('[Load] Flattened sink fields - writeBatchSize:', activity.writeBatchSize, 'preCopyScript:', activity.preCopyScript);
+
+                            // ── Advanced / top-level typeProperties fields ────────────────────────────
+                            const _advFields = copyActivityConfig.advancedFields || {};
+                            for (const [_fk, _fc] of Object.entries(_advFields)) {
+                                const _v = _getValueByPath(tp, _fc.jsonPath || _fk);
+                                if (_v !== undefined) activity[_fk] = _v;
                             }
-                            
-                            // Copy other typeProperties
-                            activity.enableStaging = tp.enableStaging;
-                            activity.stagingSettings = tp.stagingSettings;
-                            activity.parallelCopies = tp.parallelCopies;
-                            activity.enableSkipIncompatibleRow = tp.enableSkipIncompatibleRow;
-                            activity.logSettings = tp.logSettings;
-                            activity.dataIntegrationUnits = tp.dataIntegrationUnits;
-                            activity.translator = tp.translator;
+                            // Also preserve staging, translator for pass-through
+                            if (tp.enableStaging !== undefined) activity.enableStaging = tp.enableStaging;
+                            if (tp.stagingSettings)             activity.stagingSettings = tp.stagingSettings;
+                            if (tp.logSettings)                 activity.logSettings = tp.logSettings;
+                            if (tp.translator)                  activity.translator = tp.translator;
+
                         } else if (activityData.type === 'SetVariable') {
                             // Handle SetVariable specific loading
                             const tp = activityData.typeProperties;

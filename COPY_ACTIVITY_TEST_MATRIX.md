@@ -23,22 +23,36 @@
 
 Legend: ✅ Tested & working | 🔲 Not yet tested | ⚠️ Known issue | ❌ Not applicable
 
-### Sinks (columns) × Sources (rows)
+Source and sink are **fully independent** — the fields rendered for each side depend only on the dataset type of that side, not the other. So each source type needs to be tested once as a source, and each sink type once as a sink. An N×M combination matrix adds no value.
 
-| Source → Sink | SQL DB | Synapse | Parquet | DelimitedText | JSON | Avro | ORC |
-|---|---|---|---|---|---|---|---|
-| **Azure SQL DB** | 🔲 DB→DB | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 |
-| **Azure Synapse** | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 |
-| **Parquet** (ADLS) | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 |
-| **Parquet** (Blob) | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 |
-| **DelimitedText** | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 |
-| **JSON** (ADLS) | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 |
-| **Avro** (ADLS) | ✅ | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 |
-| **Avro** (Blob) | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 |
-| **ORC** (ADLS) | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 |
-| **XML** (ADLS) | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 |
+### Sources
 
-> XML as source-only: XML → (any sink) permutations are all valid in ADF. XML as a sink is not supported.
+| Source Dataset Type | Storage | Status |
+|---|---|---|
+| Azure SQL Database | — | 🔲 |
+| Azure Synapse Analytics | — | 🔲 |
+| Parquet | ADLS Gen2 | 🔲 |
+| Parquet | Blob Storage | 🔲 |
+| Delimited Text (CSV/TSV) | ADLS Gen2 | 🔲 |
+| JSON | ADLS Gen2 | 🔲 |
+| Avro | ADLS Gen2 | ✅ |
+| Avro | Blob Storage | 🔲 |
+| ORC | ADLS Gen2 | 🔲 |
+| XML | ADLS Gen2 | 🔲 |
+
+### Sinks
+
+| Sink Dataset Type | Storage | Status |
+|---|---|---|
+| Azure SQL Database | — | ✅ |
+| Azure Synapse Analytics | — | 🔲 |
+| Parquet | ADLS Gen2 | 🔲 |
+| Parquet | Blob Storage | 🔲 |
+| Delimited Text (CSV/TSV) | ADLS Gen2 | 🔲 |
+| JSON | ADLS Gen2 | 🔲 |
+| Avro | ADLS Gen2 | 🔲 |
+| Avro | Blob Storage | 🔲 |
+| ORC | ADLS Gen2 | 🔲 |
 
 ---
 

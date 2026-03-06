@@ -6,6 +6,10 @@
       "hasStoreSettings": false,
       "sourceTypeName": "AzureSqlSource",
       "sinkTypeName": "AzureSqlSink",
+      "sinkDefaults": {
+        "writeBehavior": "insert",
+        "sqlWriterUseTableLock": false
+      },
       "fields": {
         "source": {
           "src_useQuery": {
@@ -93,6 +97,7 @@
             "label": "Write behavior",
             "options": ["insert", "upsert", "storedProcedure"],
             "default": "insert",
+            "writeDefault": true,
             "jsonPath": "writeBehavior"
           },
           "snk_tableOption": {
@@ -106,6 +111,7 @@
             "type": "boolean",
             "label": "Bulk insert table lock",
             "default": false,
+            "writeDefault": true,
             "jsonPath": "sqlWriterUseTableLock"
           },
           "snk_preCopyScript": {
@@ -149,6 +155,9 @@
       "hasStoreSettings": false,
       "sourceTypeName": "SqlDWSource",
       "sinkTypeName": "SqlDWSink",
+      "sinkDefaults": {
+        "writeBehavior": "Insert"
+      },
       "fields": {
         "source": {
           "src_useQuery": {
@@ -236,6 +245,7 @@
             "label": "Write behavior",
             "options": ["Insert", "Upsert"],
             "default": "Insert",
+            "writeDefault": true,
             "jsonPath": "writeBehavior"
           },
           "snk_allowCopyCommand": {
@@ -975,6 +985,28 @@
           }
         },
         "sink": {}
+      }
+    }
+  },
+
+  "copyDefaults": {
+    "_comment": "Default values applied to all Copy activities regardless of dataset type",
+    "policy": {
+      "timeout": "0.12:00:00",
+      "retry": 0,
+      "retryIntervalInSeconds": 30,
+      "secureOutput": false,
+      "secureInput": false
+    },
+    "typeProperties": {
+      "enableStaging": false,
+      "translator": {
+        "type": "TabularTranslator",
+        "typeConversion": true,
+        "typeConversionSettings": {
+          "allowDataTruncation": true,
+          "treatBooleanAsNumber": false
+        }
       }
     }
   },

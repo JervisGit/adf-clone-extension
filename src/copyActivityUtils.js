@@ -33,7 +33,8 @@ function buildCopySource(formData, typeConfig, locationType, fallbackObj) {
             || typeConfig.defaultStoreReadSettings
             || 'AzureBlobFSReadSettings';
 
-        source.storeSettings = { type: readType };
+        // Include ADF standard defaults for storeSettings (Synapse always writes these)
+        source.storeSettings = { type: readType, recursive: true, enablePartitionDiscovery: false };
 
         // Add format settings if required (e.g. DelimitedTextReadSettings)
         if (typeConfig.formatReadType) {
@@ -69,6 +70,11 @@ function buildCopySink(formData, typeConfig, locationType, fallbackObj) {
     }
 
     const sink = { type: typeConfig.sinkTypeName };
+
+    // Apply per-type sink defaults (e.g. writeBehavior, sqlWriterUseTableLock for SQL sinks)
+    if (typeConfig.sinkDefaults) {
+        Object.assign(sink, typeConfig.sinkDefaults);
+    }
 
     if (typeConfig.hasStoreSettings) {
         const writeType = (locationType && typeConfig.storeWriteSettingsTypes && typeConfig.storeWriteSettingsTypes[locationType])

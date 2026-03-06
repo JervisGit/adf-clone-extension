@@ -373,6 +373,11 @@ class PipelineEditorProvider {
 					activities: (pipelineData.activities || []).map(a => {
 						console.log('[Extension] Processing activity:', a.name, 'Type:', a.type);
 						
+						// For Copy: save webview's pre-built source/sink BEFORE flattening overwrites them.
+						// The webview sends snk_/src_ field changes already built into typeProperties.source/sink.
+						const _cpPrebuilt = (a.type === 'Copy' && a.typeProperties)
+							? JSON.parse(JSON.stringify(a.typeProperties)) : null;
+
 						// Flatten typeProperties from webview onto activity object
 						if (a.typeProperties && typeof a.typeProperties === 'object') {
 							for (const key in a.typeProperties) {
@@ -636,32 +641,75 @@ class PipelineEditorProvider {
 						console.log('[Extension] Copy activity - config-driven build');
 						const srcTypeConfig = copyActivityConfig.datasetTypes && copyActivityConfig.datasetTypes[a._sourceDatasetType];
 						const snkTypeConfig = copyActivityConfig.datasetTypes && copyActivityConfig.datasetTypes[a._sinkDatasetType];
+						const prebuiltSource = _cpPrebuilt && _cpPrebuilt.source;
+						const prebuiltSink   = _cpPrebuilt && _cpPrebuilt.sink;
 
-						if (srcTypeConfig) {
+						// SOURCE: use webview's pre-built object as base (it already has user field values),
+						// then patch in any missing ADF-required storeSettings defaults.
+						if (prebuiltSource) {
+							const src = JSON.parse(JSON.stringify(prebuiltSource));
+							if (srcTypeConfig) src.type = srcTypeConfig.sourceTypeName;
+							if (srcTypeConfig && srcTypeConfig.hasStoreSettings) {
+								if (!src.storeSettings) {
+									const rt = (a._sourceLocationType && srcTypeConfig.storeReadSettingsTypes && srcTypeConfig.storeReadSettingsTypes[a._sourceLocationType])
+										|| srcTypeConfig.defaultStoreReadSettings || 'AzureBlobFSReadSettings';
+									src.storeSettings = { type: rt };
+								}
+								// Patch ADF standard storeSettings defaults if not yet set by user
+								if (src.storeSettings.recursive === undefined) src.storeSettings.recursive = true;
+								if (src.storeSettings.enablePartitionDiscovery === undefined) src.storeSettings.enablePartitionDiscovery = false;
+							}
+							typeProperties.source = src;
+						} else if (srcTypeConfig) {
 							const source = buildCopySource(a, srcTypeConfig, a._sourceLocationType, a._sourceObject);
 							if (source) typeProperties.source = source;
-							console.log('[Extension] Built source:', typeProperties.source?.type);
 						} else if (a._sourceObject) {
 							typeProperties.source = JSON.parse(JSON.stringify(a._sourceObject));
 						} else if (a._sourceDatasetType) {
 							typeProperties.source = { type: a._sourceDatasetType + 'Source' };
 						}
+						console.log('[Extension] Built source:', typeProperties.source?.type);
 
-						if (snkTypeConfig) {
+						// SINK: use webview's pre-built object as base, then patch missing per-type defaults.
+						if (prebuiltSink) {
+							const snk = JSON.parse(JSON.stringify(prebuiltSink));
+							if (snkTypeConfig) snk.type = snkTypeConfig.sinkTypeName;
+							// Apply sinkDefaults only for fields the user hasn't explicitly set
+							if (snkTypeConfig && snkTypeConfig.sinkDefaults) {
+								for (const [dk, dv] of Object.entries(snkTypeConfig.sinkDefaults)) {
+									if (!(dk in snk)) snk[dk] = dv;
+								}
+							}
+							if (snkTypeConfig && snkTypeConfig.hasStoreSettings && !snk.storeSettings) {
+								const wt = (a._sinkLocationType && snkTypeConfig.storeWriteSettingsTypes && snkTypeConfig.storeWriteSettingsTypes[a._sinkLocationType])
+									|| snkTypeConfig.defaultStoreWriteSettings || 'AzureBlobFSWriteSettings';
+								snk.storeSettings = { type: wt };
+							}
+							typeProperties.sink = snk;
+						} else if (snkTypeConfig) {
 							const sink = buildCopySink(a, snkTypeConfig, a._sinkLocationType, a._sinkObject);
 							if (sink) typeProperties.sink = sink;
-							console.log('[Extension] Built sink:', typeProperties.sink?.type);
 						} else if (a._sinkObject) {
 							typeProperties.sink = JSON.parse(JSON.stringify(a._sinkObject));
 						} else if (a._sinkDatasetType) {
 							typeProperties.sink = { type: a._sinkDatasetType + 'Sink' };
 						}
+						console.log('[Extension] Built sink:', typeProperties.sink?.type);
 
 						if (a.sourceDataset) {
 							activity.inputs = [{ referenceName: a.sourceDataset, type: 'DatasetReference' }];
 						}
 						if (a.sinkDataset) {
 							activity.outputs = [{ referenceName: a.sinkDataset, type: 'DatasetReference' }];
+						}
+
+						// Apply copy-level defaults (policy, enableStaging, translator)
+						const _copyDefs = copyActivityConfig.copyDefaults || {};
+						if (_copyDefs.policy && !activity.policy) {
+							activity.policy = JSON.parse(JSON.stringify(_copyDefs.policy));
+						}
+						if (_copyDefs.typeProperties) {
+							Object.assign(typeProperties, _copyDefs.typeProperties);
 						}
 					}
 

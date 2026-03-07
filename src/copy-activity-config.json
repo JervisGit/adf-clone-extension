@@ -420,21 +420,16 @@
         "AzureBlobStorageLocation": "AzureBlobStorageWriteSettings"
       },
       "defaultStoreWriteSettings": "AzureBlobFSWriteSettings",
+      "formatReadType": "ParquetReadSettings",
       "formatWriteType": "ParquetWriteSettings",
       "fields": {
         "source": {
           "src_filePathType": {
             "type": "radio",
             "label": "File path type",
-            "options": ["File path in dataset", "Prefix", "Wildcard file path", "List of files"],
-            "optionValues": ["filePathInDataset", "prefix", "wildcardFilePath", "listOfFiles"],
+            "options": ["File path in dataset", "Wildcard file path", "List of files"],
+            "optionValues": ["filePathInDataset", "wildcardFilePath", "listOfFiles"],
             "default": "filePathInDataset"
-          },
-          "src_prefix": {
-            "type": "text",
-            "label": "Prefix",
-            "conditional": { "field": "src_filePathType", "value": "prefix" },
-            "jsonPath": "storeSettings.prefix"
           },
           "src_wildcardFolderPath": {
             "type": "text",
@@ -448,6 +443,7 @@
             "label": "Wildcard file name",
             "placeholder": "*.parquet",
             "default": "*.parquet",
+            "writeDefault": true,
             "conditional": { "field": "src_filePathType", "value": "wildcardFilePath" },
             "jsonPath": "storeSettings.wildcardFileName"
           },
@@ -473,6 +469,7 @@
             "type": "boolean",
             "label": "Recursively",
             "default": true,
+            "conditional": { "field": "src_filePathType", "value": ["filePathInDataset", "wildcardFilePath"] },
             "jsonPath": "storeSettings.recursive"
           },
           "src_enablePartitionDiscovery": {
@@ -492,6 +489,13 @@
             "label": "Max concurrent connections",
             "min": 1,
             "jsonPath": "storeSettings.maxConcurrentConnections"
+          },
+          "src_additionalColumns": {
+            "type": "additional-columns",
+            "label": "Additional columns",
+            "filterEmpty": "name",
+            "defaultRowValue": "$$FILEPATH",
+            "jsonPath": "additionalColumns"
           }
         },
         "sink": {
@@ -584,6 +588,7 @@
             "label": "Wildcard file name",
             "placeholder": "*.csv",
             "default": "*",
+            "writeDefault": true,
             "conditional": { "field": "src_filePathType", "value": "wildcardFilePath" },
             "jsonPath": "storeSettings.wildcardFileName"
           },
@@ -719,6 +724,7 @@
             "label": "Wildcard file name",
             "placeholder": "*.json",
             "default": "*.json",
+            "writeDefault": true,
             "conditional": { "field": "src_filePathType", "value": "wildcardFilePath" },
             "jsonPath": "storeSettings.wildcardFileName"
           },
@@ -847,6 +853,7 @@
             "label": "Wildcard file name",
             "placeholder": "*.avro",
             "default": "*.avro",
+            "writeDefault": true,
             "conditional": { "field": "src_filePathType", "value": "wildcardFilePath" },
             "jsonPath": "storeSettings.wildcardFileName"
           },
@@ -959,6 +966,7 @@
             "label": "Wildcard file name",
             "placeholder": "*.orc",
             "default": "*.orc",
+            "writeDefault": true,
             "conditional": { "field": "src_filePathType", "value": "wildcardFilePath" },
             "jsonPath": "storeSettings.wildcardFileName"
           },
@@ -1069,6 +1077,7 @@
             "label": "Wildcard file name",
             "placeholder": "*.xml",
             "default": "*.xml",
+            "writeDefault": true,
             "conditional": { "field": "src_filePathType", "value": "wildcardFilePath" },
             "jsonPath": "storeSettings.wildcardFileName"
           },

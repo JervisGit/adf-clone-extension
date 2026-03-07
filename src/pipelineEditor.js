@@ -655,9 +655,10 @@ class PipelineEditorProvider {
 										|| srcTypeConfig.defaultStoreReadSettings || 'AzureBlobFSReadSettings';
 									src.storeSettings = { type: rt };
 								}
-								// Patch ADF standard storeSettings defaults if not yet set by user
-								if (src.storeSettings.recursive === undefined) src.storeSettings.recursive = true;
-								if (src.storeSettings.enablePartitionDiscovery === undefined) src.storeSettings.enablePartitionDiscovery = false;
+								// No unconditional defaults patched here — the webview save loop
+								// already writes recursive/enablePartitionDiscovery conditionally
+								// based on src_filePathType. Patching here would re-add recursive
+								// even when List of files is selected.
 							}
 							typeProperties.source = src;
 						} else if (srcTypeConfig) {
@@ -7400,6 +7401,10 @@ class PipelineEditorProvider {
                     if (_copySourceConf && _copySourceConf.fields && _copySourceConf.fields.source && Object.keys(_copySourceConf.fields.source).length > 0) {
                         sourceContent += '<div style="border-top: 1px solid var(--vscode-panel-border); margin: 16px 0; padding-top: 16px;"></div>';
                         sourceContent += '<div style="font-size: 13px; font-weight: bold; color: var(--vscode-foreground); margin-bottom: 12px;">Source Settings (' + (_copySourceConf.name || datasetType) + ')</div>';
+                        // Pre-apply defaults for unset fields so conditionals resolve on fresh activities
+                        for (const [_dfk, _dfc] of Object.entries(_copySourceConf.fields.source)) {
+                            if (_dfc.default !== undefined && activity[_dfk] === undefined) activity[_dfk] = _dfc.default;
+                        }
                         for (const [key, prop] of Object.entries(_copySourceConf.fields.source)) {
                             sourceContent += generateFormField(key, prop, activity);
                         }
@@ -7439,6 +7444,10 @@ class PipelineEditorProvider {
                     if (_copySinkConf && _copySinkConf.fields && _copySinkConf.fields.sink && Object.keys(_copySinkConf.fields.sink).length > 0) {
                         sinkContent += '<div style="border-top: 1px solid var(--vscode-panel-border); margin: 16px 0; padding-top: 16px;"></div>';
                         sinkContent += '<div style="font-size: 13px; font-weight: bold; color: var(--vscode-foreground); margin-bottom: 12px;">Sink Settings (' + (_copySinkConf.name || datasetType) + ')</div>';
+                        // Pre-apply defaults for unset fields so conditionals resolve on fresh activities
+                        for (const [_dfk, _dfc] of Object.entries(_copySinkConf.fields.sink)) {
+                            if (_dfc.default !== undefined && activity[_dfk] === undefined) activity[_dfk] = _dfc.default;
+                        }
                         for (const [key, prop] of Object.entries(_copySinkConf.fields.sink)) {
                             sinkContent += generateFormField(key, prop, activity);
                         }
@@ -8490,7 +8499,11 @@ class PipelineEditorProvider {
                 btn.addEventListener('click', () => {
                     const fieldKey = btn.getAttribute('data-key');
                     if (!Array.isArray(activity[fieldKey])) activity[fieldKey] = [];
-                    activity[fieldKey].push({ name: '', value: '' });
+                    // Look up defaultRowValue from field config (source or sink)
+                    const _fSrc = copyActivityConfig.datasetTypes?.[activity._sourceDatasetType]?.fields?.source || {};
+                    const _fSnk = copyActivityConfig.datasetTypes?.[activity._sinkDatasetType]?.fields?.sink || {};
+                    const _rowConf = _fSrc[fieldKey] || _fSnk[fieldKey] || {};
+                    activity[fieldKey].push({ name: '', value: _rowConf.defaultRowValue || '' });
                     markAsDirty();
                     const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
                     showProperties(activity, activeTab);

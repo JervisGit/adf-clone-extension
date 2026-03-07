@@ -44,7 +44,7 @@ Source and sink are **fully independent** — the fields rendered for each side 
 | Source Dataset Type | Status |
 |---|---|
 | Avro | ✅ |
-| Binary | 🔲 |
+| Binary | ✅ |
 | Delimited Text (CSV/TSV) | ✅ |
 | Excel | 🔲 |
 | Iceberg | 🔲 |
@@ -57,7 +57,7 @@ Source and sink are **fully independent** — the fields rendered for each side 
 | Source Dataset Type | Status |
 |---|---|
 | Avro | 🔲 |
-| Binary | 🔲 |
+| Binary | ✅ |
 | Delimited Text (CSV/TSV) | ✅ |
 | Excel | 🔲 |
 | JSON | 🔲 |
@@ -82,7 +82,7 @@ Source and sink are **fully independent** — the fields rendered for each side 
 | Sink Dataset Type | Status |
 |---|---|
 | Avro | ✅ |
-| Binary | 🔲 |
+| Binary | ✅ |
 | Delimited Text (CSV/TSV) | 🔲 |
 | Iceberg | 🔲 |
 | JSON | 🔲 |
@@ -93,7 +93,7 @@ Source and sink are **fully independent** — the fields rendered for each side 
 | Sink Dataset Type | Status |
 |---|---|
 | Avro | 🔲 |
-| Binary | 🔲 |
+| Binary | ✅ |
 | Delimited Text (CSV/TSV) | 🔲 |
 | JSON | 🔲 |
 | ORC | 🔲 |

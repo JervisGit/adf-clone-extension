@@ -1429,21 +1429,12 @@
           }
         },
         "sink": {
-          "snk_copyBehaviorAdls": {
+          "snk_copyBehavior": {
             "type": "select",
             "label": "Copy behavior",
-            "options": ["None", "PreserveHierarchy", "FlattenHierarchy", "MergeFiles"],
+            "options": ["None", "FlattenHierarchy", "PreserveHierarchy"],
             "default": "None",
             "omitWhenValue": "None",
-            "conditional": { "field": "_sinkLocationType", "value": "AzureBlobFSLocation" },
-            "jsonPath": "storeSettings.copyBehavior"
-          },
-          "snk_copyBehaviorBlob": {
-            "type": "select",
-            "label": "Copy behavior",
-            "options": ["FlattenHierarchy", "PreserveHierarchy"],
-            "default": "FlattenHierarchy",
-            "conditional": { "field": "_sinkLocationType", "value": "AzureBlobStorageLocation" },
             "jsonPath": "storeSettings.copyBehavior"
           },
           "snk_maxConcurrentConnections": {
@@ -1465,6 +1456,8 @@
             "type": "additional-columns",
             "label": "Metadata",
             "filterEmpty": "name",
+            "default": [{ "name": "", "value": "$$LASTMODIFIED" }],
+            "defaultRowValue": "$$LASTMODIFIED",
             "jsonPath": "storeSettings.metadata"
           }
         }

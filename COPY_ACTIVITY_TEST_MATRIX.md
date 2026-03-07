@@ -54,6 +54,7 @@ Source and sink are **fully independent** — the fields rendered for each side 
 | Source Dataset Type | Status |
 |---|---|
 | Parquet | 🔲 |
+| Delimited Text (CSV/TSV) | ✅ |
 | Avro | 🔲 |
 
 #### Other
@@ -102,7 +103,18 @@ Source and sink are **fully independent** — the fields rendered for each side 
 ### Azure Synapse Analytics (source)
 - [ ] Same sub-cases as SQL DB above (same field structure)
 
-### Parquet / Avro / ORC / DelimitedText / JSON (file sources, ADLS or Blob)
+### DelimitedText (ADLS + Blob source) ✅ Validated
+- [x] File path type = **File path in dataset**
+- [x] File path type = **Prefix** (prefix field appears, Blob only) — ADLS correctly omits Prefix option
+- [x] File path type = **Wildcard file path** — wildcard folder + file name fields appear; wildcard file name written with `writeDefault`
+- [x] File path type = **List of files** — file list path field appears; Recursive, Start time, End time hidden and omitted from JSON
+- [x] Recursive hidden and omitted when List of files selected
+- [x] Start time / End time hidden when List of files selected
+- [x] Skip line count field
+- [x] Additional columns — `$$FILEPATH` pre-populated on new rows; blank-name rows filtered
+- [x] Max concurrent connections
+
+### Parquet / Avro / ORC / JSON (file sources, ADLS or Blob)
 - [ ] File path type = **File path in dataset** (no extra path fields)
 - [ ] File path type = **Prefix** (prefix field appears) — *Blob only, not ADLS*
 - [ ] File path type = **Wildcard file path** (wildcard folder + file fields appear)
@@ -110,11 +122,6 @@ Source and sink are **fully independent** — the fields rendered for each side 
 - [ ] Recursive toggle saves correctly
 - [ ] Delete files after completion toggle
 - [ ] Compression (codec + level) fields for applicable formats
-
-### DelimitedText-specific (source)
-- [ ] Skip line count
-- [ ] With first row as header on/off
-- [ ] Null value field
 
 ### XML-specific (source)
 - [ ] Namespace prefixes grid — load/add/remove/save
@@ -193,8 +200,8 @@ High value because they cover most real ETL patterns:
 4. ~~**Parquet (ADLS) → Parquet (ADLS)**~~ ← Parquet source validated ✅
 5. ~~**Azure SQL DB → Avro (ADLS)**~~ ← Avro sink validated ✅
 6. ~~**Azure SQL DB → ORC (ADLS)**~~ ← ORC sink validated ✅
-7. **➡️ NEXT: DelimitedText (ADLS) → Azure SQL DB** ← validates DelimitedText source
-8. **XML (ADLS) → Azure SQL DB** ← XML source (source-only type)
+7. ~~**DelimitedText (ADLS) → Azure SQL DB**~~ ← DelimitedText source validated ✅ (ADLS + Blob)
+8. **➡️ NEXT: XML (ADLS) → Azure SQL DB** ← XML source (source-only type)
 9. **Azure SQL DB → DelimitedText (ADLS)** ← validates DelimitedText sink
 10. **Azure SQL DB → Synapse** ← requires Synapse dataset setup first
 11. **Avro (Blob) → Azure SQL DB** ← tests Blob storage variant

@@ -39,7 +39,7 @@
       "secureInput": { "type": "boolean", "label": "Secure input", "default": false, "section": "policy" }
     },
     "sourceProperties": {
-      "sourceDataset": { "type": "dataset", "label": "Source dataset", "required": true }
+      "sourceDataset": { "type": "dataset", "label": "Source dataset", "required": true, "datasetFilter": { "excludeTypes": ["Iceberg"] } }
     },
     "sinkProperties": {
       "sinkDataset": { "type": "dataset", "label": "Sink dataset", "required": true }

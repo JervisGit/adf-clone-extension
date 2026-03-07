@@ -6662,12 +6662,20 @@ class PipelineEditorProvider {
                                 return locationType === 'AzureBlobFSLocation' || locationType === 'AzureBlobStorageLocation';
                             });
                         } else if (prop.datasetFilter && Array.isArray(prop.datasetFilter)) {
-                            // Legacy: filter by dataset type
+                            // Legacy: filter by dataset type (inclusion list)
                             filteredDatasets = filteredDatasets.filter(dsName => {
                                 const dsContent = datasetContents[dsName];
                                 if (!dsContent || !dsContent.properties) return false;
                                 const dsType = dsContent.properties.type;
                                 return prop.datasetFilter.includes(dsType);
+                            });
+                        } else if (prop.datasetFilter && typeof prop.datasetFilter === 'object' && !Array.isArray(prop.datasetFilter) && prop.datasetFilter.excludeTypes) {
+                            // Exclusion list: hide datasets whose type is in excludeTypes
+                            filteredDatasets = filteredDatasets.filter(dsName => {
+                                const dsContent = datasetContents[dsName];
+                                if (!dsContent || !dsContent.properties) return true;
+                                const dsType = dsContent.properties.type;
+                                return !prop.datasetFilter.excludeTypes.includes(dsType);
                             });
                         }
                         if (filteredDatasets.length > 0) {

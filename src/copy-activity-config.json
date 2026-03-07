@@ -427,9 +427,15 @@
           "src_filePathType": {
             "type": "radio",
             "label": "File path type",
-            "options": ["File path in dataset", "Wildcard file path", "List of files"],
-            "optionValues": ["filePathInDataset", "wildcardFilePath", "listOfFiles"],
+            "options": ["File path in dataset", "Prefix", "Wildcard file path", "List of files"],
+            "optionValues": ["filePathInDataset", "prefix", "wildcardFilePath", "listOfFiles"],
             "default": "filePathInDataset"
+          },
+          "src_prefix": {
+            "type": "text",
+            "label": "Prefix",
+            "conditional": { "field": "src_filePathType", "value": "prefix" },
+            "jsonPath": "storeSettings.prefix"
           },
           "src_wildcardFolderPath": {
             "type": "text",
@@ -457,19 +463,21 @@
             "type": "datetime",
             "label": "Start time (UTC)",
             "placeholder": "2/18/2026, 12:00:00 AM",
+            "conditional": { "field": "src_filePathType", "value": ["filePathInDataset", "prefix", "wildcardFilePath"] },
             "jsonPath": "storeSettings.modifiedDatetimeStart"
           },
           "src_modifiedDatetimeEnd": {
             "type": "datetime",
             "label": "End time (UTC)",
             "placeholder": "2/18/2026, 12:00:00 AM",
+            "conditional": { "field": "src_filePathType", "value": ["filePathInDataset", "prefix", "wildcardFilePath"] },
             "jsonPath": "storeSettings.modifiedDatetimeEnd"
           },
           "src_recursive": {
             "type": "boolean",
             "label": "Recursively",
             "default": true,
-            "conditional": { "field": "src_filePathType", "value": ["filePathInDataset", "wildcardFilePath"] },
+            "conditional": { "field": "src_filePathType", "value": ["filePathInDataset", "prefix", "wildcardFilePath"] },
             "jsonPath": "storeSettings.recursive"
           },
           "src_enablePartitionDiscovery": {

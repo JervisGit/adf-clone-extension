@@ -43,7 +43,7 @@ Source and sink are **fully independent** — the fields rendered for each side 
 | Source Dataset Type | Status |
 |---|---|
 | Parquet | ✅ |
-| Delimited Text (CSV/TSV) | 🔲 |
+| Delimited Text (CSV/TSV) | ✅ |
 | JSON | 🔲 |
 | Avro | ✅ |
 | ORC | 🔲 |
@@ -53,7 +53,7 @@ Source and sink are **fully independent** — the fields rendered for each side 
 #### Blob Storage
 | Source Dataset Type | Status |
 |---|---|
-| Parquet | 🔲 |
+| Parquet | ✅ |
 | Delimited Text (CSV/TSV) | ✅ |
 | Avro | 🔲 |
 
@@ -83,7 +83,7 @@ Source and sink are **fully independent** — the fields rendered for each side 
 #### Blob Storage
 | Sink Dataset Type | Status |
 |---|---|
-| Parquet | 🔲 |
+| Parquet | ✅ |
 | Avro | 🔲 |
 
 ---
@@ -203,8 +203,9 @@ High value because they cover most real ETL patterns:
 7. ~~**DelimitedText (ADLS) → Azure SQL DB**~~ ← DelimitedText source validated ✅ (ADLS + Blob)
 8. **➡️ NEXT: XML (ADLS) → Azure SQL DB** ← XML source (source-only type)
 9. **Azure SQL DB → DelimitedText (ADLS)** ← validates DelimitedText sink
-10. **Azure SQL DB → Synapse** ← requires Synapse dataset setup first
-11. **Avro (Blob) → Azure SQL DB** ← tests Blob storage variant
+10. **Azure SQL DB → JSON (ADLS)** ← validates JSON sink
+11. **Azure SQL DB → Synapse** ← requires Synapse dataset setup first
+12. **Avro (Blob) → Azure SQL DB** ← tests Blob Avro source variant
 
 ---
 

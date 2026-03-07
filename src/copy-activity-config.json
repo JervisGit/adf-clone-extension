@@ -826,6 +826,7 @@
         "AzureBlobStorageLocation": "AzureBlobStorageWriteSettings"
       },
       "defaultStoreWriteSettings": "AzureBlobFSWriteSettings",
+      "formatWriteType": "AvroWriteSettings",
       "fields": {
         "source": {
           "src_filePathType": {
@@ -906,7 +907,17 @@
             "label": "Copy behavior",
             "options": ["None", "PreserveHierarchy", "FlattenHierarchy", "MergeFiles"],
             "default": "None",
+            "omitWhenValue": "None",
             "jsonPath": "storeSettings.copyBehavior"
+          },
+          "snk_blockSizeInMB": {
+            "type": "number",
+            "label": "Block size in MB",
+            "min": 4,
+            "max": 100,
+            "placeholder": "4-100",
+            "rangeError": "Block size value must be a number in 4-100.",
+            "jsonPath": "storeSettings.blockSizeInMB"
           },
           "snk_maxConcurrentConnections": {
             "type": "number",
@@ -914,11 +925,23 @@
             "min": 1,
             "jsonPath": "storeSettings.maxConcurrentConnections"
           },
-          "snk_disableMetricsCollection": {
-            "type": "boolean",
-            "label": "Disable performance metrics analytics",
-            "default": false,
-            "jsonPath": "disableMetricsCollection"
+          "snk_maxRowsPerFile": {
+            "type": "number",
+            "label": "Max rows per file",
+            "min": 1,
+            "jsonPath": "formatSettings.maxRowsPerFile"
+          },
+          "snk_fileNamePrefix": {
+            "type": "text",
+            "label": "File name prefix",
+            "conditional": { "field": "snk_maxRowsPerFile", "notEmpty": true },
+            "jsonPath": "formatSettings.fileNamePrefix"
+          },
+          "snk_metadata": {
+            "type": "additional-columns",
+            "label": "Metadata",
+            "filterEmpty": "name",
+            "jsonPath": "storeSettings.metadata"
           }
         }
       }
@@ -939,6 +962,7 @@
         "AzureBlobStorageLocation": "AzureBlobStorageWriteSettings"
       },
       "defaultStoreWriteSettings": "AzureBlobFSWriteSettings",
+      "formatWriteType": "OrcWriteSettings",
       "fields": {
         "source": {
           "src_filePathType": {
@@ -1019,7 +1043,17 @@
             "label": "Copy behavior",
             "options": ["None", "PreserveHierarchy", "FlattenHierarchy", "MergeFiles"],
             "default": "None",
+            "omitWhenValue": "None",
             "jsonPath": "storeSettings.copyBehavior"
+          },
+          "snk_blockSizeInMB": {
+            "type": "number",
+            "label": "Block size in MB",
+            "min": 4,
+            "max": 100,
+            "placeholder": "4-100",
+            "rangeError": "Block size value must be a number in 4-100.",
+            "jsonPath": "storeSettings.blockSizeInMB"
           },
           "snk_maxConcurrentConnections": {
             "type": "number",
@@ -1027,11 +1061,23 @@
             "min": 1,
             "jsonPath": "storeSettings.maxConcurrentConnections"
           },
-          "snk_disableMetricsCollection": {
-            "type": "boolean",
-            "label": "Disable performance metrics analytics",
-            "default": false,
-            "jsonPath": "disableMetricsCollection"
+          "snk_maxRowsPerFile": {
+            "type": "number",
+            "label": "Max rows per file",
+            "min": 1,
+            "jsonPath": "formatSettings.maxRowsPerFile"
+          },
+          "snk_fileNamePrefix": {
+            "type": "text",
+            "label": "File name prefix",
+            "conditional": { "field": "snk_maxRowsPerFile", "notEmpty": true },
+            "jsonPath": "formatSettings.fileNamePrefix"
+          },
+          "snk_metadata": {
+            "type": "additional-columns",
+            "label": "Metadata",
+            "filterEmpty": "name",
+            "jsonPath": "storeSettings.metadata"
           }
         }
       }

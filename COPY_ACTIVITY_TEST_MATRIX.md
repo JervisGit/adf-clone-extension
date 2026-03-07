@@ -42,20 +42,27 @@ Source and sink are **fully independent** — the fields rendered for each side 
 #### ADLS Gen2
 | Source Dataset Type | Status |
 |---|---|
-| Parquet | ✅ |
-| Delimited Text (CSV/TSV) | ✅ |
-| JSON | 🔲 |
 | Avro | ✅ |
-| ORC | 🔲 |
-| XML | 🔲 |
+| Binary | 🔲 |
+| Delimited Text (CSV/TSV) | ✅ |
+| Excel | 🔲 |
 | Iceberg | 🔲 |
+| JSON | 🔲 |
+| ORC | 🔲 |
+| Parquet | ✅ |
+| XML | 🔲 |
 
 #### Blob Storage
 | Source Dataset Type | Status |
 |---|---|
-| Parquet | ✅ |
-| Delimited Text (CSV/TSV) | ✅ |
 | Avro | 🔲 |
+| Binary | 🔲 |
+| Delimited Text (CSV/TSV) | ✅ |
+| Excel | 🔲 |
+| JSON | 🔲 |
+| ORC | 🔲 |
+| Parquet | ✅ |
+| XML | 🔲 |
 
 #### Other
 | Source Dataset Type | Status |
@@ -73,18 +80,23 @@ Source and sink are **fully independent** — the fields rendered for each side 
 #### ADLS Gen2
 | Sink Dataset Type | Status |
 |---|---|
-| Parquet | ✅ |
-| Delimited Text (CSV/TSV) | 🔲 |
-| JSON | 🔲 |
 | Avro | ✅ |
-| ORC | ✅ |
+| Binary | 🔲 |
+| Delimited Text (CSV/TSV) | 🔲 |
 | Iceberg | 🔲 |
+| JSON | 🔲 |
+| ORC | ✅ |
+| Parquet | ✅ |
 
 #### Blob Storage
 | Sink Dataset Type | Status |
 |---|---|
-| Parquet | ✅ |
 | Avro | 🔲 |
+| Binary | 🔲 |
+| Delimited Text (CSV/TSV) | 🔲 |
+| JSON | 🔲 |
+| ORC | 🔲 |
+| Parquet | ✅ |
 
 ---
 
@@ -214,6 +226,7 @@ High value because they cover most real ETL patterns:
 | Gap | Notes |
 |---|---|
 | **Excel** dataset type | ADF supports Excel as a source-only format on ADLS/Blob. Not in the config. Needs a new entry similar to `Xml` (source-only, no storeSettings format write type). |
+| **Binary** dataset type | ADF supports Binary as both source and sink on ADLS/Blob. Not in the config. Useful for raw file copy without transformation. |
 | `Iceberg` sink — table action | Uses `formatSettings.tableActionOption` (Append/Overwrite). Verify ADF JSON output matches expected schema. |
 | `HttpFile` source — request body | Only appears when method is POST. Verify conditional rendering works. |
 | Azure Synapse Parquet/PolyBase | Synapse sink may have extra options beyond basic SQL (PolyBase, COPY command). |

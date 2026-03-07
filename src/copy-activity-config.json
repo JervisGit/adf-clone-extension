@@ -566,15 +566,9 @@
           "src_filePathType": {
             "type": "radio",
             "label": "File path type",
-            "options": ["File path in dataset", "Prefix", "Wildcard file path", "List of files"],
-            "optionValues": ["filePathInDataset", "prefix", "wildcardFilePath", "listOfFiles"],
+            "options": ["File path in dataset", "Wildcard file path", "List of files"],
+            "optionValues": ["filePathInDataset", "wildcardFilePath", "listOfFiles"],
             "default": "filePathInDataset"
-          },
-          "src_prefix": {
-            "type": "text",
-            "label": "Prefix",
-            "conditional": { "field": "src_filePathType", "value": "prefix" },
-            "jsonPath": "storeSettings.prefix"
           },
           "src_wildcardFolderPath": {
             "type": "text",
@@ -640,6 +634,13 @@
             "min": 0,
             "placeholder": "0",
             "jsonPath": "formatSettings.skipLineCount"
+          },
+          "src_additionalColumns": {
+            "type": "additional-columns",
+            "label": "Additional columns",
+            "filterEmpty": "name",
+            "defaultRowValue": "$$FILEPATH",
+            "jsonPath": "additionalColumns"
           }
         },
         "sink": {

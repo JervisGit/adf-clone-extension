@@ -10,6 +10,7 @@
 | `DelimitedText` | Delimited Text (CSV/TSV) | ✅ | ✅ | ADLS / Blob |
 | `Json` | JSON | ✅ | ✅ | ADLS / Blob |
 | `Avro` | Avro | ✅ | ✅ | ADLS / Blob |
+| `Binary` | Binary | ✅ | ✅ | ADLS / Blob |
 | `Orc` | ORC | ✅ | ✅ | ADLS / Blob |
 | `Xml` | XML | ✅ | ❌ source-only | ADLS / Blob |
 | `Iceberg` | Iceberg | ✅ | ✅ | ADLS Gen2 only |
@@ -226,7 +227,6 @@ High value because they cover most real ETL patterns:
 | Gap | Notes |
 |---|---|
 | **Excel** dataset type | ADF supports Excel as a source-only format on ADLS/Blob. Not in the config. Needs a new entry similar to `Xml` (source-only, no storeSettings format write type). |
-| **Binary** dataset type | ADF supports Binary as both source and sink on ADLS/Blob. Not in the config. Useful for raw file copy without transformation. |
 | `Iceberg` sink — table action | Uses `formatSettings.tableActionOption` (Append/Overwrite). Verify ADF JSON output matches expected schema. |
 | `HttpFile` source — request body | Only appears when method is POST. Verify conditional rendering works. |
 | Azure Synapse Parquet/PolyBase | Synapse sink may have extra options beyond basic SQL (PolyBase, COPY command). |

@@ -62,6 +62,14 @@ function buildCopySource(formData, typeConfig, locationType, fallbackObj) {
             const nCondMet = Array.isArray(nCondExpected) ? nCondExpected.includes(nCondVal) : nCondVal === nCondExpected;
             if (!nCondMet) continue;
         }
+        // Check conditionalAll — all conditions must be met (AND logic)
+        if (fieldConfig.conditionalAll) {
+            const allMet = fieldConfig.conditionalAll.every(cond => {
+                const condVal = formData[cond.field];
+                return Array.isArray(cond.value) ? cond.value.includes(condVal) : condVal === cond.value;
+            });
+            if (!allMet) continue;
+        }
         let value = formData[fieldKey];
         if (fieldConfig.omitWhenValue !== undefined && value === fieldConfig.omitWhenValue) continue;
         // For filterEmpty arrays (e.g. additional-columns), strip blank-name entries before writing
@@ -128,6 +136,14 @@ function buildCopySink(formData, typeConfig, locationType, fallbackObj) {
                 ? (condVal !== undefined && condVal !== null && condVal !== '')
                 : (Array.isArray(condExpected) ? condExpected.includes(condVal) : condVal === condExpected);
             if (!condMet) continue;
+        }
+        // Check conditionalAll — all conditions must be met (AND logic)
+        if (fieldConfig.conditionalAll) {
+            const allMet = fieldConfig.conditionalAll.every(cond => {
+                const condVal = formData[cond.field];
+                return Array.isArray(cond.value) ? cond.value.includes(condVal) : condVal === cond.value;
+            });
+            if (!allMet) continue;
         }
         const value = formData[fieldKey];
         if (fieldConfig.omitWhenValue !== undefined && value === fieldConfig.omitWhenValue) continue;

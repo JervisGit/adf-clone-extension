@@ -429,12 +429,16 @@
             "label": "File path type",
             "options": ["File path in dataset", "Prefix", "Wildcard file path", "List of files"],
             "optionValues": ["filePathInDataset", "prefix", "wildcardFilePath", "listOfFiles"],
+            "optionConditionals": { "prefix": { "field": "_sourceLocationType", "value": "AzureBlobStorageLocation" } },
             "default": "filePathInDataset"
           },
           "src_prefix": {
             "type": "text",
             "label": "Prefix",
-            "conditional": { "field": "src_filePathType", "value": "prefix" },
+            "conditionalAll": [
+              { "field": "src_filePathType", "value": "prefix" },
+              { "field": "_sourceLocationType", "value": "AzureBlobStorageLocation" }
+            ],
             "jsonPath": "storeSettings.prefix"
           },
           "src_wildcardFolderPath": {
@@ -576,12 +580,16 @@
             "label": "File path type",
             "options": ["File path in dataset", "Prefix", "Wildcard file path", "List of files"],
             "optionValues": ["filePathInDataset", "prefix", "wildcardFilePath", "listOfFiles"],
+            "optionConditionals": { "prefix": { "field": "_sourceLocationType", "value": "AzureBlobStorageLocation" } },
             "default": "filePathInDataset"
           },
           "src_prefix": {
             "type": "text",
             "label": "Prefix",
-            "conditional": { "field": "src_filePathType", "value": "prefix" },
+            "conditionalAll": [
+              { "field": "src_filePathType", "value": "prefix" },
+              { "field": "_sourceLocationType", "value": "AzureBlobStorageLocation" }
+            ],
             "jsonPath": "storeSettings.prefix"
           },
           "src_wildcardFolderPath": {
@@ -722,12 +730,16 @@
             "label": "File path type",
             "options": ["File path in dataset", "Prefix", "Wildcard file path", "List of files"],
             "optionValues": ["filePathInDataset", "prefix", "wildcardFilePath", "listOfFiles"],
+            "optionConditionals": { "prefix": { "field": "_sourceLocationType", "value": "AzureBlobStorageLocation" } },
             "default": "filePathInDataset"
           },
           "src_prefix": {
             "type": "text",
             "label": "Prefix",
-            "conditional": { "field": "src_filePathType", "value": "prefix" },
+            "conditionalAll": [
+              { "field": "src_filePathType", "value": "prefix" },
+              { "field": "_sourceLocationType", "value": "AzureBlobStorageLocation" }
+            ],
             "jsonPath": "storeSettings.prefix"
           },
           "src_wildcardFolderPath": {
@@ -852,12 +864,16 @@
             "label": "File path type",
             "options": ["File path in dataset", "Prefix", "Wildcard file path", "List of files"],
             "optionValues": ["filePathInDataset", "prefix", "wildcardFilePath", "listOfFiles"],
+            "optionConditionals": { "prefix": { "field": "_sourceLocationType", "value": "AzureBlobStorageLocation" } },
             "default": "filePathInDataset"
           },
           "src_prefix": {
             "type": "text",
             "label": "Prefix",
-            "conditional": { "field": "src_filePathType", "value": "prefix" },
+            "conditionalAll": [
+              { "field": "src_filePathType", "value": "prefix" },
+              { "field": "_sourceLocationType", "value": "AzureBlobStorageLocation" }
+            ],
             "jsonPath": "storeSettings.prefix"
           },
           "src_wildcardFolderPath": {
@@ -988,12 +1004,16 @@
             "label": "File path type",
             "options": ["File path in dataset", "Prefix", "Wildcard file path", "List of files"],
             "optionValues": ["filePathInDataset", "prefix", "wildcardFilePath", "listOfFiles"],
+            "optionConditionals": { "prefix": { "field": "_sourceLocationType", "value": "AzureBlobStorageLocation" } },
             "default": "filePathInDataset"
           },
           "src_prefix": {
             "type": "text",
             "label": "Prefix",
-            "conditional": { "field": "src_filePathType", "value": "prefix" },
+            "conditionalAll": [
+              { "field": "src_filePathType", "value": "prefix" },
+              { "field": "_sourceLocationType", "value": "AzureBlobStorageLocation" }
+            ],
             "jsonPath": "storeSettings.prefix"
           },
           "src_wildcardFolderPath": {
@@ -1121,12 +1141,16 @@
             "label": "File path type",
             "options": ["File path in dataset", "Prefix", "Wildcard file path", "List of files"],
             "optionValues": ["filePathInDataset", "prefix", "wildcardFilePath", "listOfFiles"],
+            "optionConditionals": { "prefix": { "field": "_sourceLocationType", "value": "AzureBlobStorageLocation" } },
             "default": "filePathInDataset"
           },
           "src_prefix": {
             "type": "text",
             "label": "Prefix",
-            "conditional": { "field": "src_filePathType", "value": "prefix" },
+            "conditionalAll": [
+              { "field": "src_filePathType", "value": "prefix" },
+              { "field": "_sourceLocationType", "value": "AzureBlobStorageLocation" }
+            ],
             "jsonPath": "storeSettings.prefix"
           },
           "src_wildcardFolderPath": {
@@ -1307,6 +1331,141 @@
             "label": "Disable performance metrics analytics",
             "default": false,
             "jsonPath": "disableMetricsCollection"
+          }
+        }
+      }
+    },
+
+    "Binary": {
+      "name": "Binary",
+      "hasStoreSettings": true,
+      "sourceTypeName": "BinarySource",
+      "sinkTypeName": "BinarySink",
+      "storeReadSettingsTypes": {
+        "AzureBlobFSLocation": "AzureBlobFSReadSettings",
+        "AzureBlobStorageLocation": "AzureBlobStorageReadSettings"
+      },
+      "defaultStoreReadSettings": "AzureBlobFSReadSettings",
+      "storeWriteSettingsTypes": {
+        "AzureBlobFSLocation": "AzureBlobFSWriteSettings",
+        "AzureBlobStorageLocation": "AzureBlobStorageWriteSettings"
+      },
+      "defaultStoreWriteSettings": "AzureBlobFSWriteSettings",
+      "formatReadType": "BinaryReadSettings",
+      "_comment": "Binary has no formatWriteType — no formatSettings block in the sink output",
+      "fields": {
+        "source": {
+          "src_filePathType": {
+            "type": "radio",
+            "label": "File path type",
+            "options": ["File path in dataset", "Prefix", "Wildcard file path", "List of files"],
+            "optionValues": ["filePathInDataset", "prefix", "wildcardFilePath", "listOfFiles"],
+            "optionConditionals": { "prefix": { "field": "_sourceLocationType", "value": "AzureBlobStorageLocation" } },
+            "default": "filePathInDataset"
+          },
+          "src_prefix": {
+            "type": "text",
+            "label": "Prefix",
+            "conditionalAll": [
+              { "field": "src_filePathType", "value": "prefix" },
+              { "field": "_sourceLocationType", "value": "AzureBlobStorageLocation" }
+            ],
+            "jsonPath": "storeSettings.prefix"
+          },
+          "src_wildcardFolderPath": {
+            "type": "text",
+            "label": "Wildcard folder path",
+            "placeholder": "folder/subfolder",
+            "conditional": { "field": "src_filePathType", "value": "wildcardFilePath" },
+            "jsonPath": "storeSettings.wildcardFolderPath"
+          },
+          "src_wildcardFileName": {
+            "type": "text",
+            "label": "Wildcard file name",
+            "placeholder": "*",
+            "default": "*",
+            "writeDefault": true,
+            "conditional": { "field": "src_filePathType", "value": "wildcardFilePath" },
+            "jsonPath": "storeSettings.wildcardFileName"
+          },
+          "src_fileListPath": {
+            "type": "text",
+            "label": "Path to file list",
+            "conditional": { "field": "src_filePathType", "value": "listOfFiles" },
+            "jsonPath": "storeSettings.fileListPath"
+          },
+          "src_modifiedDatetimeStart": {
+            "type": "datetime",
+            "label": "Start time (UTC)",
+            "placeholder": "2/18/2026, 12:00:00 AM",
+            "conditional": { "field": "src_filePathType", "value": ["filePathInDataset", "prefix", "wildcardFilePath"] },
+            "jsonPath": "storeSettings.modifiedDatetimeStart"
+          },
+          "src_modifiedDatetimeEnd": {
+            "type": "datetime",
+            "label": "End time (UTC)",
+            "placeholder": "2/18/2026, 12:00:00 AM",
+            "conditional": { "field": "src_filePathType", "value": ["filePathInDataset", "prefix", "wildcardFilePath"] },
+            "jsonPath": "storeSettings.modifiedDatetimeEnd"
+          },
+          "src_recursive": {
+            "type": "boolean",
+            "label": "Recursively",
+            "default": true,
+            "conditional": { "field": "src_filePathType", "value": ["filePathInDataset", "prefix", "wildcardFilePath"] },
+            "jsonPath": "storeSettings.recursive"
+          },
+          "src_deleteFilesAfterCompletion": {
+            "type": "boolean",
+            "label": "Delete files after completion",
+            "default": false,
+            "jsonPath": "storeSettings.deleteFilesAfterCompletion"
+          },
+          "src_maxConcurrentConnections": {
+            "type": "number",
+            "label": "Max concurrent connections",
+            "min": 1,
+            "jsonPath": "storeSettings.maxConcurrentConnections"
+          }
+        },
+        "sink": {
+          "snk_copyBehaviorAdls": {
+            "type": "select",
+            "label": "Copy behavior",
+            "options": ["None", "PreserveHierarchy", "FlattenHierarchy", "MergeFiles"],
+            "default": "None",
+            "omitWhenValue": "None",
+            "conditional": { "field": "_sinkLocationType", "value": "AzureBlobFSLocation" },
+            "jsonPath": "storeSettings.copyBehavior"
+          },
+          "snk_copyBehaviorBlob": {
+            "type": "select",
+            "label": "Copy behavior",
+            "options": ["FlattenHierarchy", "PreserveHierarchy"],
+            "default": "FlattenHierarchy",
+            "conditional": { "field": "_sinkLocationType", "value": "AzureBlobStorageLocation" },
+            "jsonPath": "storeSettings.copyBehavior"
+          },
+          "snk_maxConcurrentConnections": {
+            "type": "number",
+            "label": "Max concurrent connections",
+            "min": 1,
+            "jsonPath": "storeSettings.maxConcurrentConnections"
+          },
+          "snk_blockSizeInMB": {
+            "type": "number",
+            "label": "Block size in MB",
+            "min": 4,
+            "max": 100,
+            "placeholder": "4-100",
+            "rangeError": "Block size value must be a number in 4-100.",
+            "jsonPath": "storeSettings.blockSizeInMB"
+          },
+          "snk_metadata": {
+            "type": "additional-columns",
+            "label": "Metadata",
+            "filterEmpty": "name",
+            "jsonPath": "storeSettings.metadata"
           }
         }
       }

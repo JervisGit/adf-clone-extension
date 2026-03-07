@@ -2589,6 +2589,14 @@ class PipelineEditorProvider {
                                     const _nCondMet = Array.isArray(_nCondExpected) ? _nCondExpected.includes(_nCondVal) : _nCondVal === _nCondExpected;
                                     if (!_nCondMet) continue;
                                 }
+                                // Check conditionalAll — all conditions must be met (AND logic)
+                                if (_fc.conditionalAll) {
+                                    const _allMet = _fc.conditionalAll.every(_cond => {
+                                        const _cv = a[_cond.field];
+                                        return Array.isArray(_cond.value) ? _cond.value.includes(_cv) : _cv === _cond.value;
+                                    });
+                                    if (!_allMet) continue;
+                                }
                                 let _v = a[_fk];
                                 if (_fc.omitWhenValue !== undefined && _v === _fc.omitWhenValue) continue;
                                 // For filterEmpty arrays (e.g. additional-columns), strip blank-name entries
@@ -2637,6 +2645,14 @@ class PipelineEditorProvider {
                                         ? (_condVal !== undefined && _condVal !== null && _condVal !== '')
                                         : (Array.isArray(_condExpected) ? _condExpected.includes(_condVal) : _condVal === _condExpected);
                                     if (!_condMet) continue;
+                                }
+                                // Check conditionalAll — all conditions must be met (AND logic)
+                                if (_fc.conditionalAll) {
+                                    const _allMet = _fc.conditionalAll.every(_cond => {
+                                        const _cv = a[_cond.field];
+                                        return Array.isArray(_cond.value) ? _cond.value.includes(_cv) : _cv === _cond.value;
+                                    });
+                                    if (!_allMet) continue;
                                 }
                                 const _v = a[_fk];
                                 if (_fc.omitWhenValue !== undefined && _v === _fc.omitWhenValue) continue;
@@ -6401,6 +6417,18 @@ class PipelineEditorProvider {
                         }
                     }
                 }
+
+                // Check conditionalAll — all conditions must be met (AND logic)
+                if (prop.conditionalAll) {
+                    for (const cond of prop.conditionalAll) {
+                        const actualValue = activity[cond.field];
+                        if (Array.isArray(cond.value)) {
+                            if (!cond.value.includes(actualValue)) return '';
+                        } else {
+                            if (actualValue !== cond.value) return '';
+                        }
+                    }
+                }
                 
                 // Check nested conditional (for fields that depend on other conditional fields)
                 if (prop.nestedConditional) {
@@ -6533,6 +6561,13 @@ class PipelineEditorProvider {
                         prop.options.forEach((opt, idx) => {
                             // Use optionValues if available, otherwise use the option itself
                             const optValue = prop.optionValues ? prop.optionValues[idx] : opt;
+                            // Skip option if optionConditionals says it shouldn't appear for current activity state
+                            if (prop.optionConditionals && prop.optionConditionals[optValue]) {
+                                const optCond = prop.optionConditionals[optValue];
+                                const condActual = activity[optCond.field];
+                                const condPasses = Array.isArray(optCond.value) ? optCond.value.includes(condActual) : condActual === optCond.value;
+                                if (!condPasses) return;
+                            }
                             const checked = optValue === value ? 'checked' : '';
                             const isDisabledOpt = prop.disabledOptionValues && prop.disabledOptionValues.includes(optValue);
                             // Custom display names
@@ -7659,6 +7694,10 @@ class PipelineEditorProvider {
                         if (key === 'sourceDataset') {
                             activity._sourceDatasetType = datasetType;
                             activity._sourceLocationType = datasetContents[datasetName].properties?.typeProperties?.location?.type;
+                            // If Prefix was selected but new dataset is ADLS (no prefix support), reset to filePathInDataset
+                            if (activity.src_filePathType === 'prefix' && activity._sourceLocationType !== 'AzureBlobStorageLocation') {
+                                activity.src_filePathType = 'filePathInDataset';
+                            }
                         } else if (key === 'sinkDataset') {
                             activity._sinkDatasetType = datasetType;
                             activity._sinkLocationType = datasetContents[datasetName].properties?.typeProperties?.location?.type;

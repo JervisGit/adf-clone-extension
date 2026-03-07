@@ -13,12 +13,12 @@
 | `Binary` | Binary | ✅ | ✅ | ADLS / Blob |
 | `Orc` | ORC | ✅ | ✅ | ADLS / Blob |
 | `Xml` | XML | ✅ | ❌ source-only | ADLS / Blob |
-| `Iceberg` | Iceberg | ✅ | ✅ | ADLS Gen2 only |
+| `Iceberg` | Iceberg | ❌ sink-only | ✅ | ADLS Gen2 only |
 | `HttpFile` | HTTP | ✅ | ❌ source-only | HTTP |
 
 > **Azure Synapse Analytics** (`AzureSqlDW`) is implemented in the config but you don't currently have a Synapse-linked dataset in your workspace (`test-synapse-jervis-WorkspaceDefaultSqlServer` is linked service only). You would need a dataset pointing to it.
 >
-> **Iceberg** (`ADLSIceberg1`) — now implemented. ADLS Gen2 only; supports Append/Overwrite table action on sink.
+> **Iceberg** (`ADLSIceberg1`) — ADLS Gen2 sink-only. Fields: Max concurrent connections, Block size in MB.
 >
 > **HTTP** (`HttpFile`) — now implemented. Source-only; request body field only appears when method is POST.
 >
@@ -47,7 +47,6 @@ Source and sink are **fully independent** — the fields rendered for each side 
 | Binary | ✅ |
 | Delimited Text (CSV/TSV) | ✅ |
 | Excel | 🔲 |
-| Iceberg | 🔲 |
 | JSON | 🔲 |
 | ORC | 🔲 |
 | Parquet | ✅ |
@@ -56,7 +55,7 @@ Source and sink are **fully independent** — the fields rendered for each side 
 #### Blob Storage
 | Source Dataset Type | Status |
 |---|---|
-| Avro | 🔲 |
+| Avro | ✅ |
 | Binary | ✅ |
 | Delimited Text (CSV/TSV) | ✅ |
 | Excel | 🔲 |
@@ -84,7 +83,7 @@ Source and sink are **fully independent** — the fields rendered for each side 
 | Avro | ✅ |
 | Binary | ✅ |
 | Delimited Text (CSV/TSV) | 🔲 |
-| Iceberg | 🔲 |
+| Iceberg | ✅ |
 | JSON | 🔲 |
 | ORC | ✅ |
 | Parquet | ✅ |
@@ -92,7 +91,7 @@ Source and sink are **fully independent** — the fields rendered for each side 
 #### Blob Storage
 | Sink Dataset Type | Status |
 |---|---|
-| Avro | 🔲 |
+| Avro | ✅ |
 | Binary | ✅ |
 | Delimited Text (CSV/TSV) | 🔲 |
 | JSON | 🔲 |
@@ -227,7 +226,7 @@ High value because they cover most real ETL patterns:
 | Gap | Notes |
 |---|---|
 | **Excel** dataset type | ADF supports Excel as a source-only format on ADLS/Blob. Not in the config. Needs a new entry similar to `Xml` (source-only, no storeSettings format write type). |
-| `Iceberg` sink — table action | Uses `formatSettings.tableActionOption` (Append/Overwrite). Verify ADF JSON output matches expected schema. |
+| `Iceberg` sink — sink-only | ADLS Gen2 only. Fields: Max concurrent connections, Block size. No source tab. |
 | `HttpFile` source — request body | Only appears when method is POST. Verify conditional rendering works. |
 | Azure Synapse Parquet/PolyBase | Synapse sink may have extra options beyond basic SQL (PolyBase, COPY command). |
 | Mapping tab | Placeholder only — column mapping not yet implemented. |

@@ -1054,6 +1054,7 @@
             "type": "boolean",
             "label": "Recursively",
             "default": true,
+            "conditional": { "field": "src_filePathType", "value": ["filePathInDataset", "prefix", "wildcardFilePath"] },
             "jsonPath": "storeSettings.recursive"
           },
           "src_enablePartitionDiscovery": {

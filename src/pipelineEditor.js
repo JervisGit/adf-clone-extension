@@ -712,6 +712,10 @@ class PipelineEditorProvider {
 						if (_copyDefs.typeProperties) {
 							Object.assign(typeProperties, _copyDefs.typeProperties);
 						}
+						// Suppress translator for non-tabular sink formats
+						if (snkTypeConfig && snkTypeConfig.noTranslator) {
+							delete typeProperties.translator;
+						}
 					}
 
 					activity.typeProperties = typeProperties;

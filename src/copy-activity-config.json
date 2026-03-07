@@ -674,6 +674,7 @@
             "label": "Copy behavior",
             "options": ["None", "PreserveHierarchy", "FlattenHierarchy", "MergeFiles"],
             "default": "None",
+            "omitWhenValue": "None",
             "jsonPath": "storeSettings.copyBehavior"
           },
           "snk_fileExtension": {
@@ -703,6 +704,12 @@
             "label": "Disable performance metrics analytics",
             "default": false,
             "jsonPath": "disableMetricsCollection"
+          },
+          "snk_metadata": {
+            "type": "additional-columns",
+            "label": "Metadata",
+            "filterEmpty": "name",
+            "jsonPath": "storeSettings.metadata"
           }
         }
       }
@@ -711,8 +718,11 @@
     "Json": {
       "name": "JSON",
       "hasStoreSettings": true,
+      "noTranslator": true,
       "sourceTypeName": "JsonSource",
       "sinkTypeName": "JsonSink",
+      "formatReadType": "JsonReadSettings",
+      "formatWriteType": "JsonWriteSettings",
       "storeReadSettingsTypes": {
         "AzureBlobFSLocation": "AzureBlobFSReadSettings",
         "AzureBlobStorageLocation": "AzureBlobStorageReadSettings"
@@ -780,6 +790,7 @@
             "type": "boolean",
             "label": "Recursively",
             "default": true,
+            "conditional": { "field": "src_filePathType", "value": ["filePathInDataset", "prefix", "wildcardFilePath"] },
             "jsonPath": "storeSettings.recursive"
           },
           "src_enablePartitionDiscovery": {
@@ -799,14 +810,23 @@
             "label": "Max concurrent connections",
             "min": 1,
             "jsonPath": "storeSettings.maxConcurrentConnections"
+          },
+          "src_additionalColumns": {
+            "type": "additional-columns",
+            "label": "Additional columns",
+            "filterEmpty": "name",
+            "default": [{ "name": "", "value": "$$FILEPATH" }],
+            "defaultRowValue": "$$FILEPATH",
+            "jsonPath": "additionalColumns"
           }
         },
         "sink": {
           "snk_filePattern": {
             "type": "select",
             "label": "File pattern",
-            "options": ["setOfObjects", "arrayOfObjects"],
-            "default": "setOfObjects",
+            "options": ["None", "setOfObjects", "arrayOfObjects"],
+            "default": "None",
+            "omitWhenValue": "None",
             "jsonPath": "formatSettings.filePattern"
           },
           "snk_copyBehavior": {
@@ -814,6 +834,7 @@
             "label": "Copy behavior",
             "options": ["None", "PreserveHierarchy", "FlattenHierarchy", "MergeFiles"],
             "default": "None",
+            "omitWhenValue": "None",
             "jsonPath": "storeSettings.copyBehavior"
           },
           "snk_blockSizeInMB": {
@@ -831,11 +852,11 @@
             "min": 1,
             "jsonPath": "storeSettings.maxConcurrentConnections"
           },
-          "snk_disableMetricsCollection": {
-            "type": "boolean",
-            "label": "Disable performance metrics analytics",
-            "default": false,
-            "jsonPath": "disableMetricsCollection"
+          "snk_metadata": {
+            "type": "additional-columns",
+            "label": "Metadata",
+            "filterEmpty": "name",
+            "jsonPath": "storeSettings.metadata"
           }
         }
       }
@@ -914,6 +935,7 @@
             "type": "boolean",
             "label": "Recursively",
             "default": true,
+            "conditional": { "field": "src_filePathType", "value": ["filePathInDataset", "prefix", "wildcardFilePath"] },
             "jsonPath": "storeSettings.recursive"
           },
           "src_enablePartitionDiscovery": {
@@ -1125,6 +1147,7 @@
     "Xml": {
       "name": "XML",
       "hasStoreSettings": true,
+      "noTranslator": true,
       "sourceTypeName": "XmlSource",
       "sinkTypeName": null,
       "_comment_sink": "XML is source-only in ADF Copy; no sinkTypeName defined",
@@ -1192,6 +1215,7 @@
             "type": "boolean",
             "label": "Recursively",
             "default": true,
+            "conditional": { "field": "src_filePathType", "value": ["filePathInDataset", "prefix", "wildcardFilePath"] },
             "jsonPath": "storeSettings.recursive"
           },
           "src_enablePartitionDiscovery": {
@@ -1255,6 +1279,7 @@
     "Binary": {
       "name": "Binary",
       "hasStoreSettings": true,
+      "noTranslator": true,
       "sourceTypeName": "BinarySource",
       "sinkTypeName": "BinarySink",
       "storeReadSettingsTypes": {

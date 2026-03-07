@@ -947,7 +947,7 @@
       }
     },
 
-    "ORC": {
+    "Orc": {
       "name": "ORC",
       "hasStoreSettings": true,
       "sourceTypeName": "OrcSource",

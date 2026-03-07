@@ -10,7 +10,7 @@
 | `DelimitedText` | Delimited Text (CSV/TSV) | ✅ | ✅ | ADLS / Blob |
 | `Json` | JSON | ✅ | ✅ | ADLS / Blob |
 | `Avro` | Avro | ✅ | ✅ | ADLS / Blob |
-| `ORC` | ORC | ✅ | ✅ | ADLS / Blob |
+| `Orc` | ORC | ✅ | ✅ | ADLS / Blob |
 | `Xml` | XML | ✅ | ❌ source-only | ADLS / Blob |
 | `Iceberg` | Iceberg | ✅ | ✅ | ADLS Gen2 only |
 | `HttpFile` | HTTP | ✅ | ❌ source-only | HTTP |
@@ -75,8 +75,8 @@ Source and sink are **fully independent** — the fields rendered for each side 
 | Parquet | ✅ |
 | Delimited Text (CSV/TSV) | 🔲 |
 | JSON | 🔲 |
-| Avro | 🔲 |
-| ORC | 🔲 |
+| Avro | ✅ |
+| ORC | ✅ |
 | Iceberg | 🔲 |
 
 #### Blob Storage
@@ -153,23 +153,23 @@ Source and sink are **fully independent** — the fields rendered for each side 
 - [x] Metadata — `additional-columns` style grid; saves as `storeSettings.metadata` array; blank-name rows filtered
 - [x] Max concurrent connections
 
-### Avro (ADLS sink) 🔲 Not yet tested
-- [ ] `formatSettings: { type: "AvroWriteSettings" }` written correctly
-- [ ] Copy behavior = **None** → omitted from JSON; other values written
-- [ ] Block size in MB — range validation 4–100 enforced on save
-- [ ] Max rows per file — empty stays empty; written when set
-- [ ] File name prefix — only shown when Max rows per file is set
-- [ ] Metadata — `additional-columns` style grid; saves as `storeSettings.metadata` array; blank-name rows filtered
-- [ ] Max concurrent connections
+### Avro (ADLS sink) ✅ Validated
+- [x] `formatSettings: { type: "AvroWriteSettings" }` written correctly
+- [x] Copy behavior = **None** → omitted from JSON; other values written
+- [x] Block size in MB — range validation 4–100 enforced on save
+- [x] Max rows per file — empty stays empty; written when set
+- [x] File name prefix — only shown when Max rows per file is set
+- [x] Metadata — `additional-columns` style grid; saves as `storeSettings.metadata` array; blank-name rows filtered
+- [x] Max concurrent connections
 
-### ORC (ADLS sink) 🔲 Not yet tested
-- [ ] `formatSettings: { type: "OrcWriteSettings" }` written correctly
-- [ ] Copy behavior = **None** → omitted from JSON; other values written
-- [ ] Block size in MB — range validation 4–100 enforced on save
-- [ ] Max rows per file — empty stays empty; written when set
-- [ ] File name prefix — only shown when Max rows per file is set
-- [ ] Metadata — `additional-columns` style grid; saves as `storeSettings.metadata` array; blank-name rows filtered
-- [ ] Max concurrent connections
+### ORC (ADLS sink) ✅ Validated
+- [x] `formatSettings: { type: "OrcWriteSettings" }` written correctly
+- [x] Copy behavior = **None** → omitted from JSON; other values written
+- [x] Block size in MB — range validation 4–100 enforced on save
+- [x] Max rows per file — empty stays empty; written when set
+- [x] File name prefix — only shown when Max rows per file is set
+- [x] Metadata — `additional-columns` style grid; saves as `storeSettings.metadata` array; blank-name rows filtered
+- [x] Max concurrent connections
 
 ### Parquet / Avro / ORC / JSON (file sinks, ADLS or Blob)
 - [ ] File path in dataset / wildcard / list of files
@@ -191,9 +191,9 @@ High value because they cover most real ETL patterns:
 2. ~~**Azure SQL DB as source**~~ ← validated ✅
 3. ~~**Azure SQL DB → Parquet (ADLS)**~~ ← Parquet sink validated ✅
 4. ~~**Parquet (ADLS) → Parquet (ADLS)**~~ ← Parquet source validated ✅
-5. **➡️ NEXT: Azure SQL DB → Avro (ADLS)** ← validates Avro sink for the first time
-6. **Azure SQL DB → ORC (ADLS)** ← validates ORC sink
-7. **DelimitedText → Azure SQL DB** ← CSV ingest (very common)
+5. ~~**Azure SQL DB → Avro (ADLS)**~~ ← Avro sink validated ✅
+6. ~~**Azure SQL DB → ORC (ADLS)**~~ ← ORC sink validated ✅
+7. **➡️ NEXT: DelimitedText (ADLS) → Azure SQL DB** ← validates DelimitedText source
 8. **XML (ADLS) → Azure SQL DB** ← XML source (source-only type)
 9. **Azure SQL DB → DelimitedText (ADLS)** ← validates DelimitedText sink
 10. **Azure SQL DB → Synapse** ← requires Synapse dataset setup first

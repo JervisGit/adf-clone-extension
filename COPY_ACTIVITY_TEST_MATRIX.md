@@ -50,7 +50,7 @@ Source and sink are **fully independent** — the fields rendered for each side 
 | JSON | ✅ |
 | ORC | ✅ |
 | Parquet | ✅ |
-| XML | 🔲 |
+| XML | ✅ |
 
 #### Blob Storage
 | Source Dataset Type | Status |
@@ -62,7 +62,7 @@ Source and sink are **fully independent** — the fields rendered for each side 
 | JSON | ✅ |
 | ORC | ✅ |
 | Parquet | ✅ |
-| XML | 🔲 |
+| XML | ✅ |
 
 #### Other
 | Source Dataset Type | Status |

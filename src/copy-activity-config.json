@@ -1163,6 +1163,7 @@
       "name": "XML",
       "hasStoreSettings": true,
       "noTranslator": true,
+      "formatReadType": "XmlReadSettings",
       "sourceTypeName": "XmlSource",
       "sinkTypeName": null,
       "_comment_sink": "XML is source-only in ADF Copy; no sinkTypeName defined",
@@ -1250,6 +1251,39 @@
             "label": "Max concurrent connections",
             "min": 1,
             "jsonPath": "storeSettings.maxConcurrentConnections"
+          },
+          "src_validationMode": {
+            "type": "select",
+            "label": "Validation mode",
+            "options": ["none", "xsd", "dtd"],
+            "default": "none",
+            "writeDefault": true,
+            "jsonPath": "formatSettings.validationMode"
+          },
+          "src_namespaces": {
+            "type": "boolean",
+            "label": "Namespaces",
+            "default": true,
+            "writeDefault": true,
+            "jsonPath": "formatSettings.namespaces"
+          },
+          "src_namespacePrefixPairs": {
+            "type": "namespace-prefixes",
+            "label": "Namespace prefix pairs",
+            "conditional": { "field": "src_namespaces", "value": true }
+          },
+          "src_detectDataType": {
+            "type": "boolean",
+            "label": "Detect data type",
+            "default": true,
+            "jsonPath": "formatSettings.detectDataType"
+          },
+          "src_additionalColumns": {
+            "type": "additional-columns",
+            "label": "Additional columns",
+            "filterEmpty": "name",
+            "defaultRowValue": "$$FILEPATH",
+            "jsonPath": "additionalColumns"
           }
         },
         "sink": {}

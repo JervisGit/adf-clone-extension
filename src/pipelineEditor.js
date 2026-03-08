@@ -2381,6 +2381,23 @@ class PipelineEditorProvider {
                             }
                         }
 
+                        // Special case: XML source — validationMode must be 'none' when maxConcurrentConnections is set
+                        if (a.type === 'Copy' && a._sourceDatasetType === 'Xml') {
+                            const xmlValidMode = a.src_validationMode || (a.typeProperties?.source?.formatSettings?.validationMode);
+                            const xmlMaxConn = a.src_maxConcurrentConnections !== undefined
+                                ? a.src_maxConcurrentConnections
+                                : a.typeProperties?.source?.storeSettings?.maxConcurrentConnections;
+                            if (xmlMaxConn !== undefined && xmlMaxConn !== null && xmlMaxConn !== '' &&
+                                xmlValidMode && xmlValidMode !== 'none') {
+                                const locationLabel = contextPath ? ' (inside "' + contextPath + '")' : '';
+                                vscode.postMessage({
+                                    type: 'validationError',
+                                    message: 'Activity "' + a.name + '"' + locationLabel + ': Validation mode must be "none" when Max concurrent connections is specified.'
+                                });
+                                throw new Error('Activity "' + a.name + '": XML validationMode must be none when maxConcurrentConnections is set');
+                            }
+                        }
+
                         // Recurse into all container branches
                         const nested   = a.activities        || (a.typeProperties && a.typeProperties.activities);
                         const trueActs = a.ifTrueActivities  || (a.typeProperties && a.typeProperties.ifTrueActivities);
@@ -2619,6 +2636,10 @@ class PipelineEditorProvider {
                                 }
                             }
                             if (!activity.typeProperties) activity.typeProperties = {};
+                            // XML: namespacePrefixPairs stored on activity (via namespace-prefixes widget) → formatSettings.namespacePrefixes
+                            if (a._sourceDatasetType === 'Xml' && a.namespacePrefixPairs && Object.keys(a.namespacePrefixPairs).length > 0) {
+                                if (_src.formatSettings) _src.formatSettings.namespacePrefixes = a.namespacePrefixPairs;
+                            }
                             activity.typeProperties.source = _src;
                         } else if (a._sourceObject) {
                             if (!activity.typeProperties) activity.typeProperties = {};
@@ -7180,7 +7201,7 @@ class PipelineEditorProvider {
                     }
                     case 'namespace-prefixes':
                         // Render the namespace prefix pairs UI for XML datasets
-                        const namespacePairsData = value || {};
+                        const namespacePairsData = activity.namespacePrefixPairs || {};
                         fieldHtml += \`<div style="flex: 1;">\`;
                         fieldHtml += \`<button class="add-namespace-prefix-btn" data-key="\${key}" style="padding: 4px 8px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; font-size: 11px; margin-bottom: 8px;">+ New</button>\`;
                         fieldHtml += \`<button class="delete-namespace-prefix-btn" data-key="\${key}" style="padding: 4px 8px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; font-size: 11px; margin-bottom: 8px; margin-left: 8px;">Delete</button>\`;

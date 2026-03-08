@@ -7224,6 +7224,51 @@ class PipelineEditorProvider {
                         fieldHtml += \`</div>\`;
                         break;
                     }
+                    case 'copy-cmd-default-values': {
+                        // Renders array of {columnName, defaultValue} for SqlDW Copy command defaultValues
+                        const _dvData = Array.isArray(activity[key]) ? activity[key] : [];
+                        fieldHtml += \`<div style="flex: 1;">\`;
+                        fieldHtml += \`<button type="button" class="add-copy-cmd-dv-btn" data-key="\${key}" style="padding: 4px 8px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; font-size: 11px; margin-bottom: 8px;">+ New</button>\`;
+                        if (_dvData.length > 0) {
+                            fieldHtml += \`
+                                <div style="display: grid; grid-template-columns: 1fr 1fr 26px; gap: 6px; margin-bottom: 4px; font-size: 11px; font-weight: 600; color: var(--vscode-descriptionForeground);">
+                                    <div>Column</div><div>Value</div><div></div>
+                                </div>\`;
+                            _dvData.forEach((_dvEntry, _dvIdx) => {
+                                fieldHtml += \`
+                                <div class="copy-cmd-dv-row" style="display: grid; grid-template-columns: 1fr 1fr 26px; gap: 6px; margin-bottom: 6px; align-items: center;">
+                                    <input type="text" class="property-input copy-cmd-dv-col-input" data-key="\${key}" data-index="\${_dvIdx}" value="\${_dvEntry.columnName || ''}" placeholder="Column name" style="font-size: 11px; padding: 3px 6px;">
+                                    <input type="text" class="property-input copy-cmd-dv-val-input" data-key="\${key}" data-index="\${_dvIdx}" value="\${_dvEntry.defaultValue || ''}" placeholder="Default value" style="font-size: 11px; padding: 3px 6px;">
+                                    <button type="button" class="remove-copy-cmd-dv-btn" data-key="\${key}" data-index="\${_dvIdx}" style="padding: 2px 4px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; font-size: 10px;">&times;</button>
+                                </div>\`;
+                            });
+                        }
+                        fieldHtml += \`</div>\`;
+                        break;
+                    }
+                    case 'copy-cmd-additional-options': {
+                        // Renders object {propName: propValue} for SqlDW Copy command additionalOptions
+                        const _aoData = (activity[key] && typeof activity[key] === 'object' && !Array.isArray(activity[key])) ? activity[key] : {};
+                        fieldHtml += \`<div style="flex: 1;">\`;
+                        fieldHtml += \`<button type="button" class="add-copy-cmd-ao-btn" data-key="\${key}" style="padding: 4px 8px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; font-size: 11px; margin-bottom: 8px;">+ New</button>\`;
+                        const _aoEntries = Object.entries(_aoData);
+                        if (_aoEntries.length > 0) {
+                            fieldHtml += \`
+                                <div style="display: grid; grid-template-columns: 1fr 1fr 26px; gap: 6px; margin-bottom: 4px; font-size: 11px; font-weight: 600; color: var(--vscode-descriptionForeground);">
+                                    <div>Property</div><div>Value</div><div></div>
+                                </div>\`;
+                            _aoEntries.forEach(([_aoProp, _aoVal], _aoIdx) => {
+                                fieldHtml += \`
+                                <div class="copy-cmd-ao-row" data-pair-index="\${_aoIdx}" style="display: grid; grid-template-columns: 1fr 1fr 26px; gap: 6px; margin-bottom: 6px; align-items: center;">
+                                    <input type="text" class="property-input copy-cmd-ao-prop-input" data-key="\${key}" data-index="\${_aoIdx}" value="\${_aoProp}" placeholder="Property name" style="font-size: 11px; padding: 3px 6px;">
+                                    <input type="text" class="property-input copy-cmd-ao-val-input" data-key="\${key}" data-index="\${_aoIdx}" value="\${_aoVal || ''}" placeholder="Value" style="font-size: 11px; padding: 3px 6px;">
+                                    <button type="button" class="remove-copy-cmd-ao-btn" data-key="\${key}" data-index="\${_aoIdx}" style="padding: 2px 4px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; font-size: 10px;">&times;</button>
+                                </div>\`;
+                            });
+                        }
+                        fieldHtml += \`</div>\`;
+                        break;
+                    }
                     case 'namespace-prefixes':
                         // Render the namespace prefix pairs UI for XML datasets
                         const namespacePairsData = activity.namespacePrefixPairs || {};
@@ -8552,6 +8597,106 @@ class PipelineEditorProvider {
                                 const valueInput = paramRow.querySelector('.copy-sp-param-value');
                                 if (valueInput) { valueInput.disabled = false; valueInput.style.opacity = '1'; valueInput.style.cursor = 'auto'; }
                             }
+                            markAsDirty();
+                        }
+                    }
+                });
+            });
+
+            // Add event listeners for copy-cmd-default-values (SqlDW Copy command default values table)
+            document.querySelectorAll('.add-copy-cmd-dv-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const fieldKey = btn.getAttribute('data-key');
+                    if (!Array.isArray(activity[fieldKey])) activity[fieldKey] = [];
+                    activity[fieldKey].push({ columnName: '', defaultValue: '' });
+                    markAsDirty();
+                    const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                    showProperties(activity, activeTab);
+                });
+            });
+            document.querySelectorAll('.remove-copy-cmd-dv-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const fieldKey = e.target.getAttribute('data-key');
+                    const idx = parseInt(e.target.getAttribute('data-index'));
+                    if (Array.isArray(activity[fieldKey])) {
+                        activity[fieldKey].splice(idx, 1);
+                        markAsDirty();
+                        const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                        showProperties(activity, activeTab);
+                    }
+                });
+            });
+            document.querySelectorAll('.copy-cmd-dv-col-input, .copy-cmd-dv-val-input').forEach(input => {
+                input.addEventListener('input', (e) => {
+                    const fieldKey = e.target.getAttribute('data-key');
+                    const idx = parseInt(e.target.getAttribute('data-index'));
+                    if (Array.isArray(activity[fieldKey]) && activity[fieldKey][idx] !== undefined) {
+                        if (e.target.classList.contains('copy-cmd-dv-col-input')) {
+                            activity[fieldKey][idx].columnName = e.target.value;
+                        } else {
+                            activity[fieldKey][idx].defaultValue = e.target.value;
+                        }
+                        markAsDirty();
+                    }
+                });
+            });
+
+            // Add event listeners for copy-cmd-additional-options (SqlDW Copy command additional options)
+            document.querySelectorAll('.add-copy-cmd-ao-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const fieldKey = btn.getAttribute('data-key');
+                    if (!activity[fieldKey] || typeof activity[fieldKey] !== 'object') activity[fieldKey] = {};
+                    let propName = 'Property1';
+                    let counter = 1;
+                    while (activity[fieldKey][propName] !== undefined) { counter++; propName = 'Property' + counter; }
+                    activity[fieldKey][propName] = '';
+                    markAsDirty();
+                    const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                    showProperties(activity, activeTab);
+                });
+            });
+            document.querySelectorAll('.remove-copy-cmd-ao-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const fieldKey = e.target.getAttribute('data-key');
+                    const idx = parseInt(e.target.getAttribute('data-index'));
+                    if (activity[fieldKey] && typeof activity[fieldKey] === 'object') {
+                        const keys = Object.keys(activity[fieldKey]);
+                        if (keys[idx] !== undefined) {
+                            delete activity[fieldKey][keys[idx]];
+                            markAsDirty();
+                            const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                            showProperties(activity, activeTab);
+                        }
+                    }
+                });
+            });
+            document.querySelectorAll('.copy-cmd-ao-prop-input').forEach(input => {
+                input.addEventListener('change', (e) => {
+                    const fieldKey = e.target.getAttribute('data-key');
+                    const idx = parseInt(e.target.getAttribute('data-index'));
+                    const newProp = e.target.value.trim();
+                    if (activity[fieldKey] && typeof activity[fieldKey] === 'object') {
+                        const keys = Object.keys(activity[fieldKey]);
+                        const oldProp = keys[idx];
+                        if (oldProp !== undefined && newProp !== oldProp) {
+                            const val = activity[fieldKey][oldProp];
+                            delete activity[fieldKey][oldProp];
+                            activity[fieldKey][newProp] = val;
+                            markAsDirty();
+                            const activeTab = document.querySelector('.activity-tab.active')?.getAttribute('data-tab');
+                            showProperties(activity, activeTab);
+                        }
+                    }
+                });
+            });
+            document.querySelectorAll('.copy-cmd-ao-val-input').forEach(input => {
+                input.addEventListener('input', (e) => {
+                    const fieldKey = e.target.getAttribute('data-key');
+                    const idx = parseInt(e.target.getAttribute('data-index'));
+                    if (activity[fieldKey] && typeof activity[fieldKey] === 'object') {
+                        const keys = Object.keys(activity[fieldKey]);
+                        if (keys[idx] !== undefined) {
+                            activity[fieldKey][keys[idx]] = e.target.value;
                             markAsDirty();
                         }
                     }

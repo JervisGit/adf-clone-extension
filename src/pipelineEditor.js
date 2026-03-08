@@ -2398,6 +2398,31 @@ class PipelineEditorProvider {
                             }
                         }
 
+                        // Special case: Azure SQL DB + Synapse Analytics source — Query/SP name required when selected
+                        if (a.type === 'Copy' && (a._sourceDatasetType === 'AzureSqlTable' || a._sourceDatasetType === 'AzureSqlDWTable')) {
+                            const useQuery = a.src_useQuery;
+                            const locationLabel = contextPath ? ' (inside "' + contextPath + '")' : '';
+                            if (useQuery === 'Query') {
+                                const q = a.src_sqlReaderQuery;
+                                if (!q || (typeof q === 'string' && q.trim() === '')) {
+                                    vscode.postMessage({
+                                        type: 'validationError',
+                                        message: 'Activity "' + a.name + '"' + locationLabel + ': Query is required when "Query" is selected as the query type.'
+                                    });
+                                    throw new Error('Activity "' + a.name + '" is missing required field src_sqlReaderQuery');
+                                }
+                            } else if (useQuery === 'Stored procedure') {
+                                const sp = a.src_sqlReaderStoredProcedureName;
+                                if (!sp || (typeof sp === 'string' && sp.trim() === '')) {
+                                    vscode.postMessage({
+                                        type: 'validationError',
+                                        message: 'Activity "' + a.name + '"' + locationLabel + ': Stored procedure name is required when "Stored procedure" is selected as the query type.'
+                                    });
+                                    throw new Error('Activity "' + a.name + '" is missing required field src_sqlReaderStoredProcedureName');
+                                }
+                            }
+                        }
+
                         // Recurse into all container branches
                         const nested   = a.activities        || (a.typeProperties && a.typeProperties.activities);
                         const trueActs = a.ifTrueActivities  || (a.typeProperties && a.typeProperties.ifTrueActivities);

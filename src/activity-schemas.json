@@ -42,7 +42,7 @@
       "sourceDataset": { "type": "dataset", "label": "Source dataset", "required": true, "datasetFilter": { "excludeTypes": ["Iceberg"] } }
     },
     "sinkProperties": {
-      "sinkDataset": { "type": "dataset", "label": "Sink dataset", "required": true }
+      "sinkDataset": { "type": "dataset", "label": "Sink dataset", "required": true, "datasetFilter": { "excludeTypes": ["Iceberg", "Excel"] } }
     },
     "typeProperties": {
       "dataIntegrationUnits": { "type": "number", "label": "Maximum data integration unit", "default": 4, "min": 2, "max": 256 },

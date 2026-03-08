@@ -677,12 +677,33 @@
             "omitWhenValue": "None",
             "jsonPath": "storeSettings.copyBehavior"
           },
+          "snk_quoteAllText": {
+            "type": "boolean",
+            "label": "Quote all text",
+            "default": true,
+            "readonly": true,
+            "writeDefault": true,
+            "jsonPath": "formatSettings.quoteAllText"
+          },
           "snk_fileExtension": {
             "type": "text",
             "label": "File extension",
-            "default": ".csv",
-            "placeholder": ".csv",
+            "default": ".txt",
+            "placeholder": ".txt",
+            "writeDefault": true,
             "jsonPath": "formatSettings.fileExtension"
+          },
+          "snk_maxRowsPerFile": {
+            "type": "number",
+            "label": "Max rows per file",
+            "min": 1,
+            "jsonPath": "formatSettings.maxRowsPerFile"
+          },
+          "snk_fileNamePrefix": {
+            "type": "text",
+            "label": "File name prefix",
+            "conditional": { "field": "snk_maxRowsPerFile", "notEmpty": true },
+            "jsonPath": "formatSettings.fileNamePrefix"
           },
           "snk_blockSizeInMB": {
             "type": "number",
@@ -698,12 +719,6 @@
             "label": "Max concurrent connections",
             "min": 1,
             "jsonPath": "storeSettings.maxConcurrentConnections"
-          },
-          "snk_disableMetricsCollection": {
-            "type": "boolean",
-            "label": "Disable performance metrics analytics",
-            "default": false,
-            "jsonPath": "disableMetricsCollection"
           },
           "snk_metadata": {
             "type": "additional-columns",
@@ -1446,6 +1461,111 @@
             "label": "Max concurrent connections",
             "min": 1,
             "jsonPath": "maxConcurrentConnections"
+          }
+        },
+        "sink": {}
+      }
+    },
+
+    "Excel": {
+      "name": "Excel",
+      "hasStoreSettings": true,
+      "sourceTypeName": "ExcelSource",
+      "sinkTypeName": null,
+      "_comment_sink": "Excel is source-only in ADF Copy",
+      "storeReadSettingsTypes": {
+        "AzureBlobFSLocation": "AzureBlobFSReadSettings",
+        "AzureBlobStorageLocation": "AzureBlobStorageReadSettings"
+      },
+      "defaultStoreReadSettings": "AzureBlobFSReadSettings",
+      "storeWriteSettingsTypes": {},
+      "defaultStoreWriteSettings": null,
+      "fields": {
+        "source": {
+          "src_filePathType": {
+            "type": "radio",
+            "label": "File path type",
+            "options": ["File path in dataset", "Prefix", "Wildcard file path", "List of files"],
+            "optionValues": ["filePathInDataset", "prefix", "wildcardFilePath", "listOfFiles"],
+            "optionConditionals": { "prefix": { "field": "_sourceLocationType", "value": "AzureBlobStorageLocation" } },
+            "default": "filePathInDataset"
+          },
+          "src_prefix": {
+            "type": "text",
+            "label": "Prefix",
+            "conditionalAll": [
+              { "field": "src_filePathType", "value": "prefix" },
+              { "field": "_sourceLocationType", "value": "AzureBlobStorageLocation" }
+            ],
+            "jsonPath": "storeSettings.prefix"
+          },
+          "src_wildcardFolderPath": {
+            "type": "text",
+            "label": "Wildcard folder path",
+            "placeholder": "folder/subfolder",
+            "conditional": { "field": "src_filePathType", "value": "wildcardFilePath" },
+            "jsonPath": "storeSettings.wildcardFolderPath"
+          },
+          "src_wildcardFileName": {
+            "type": "text",
+            "label": "Wildcard file name",
+            "placeholder": "*.xlsx",
+            "default": "*.xlsx",
+            "writeDefault": true,
+            "conditional": { "field": "src_filePathType", "value": "wildcardFilePath" },
+            "jsonPath": "storeSettings.wildcardFileName"
+          },
+          "src_fileListPath": {
+            "type": "text",
+            "label": "Path to file list",
+            "conditional": { "field": "src_filePathType", "value": "listOfFiles" },
+            "jsonPath": "storeSettings.fileListPath"
+          },
+          "src_modifiedDatetimeStart": {
+            "type": "datetime",
+            "label": "Start time (UTC)",
+            "placeholder": "2/18/2026, 12:00:00 AM",
+            "conditional": { "field": "src_filePathType", "value": ["filePathInDataset", "prefix", "wildcardFilePath"] },
+            "jsonPath": "storeSettings.modifiedDatetimeStart"
+          },
+          "src_modifiedDatetimeEnd": {
+            "type": "datetime",
+            "label": "End time (UTC)",
+            "placeholder": "2/18/2026, 12:00:00 AM",
+            "conditional": { "field": "src_filePathType", "value": ["filePathInDataset", "prefix", "wildcardFilePath"] },
+            "jsonPath": "storeSettings.modifiedDatetimeEnd"
+          },
+          "src_recursive": {
+            "type": "boolean",
+            "label": "Recursively",
+            "default": true,
+            "conditional": { "field": "src_filePathType", "value": ["filePathInDataset", "prefix", "wildcardFilePath"] },
+            "jsonPath": "storeSettings.recursive"
+          },
+          "src_enablePartitionDiscovery": {
+            "type": "boolean",
+            "label": "Enable partition discovery",
+            "default": false,
+            "jsonPath": "storeSettings.enablePartitionDiscovery"
+          },
+          "src_partitionRootPath": {
+            "type": "text",
+            "label": "Partition root path",
+            "conditional": { "field": "src_enablePartitionDiscovery", "value": true },
+            "jsonPath": "storeSettings.partitionRootPath"
+          },
+          "src_maxConcurrentConnections": {
+            "type": "number",
+            "label": "Max concurrent connections",
+            "min": 1,
+            "jsonPath": "storeSettings.maxConcurrentConnections"
+          },
+          "src_additionalColumns": {
+            "type": "additional-columns",
+            "label": "Additional columns",
+            "filterEmpty": "name",
+            "defaultRowValue": "$$FILEPATH",
+            "jsonPath": "additionalColumns"
           }
         },
         "sink": {}

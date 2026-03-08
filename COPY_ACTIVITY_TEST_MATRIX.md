@@ -46,7 +46,7 @@ Source and sink are **fully independent** — the fields rendered for each side 
 | Avro | ✅ |
 | Binary | ✅ |
 | Delimited Text (CSV/TSV) | ✅ |
-| Excel | 🔲 |
+| Excel | ✅ |
 | JSON | ✅ |
 | ORC | ✅ |
 | Parquet | ✅ |
@@ -58,7 +58,7 @@ Source and sink are **fully independent** — the fields rendered for each side 
 | Avro | ✅ |
 | Binary | ✅ |
 | Delimited Text (CSV/TSV) | ✅ |
-| Excel | 🔲 |
+| Excel | ✅ |
 | JSON | ✅ |
 | ORC | ✅ |
 | Parquet | ✅ |
@@ -82,7 +82,7 @@ Source and sink are **fully independent** — the fields rendered for each side 
 |---|---|
 | Avro | ✅ |
 | Binary | ✅ |
-| Delimited Text (CSV/TSV) | 🔲 |
+| Delimited Text (CSV/TSV) | ✅ |
 | Iceberg | ✅ |
 | JSON | ✅ |
 | ORC | ✅ |
@@ -93,7 +93,7 @@ Source and sink are **fully independent** — the fields rendered for each side 
 |---|---|
 | Avro | ✅ |
 | Binary | ✅ |
-| Delimited Text (CSV/TSV) | 🔲 |
+| Delimited Text (CSV/TSV) | ✅ |
 | JSON | ✅ |
 | ORC | ✅ |
 | Parquet | ✅ |

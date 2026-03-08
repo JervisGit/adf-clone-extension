@@ -6541,7 +6541,8 @@ class PipelineEditorProvider {
                         break;
                     case 'boolean':
                         const checked = value ? 'checked' : '';
-                        fieldHtml += \`<div style="flex: 1;"><input type="checkbox" class="property-input" data-key="\${key}" \${checked} style="width: auto; margin: 0;"></div>\`;
+                        const disabledAttr = prop.readonly ? 'disabled' : '';
+                        fieldHtml += \`<div style="flex: 1;"><input type="checkbox" class="property-input" data-key="\${key}" \${checked} \${disabledAttr} style="width: auto; margin: 0;"></div>\`;
                         break;
                     case 'select':
                         fieldHtml += \`<select class="property-input" data-key="\${key}">\`;

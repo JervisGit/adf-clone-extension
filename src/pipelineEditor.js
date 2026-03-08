@@ -2716,13 +2716,19 @@ class PipelineEditorProvider {
                                 } else if (_fc.filterEmpty && !Array.isArray(_writeV)) {
                                     continue;
                                 }
-                                // Skip empty objects (e.g. empty storedProcedureParameters)
-                                const _isEmpty = (_writeV !== undefined && _writeV !== null && typeof _writeV === 'object' && !Array.isArray(_writeV) && Object.keys(_writeV).length === 0);
+                                // Skip empty objects (e.g. empty storedProcedureParameters) and empty arrays
+                                const _isEmpty = (Array.isArray(_writeV) && _writeV.length === 0) || (_writeV !== undefined && _writeV !== null && typeof _writeV === 'object' && !Array.isArray(_writeV) && Object.keys(_writeV).length === 0);
                                 if (_writeV !== undefined && _writeV !== null && _writeV !== '' && !_isEmpty) {
                                     _setValueByPath(_snk, _fc.jsonPath, _writeV);
                                 } else if (_fc.writeDefault === true && _fc.default !== undefined) {
                                     _setValueByPath(_snk, _fc.jsonPath, _fc.default);
                                 }
+                            }
+                            // AzureSqlDWTable: write writeBehavior constant based on copy method
+                            if (a._sinkDatasetType === 'AzureSqlDWTable') {
+                                const _cm = a['snk_copyMethod'];
+                                if (_cm === 'BulkInsert') _snk.writeBehavior = 'Insert';
+                                else if (_cm === 'Upsert') _snk.writeBehavior = 'Upsert';
                             }
                             if (!activity.typeProperties) activity.typeProperties = {};
                             activity.typeProperties.sink = _snk;
@@ -3954,6 +3960,9 @@ class PipelineEditorProvider {
                     if (a.type === 'Copy' && activity.typeProperties) {
                         if (activity.typeProperties.source) typeProperties.source = activity.typeProperties.source;
                         if (activity.typeProperties.sink) typeProperties.sink = activity.typeProperties.sink;
+                        // Suppress translator for non-tabular sink formats (e.g. AzureSqlDWTable)
+                        const _snkTypeConfMerge = copyActivityConfig.datasetTypes && copyActivityConfig.datasetTypes[a._sinkDatasetType];
+                        if (_snkTypeConfMerge && _snkTypeConfMerge.noTranslator) delete typeProperties.translator;
                     }
                     activity.typeProperties = typeProperties;
                     return activity;
@@ -7736,6 +7745,10 @@ class PipelineEditorProvider {
                 if (input.classList.contains('web-secret-store') || input.classList.contains('web-secret-name') || input.classList.contains('web-secret-version')) return;
                 // Skip additional-columns child inputs — they have their own ac- handlers
                 if (input.classList.contains('ac-name-input') || input.classList.contains('ac-value-input')) return;
+                // Skip copy-cmd default-values and additional-options inputs — they manage arrays/objects
+                // and must NOT be overwritten with a plain string by this generic handler
+                if (input.classList.contains('copy-cmd-dv-col-input') || input.classList.contains('copy-cmd-dv-val-input')) return;
+                if (input.classList.contains('copy-cmd-ao-prop-input') || input.classList.contains('copy-cmd-ao-val-input')) return;
                 
                 if (input.type === 'checkbox') {
                     input.addEventListener('change', (e) => {
@@ -8963,6 +8976,11 @@ class PipelineEditorProvider {
                 for (const prop of Object.values(fieldsObj || {})) {
                     if (prop.conditional?.field) reRenderKeyMap[prop.conditional.field] = tabId;
                     if (prop.nestedConditional?.field) reRenderKeyMap[prop.nestedConditional.field] = tabId;
+                    if (Array.isArray(prop.conditionalAll)) {
+                        for (const cond of prop.conditionalAll) {
+                            if (cond.field) reRenderKeyMap[cond.field] = tabId;
+                        }
+                    }
                 }
             }
             _scanForConditionals(schema?.commonProperties, 'general');
@@ -9935,7 +9953,14 @@ class PipelineEditorProvider {
                                         if (!_fc.jsonPath) continue;
                                         const _v = _getValueByPath(sinkObj, _fc.jsonPath);
                                         if (_v !== undefined) {
-                                            activity[_fk] = (_fc.filterEmpty && !Array.isArray(_v)) ? [] : _v;
+                                            // Coerce corrupt saved values back to the correct type
+                                            if (_fc.type === 'copy-cmd-additional-options') {
+                                                activity[_fk] = (_v && typeof _v === 'object' && !Array.isArray(_v)) ? _v : {};
+                                            } else if (_fc.type === 'copy-cmd-default-values') {
+                                                activity[_fk] = Array.isArray(_v) ? _v : [];
+                                            } else {
+                                                activity[_fk] = (_fc.filterEmpty && !Array.isArray(_v)) ? [] : _v;
+                                            }
                                         } else if (_fc.filterEmpty !== undefined) {
                                             activity[_fk] = [];
                                         } else if (_fc.default !== undefined) {

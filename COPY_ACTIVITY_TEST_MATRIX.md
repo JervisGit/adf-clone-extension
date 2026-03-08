@@ -75,7 +75,7 @@ Source and sink are **fully independent** — the fields rendered for each side 
 | Sink Dataset Type | Storage | Status |
 |---|---|---|
 | Azure SQL Database | — | ✅ |
-| Azure Synapse Analytics | — | 🔲 |
+| Azure Synapse Analytics | — | ✅ |
 
 #### ADLS Gen2
 | Sink Dataset Type | Status |

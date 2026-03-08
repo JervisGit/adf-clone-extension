@@ -260,6 +260,7 @@
     "AzureSqlDWTable": {
       "name": "Azure Synapse Analytics",
       "hasStoreSettings": false,
+      "noTranslator": true,
       "sourceTypeName": "SqlDWSource",
       "sinkTypeName": "SqlDWSink",
       "sinkDefaults": {},
@@ -438,6 +439,8 @@
             "label": "Reject type",
             "options": ["Value", "Percentage"],
             "optionValues": ["value", "percentage"],
+            "default": "value",
+            "writeDefault": true,
             "placeholder": "Select...",
             "conditional": { "field": "snk_copyMethod", "value": "PolyBase" },
             "jsonPath": "polyBaseSettings.rejectType"
@@ -446,8 +449,20 @@
             "type": "number",
             "label": "Reject value",
             "min": 0,
+            "default": 0,
+            "writeDefault": true,
             "conditional": { "field": "snk_copyMethod", "value": "PolyBase" },
             "jsonPath": "polyBaseSettings.rejectValue"
+          },
+          "snk_rejectSampleValue": {
+            "type": "number",
+            "label": "Reject sample value",
+            "min": 0,
+            "conditionalAll": [
+              { "field": "snk_copyMethod", "value": "PolyBase" },
+              { "field": "snk_rejectType", "value": "percentage" }
+            ],
+            "jsonPath": "polyBaseSettings.rejectSampleValue"
           },
           "snk_useTypeDefault": {
             "type": "boolean",
@@ -460,8 +475,6 @@
           "snk_upsertKeys": {
             "type": "string-list",
             "label": "Key columns",
-            "default": [],
-            "writeDefault": true,
             "noEmpty": true,
             "conditional": { "field": "snk_copyMethod", "value": "Upsert" },
             "jsonPath": "upsertSettings.keys"

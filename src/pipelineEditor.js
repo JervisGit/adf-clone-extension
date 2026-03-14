@@ -1675,6 +1675,14 @@ class PipelineEditorProvider {
         let connections = [];
         let selectedActivity = null;
         let currentFilePath = null; // Track the current file path
+
+        // Derive pipeline name from current file path (falls back to 'pipeline1')
+        function getPipelineNameFromPath() {
+            if (!currentFilePath) return 'pipeline1';
+            const parts = currentFilePath.replace(/\\\\/g, '/').split('/');
+            const filename = parts[parts.length - 1];
+            return filename.replace('.json', '').replace('.JSON', '');
+        }
         let draggedActivity = null;
         
         // Pipeline-level properties (when no activity selected)
@@ -9639,7 +9647,7 @@ class PipelineEditorProvider {
                 // ALWAYS restored even when buildPipelineDataForSave throws a validation error.
                 let saveData;
                 try {
-                    saveData = buildPipelineDataForSave("pipeline1", false);
+                    saveData = buildPipelineDataForSave(getPipelineNameFromPath(), false);
                 } catch (_saveErr) {
                     // Validation error was already reported inside buildPipelineDataForSave
                     // via vscode.postMessage({ type: 'validationError', ... }).
@@ -9666,7 +9674,7 @@ class PipelineEditorProvider {
                 return;
             }
             
-            const data = buildPipelineDataForSave("pipeline1", false);
+            const data = buildPipelineDataForSave(getPipelineNameFromPath(), false);
             
             console.log('[Webview] Sending save message with filePath:', currentFilePath);
             vscode.postMessage({ 
@@ -10897,7 +10905,7 @@ class PipelineEditorProvider {
             runTest: (testActivities) => {
                 const prev = activities, prevC = connections;
                 activities = testActivities; connections = [];
-                const result = buildPipelineDataForSave('pipeline1', false);
+                const result = buildPipelineDataForSave(getPipelineNameFromPath(), false);
                 activities = prev; connections = prevC;
                 return result;
             }

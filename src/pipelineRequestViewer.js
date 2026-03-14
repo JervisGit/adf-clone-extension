@@ -41,6 +41,7 @@ class PipelineRequestViewerProvider {
             running: '#5bc0de',
             succeeded: '#5cb85c',
             failed: '#d9534f',
+            denied: '#d9534f',
             cancelled: '#888888'
         };
         const statusIcons = {
@@ -48,6 +49,7 @@ class PipelineRequestViewerProvider {
             running: '🔄',
             succeeded: '✅',
             failed: '❌',
+            denied: '🚫',
             cancelled: '🚫'
         };
 

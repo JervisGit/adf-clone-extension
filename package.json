@@ -36,12 +36,14 @@
         {
           "id": "adf-pipeline-runs",
           "name": "Pipeline Run Logs",
-          "contextualTitle": "Pipeline Run Logs"
+          "contextualTitle": "Pipeline Run Logs",
+          "initiallyCollapsed": true
         },
         {
           "id": "adf-pipeline-run-requests",
           "name": "Pipeline Run Requests",
-          "contextualTitle": "Pipeline Run Requests"
+          "contextualTitle": "Pipeline Run Requests",
+          "initiallyCollapsed": true
         }
       ]
     },

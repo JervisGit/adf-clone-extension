@@ -85,7 +85,7 @@ class PipelineTreeDataProvider {
 
 class FolderItem extends vscode.TreeItem {
 	constructor(label, folderPath, folderType) {
-		super(label, vscode.TreeItemCollapsibleState.Expanded);
+		super(label, vscode.TreeItemCollapsibleState.Collapsed);
 		this.folderPath = folderPath;
 		this.folderType = folderType;
 		this.contextValue = `folder-${folderType}`;

@@ -218,6 +218,30 @@ class ADLSRestClient {
     }
 
     /**
+     * Delete a file in ADLS Gen2.
+     * @param {string} containerName - The container name
+     * @param {string} filePath - Path to the file to delete
+     */
+    async deleteFile(containerName, filePath) {
+        const token = await this.getAccessToken();
+        const encodedPath = filePath.split('/').map(segment => encodeURIComponent(segment)).join('/');
+        const url = `${this.baseUrl}/${containerName}/${encodedPath}`;
+
+        const response = await fetch(url, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'x-ms-version': '2020-02-10'
+            }
+        });
+
+        if (!response.ok) {
+            const err = await response.text();
+            throw new Error(`ADLS delete failed: ${response.status} ${response.statusText}\n${err}`);
+        }
+    }
+
+    /**
      * Get notebook snapshot from pipeline run
      * @param {string} containerName - The container name
      * @param {string} runFolder - Pipeline run folder name

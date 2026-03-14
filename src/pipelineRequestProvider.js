@@ -4,6 +4,8 @@ const fs = require('fs');
 const { ADLSRestClient } = require('./adlsRestClient');
 
 const REQUEST_FOLDER = 'pipeline-run-requests';
+const PENDING_FOLDER = `${REQUEST_FOLDER}/pending`;
+const PROCESSED_FOLDER = `${REQUEST_FOLDER}/processed`;
 const STATUS_CACHE_KEY = 'pipelineRequestStatusCache';
 
 /**
@@ -40,7 +42,7 @@ class PipelineRequestTreeDataProvider {
         this.storageAccountName = 'testadlsjervis123';
         this.selectedContainer = null;
         this.requests = [];
-        this.statusFilter = 'all'; // 'all' | 'pending' | 'running' | 'succeeded' | 'failed'
+        this.statusFilter = 'all'; // 'all' | 'pending' | 'succeeded' | 'failed' | 'denied' | 'cancelled'
 
         this.viewerProvider = null;
 
@@ -95,29 +97,30 @@ class PipelineRequestTreeDataProvider {
     async _loadRequests() {
         const client = new ADLSRestClient(this.storageAccountName);
 
-        let paths = [];
-        try {
-            paths = await client.listPaths(this.selectedContainer, REQUEST_FOLDER, false);
-        } catch (error) {
-            // If the folder doesn't exist yet that's fine — no requests yet
-            if (error.message.includes('404') || error.message.includes('PathNotFound') || error.message.includes('FilesystemNotFound')) {
-                this.requests = [];
-                return;
-            }
-            throw error;
-        }
-
-        const jsonFiles = paths.filter(p => !p.isDirectory && p.name.endsWith('.json'));
-
         const loaded = [];
-        for (const file of jsonFiles) {
+        for (const folder of [PENDING_FOLDER, PROCESSED_FOLDER]) {
+            let paths = [];
             try {
-                const content = await client.readFile(this.selectedContainer, file.name);
-                const data = JSON.parse(content);
-                data._blobPath = file.name; // store blob path for updates/viewing
-                loaded.push(data);
-            } catch (err) {
-                console.error(`Failed to read request file ${file.name}:`, err.message);
+                paths = await client.listPaths(this.selectedContainer, folder, false);
+            } catch (error) {
+                // Folder doesn't exist yet — that's fine
+                if (error.message.includes('404') || error.message.includes('PathNotFound') || error.message.includes('FilesystemNotFound')) {
+                    continue;
+                }
+                throw error;
+            }
+
+            const jsonFiles = paths.filter(p => !p.isDirectory && p.name.endsWith('.json'));
+            for (const file of jsonFiles) {
+                try {
+                    const content = await client.readFile(this.selectedContainer, file.name);
+                    const data = JSON.parse(content);
+                    data._blobPath = file.name;
+                    data._blobFolder = folder;
+                    loaded.push(data);
+                } catch (err) {
+                    console.error(`Failed to read request file ${file.name}:`, err.message);
+                }
             }
         }
 
@@ -153,9 +156,10 @@ class PipelineRequestTreeDataProvider {
                     vscode.window.showErrorMessage(
                         `❌ Pipeline "${req.pipelineName}" run failed${errSuffix}`
                     );
-                } else if (req.status === 'running' && prev === 'pending') {
-                    vscode.window.showInformationMessage(
-                        `🔄 Pipeline "${req.pipelineName}" run has started${req.runId ? ` — Run ID: ${req.runId}` : ''}`
+                } else if (req.status === 'denied') {
+                    const reasonSuffix = req.errorMessage ? ` — ${req.errorMessage}` : '';
+                    vscode.window.showWarningMessage(
+                        `🚫 Pipeline "${req.pipelineName}" run request was denied${reasonSuffix}`
                     );
                 }
             }
@@ -183,9 +187,10 @@ class PipelineRequestTreeDataProvider {
         const options = [
             { label: '$(list-unordered) All', value: 'all' },
             { label: '$(clock) Pending', value: 'pending' },
-            { label: '$(sync~spin) Running', value: 'running' },
             { label: '$(pass) Succeeded', value: 'succeeded' },
-            { label: '$(error) Failed', value: 'failed' }
+            { label: '$(error) Failed', value: 'failed' },
+            { label: '$(circle-slash) Denied', value: 'denied' },
+            { label: '$(trash) Cancelled', value: 'cancelled' }
         ];
 
         const picked = await vscode.window.showQuickPick(options, {
@@ -319,7 +324,7 @@ class PipelineRequestTreeDataProvider {
                 const requestId = generateRequestId();
                 const timestampStr = formatTimestampForFilename(now);
                 const safeFileName = `${timestampStr}_${pipelineName}_${requestId}.json`;
-                const blobPath = `${REQUEST_FOLDER}/${safeFileName}`;
+                const blobPath = `${PENDING_FOLDER}/${safeFileName}`;
 
                 const requestPayload = {
                     requestId,
@@ -475,8 +480,13 @@ class PipelineRequestTreeDataProvider {
                 const now = new Date();
                 const updated = { ...req, status: 'cancelled', statusUpdatedAt: now.toISOString() };
                 delete updated._blobPath;
+                delete updated._blobFolder;
                 const client = new ADLSRestClient(this.storageAccountName);
-                await client.writeFile(this.selectedContainer, req._blobPath, JSON.stringify(updated, null, 2));
+                // Write to processed/ then delete from pending/
+                const fileName = req._blobPath.split('/').pop();
+                const processedPath = `${PROCESSED_FOLDER}/${fileName}`;
+                await client.writeFile(this.selectedContainer, processedPath, JSON.stringify(updated, null, 2));
+                await client.deleteFile(this.selectedContainer, req._blobPath);
 
                 const cache = this.context.workspaceState.get(STATUS_CACHE_KEY, {});
                 cache[req.requestId] = 'cancelled';
@@ -499,9 +509,9 @@ class PipelineRequestItem extends vscode.TreeItem {
         // Icon by status
         const iconMap = {
             pending: 'clock',
-            running: 'sync~spin',
             succeeded: 'pass',
             failed: 'error',
+            denied: 'circle-slash',
             cancelled: 'circle-slash'
         };
         this.iconPath = new vscode.ThemeIcon(iconMap[req.status] || 'circle-outline');

@@ -157,6 +157,67 @@ class ADLSRestClient {
     }
 
     /**
+     * Write (create or overwrite) a file in ADLS Gen2 using the 3-step DFS API:
+     * 1. Create (or overwrite) the path
+     * 2. Append the data
+     * 3. Flush
+     * @param {string} containerName - The container name
+     * @param {string} filePath - Destination path inside the container
+     * @param {string} content - UTF-8 text content to write
+     */
+    async writeFile(containerName, filePath, content) {
+        const token = await this.getAccessToken();
+        const encodedPath = filePath.split('/').map(segment => encodeURIComponent(segment)).join('/');
+        const baseUrl = `${this.baseUrl}/${containerName}/${encodedPath}`;
+        const data = Buffer.from(content, 'utf-8');
+        const contentLength = data.length;
+
+        // Step 1: Create (overwrite if exists)
+        const createResponse = await fetch(`${baseUrl}?resource=file&overwrite=true`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'x-ms-version': '2020-02-10',
+                'Content-Length': '0'
+            }
+        });
+        if (!createResponse.ok) {
+            const err = await createResponse.text();
+            throw new Error(`ADLS create failed: ${createResponse.status} ${createResponse.statusText}\n${err}`);
+        }
+
+        // Step 2: Append data
+        const appendResponse = await fetch(`${baseUrl}?action=append&position=0`, {
+            method: 'PATCH',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'x-ms-version': '2020-02-10',
+                'Content-Length': String(contentLength),
+                'Content-Type': 'application/octet-stream'
+            },
+            body: data
+        });
+        if (!appendResponse.ok) {
+            const err = await appendResponse.text();
+            throw new Error(`ADLS append failed: ${appendResponse.status} ${appendResponse.statusText}\n${err}`);
+        }
+
+        // Step 3: Flush
+        const flushResponse = await fetch(`${baseUrl}?action=flush&position=${contentLength}`, {
+            method: 'PATCH',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'x-ms-version': '2020-02-10',
+                'Content-Length': '0'
+            }
+        });
+        if (!flushResponse.ok) {
+            const err = await flushResponse.text();
+            throw new Error(`ADLS flush failed: ${flushResponse.status} ${flushResponse.statusText}\n${err}`);
+        }
+    }
+
+    /**
      * Get notebook snapshot from pipeline run
      * @param {string} containerName - The container name
      * @param {string} runFolder - Pipeline run folder name

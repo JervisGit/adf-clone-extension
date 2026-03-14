@@ -37,6 +37,11 @@
           "id": "adf-pipeline-runs",
           "name": "Pipeline Run Logs",
           "contextualTitle": "Pipeline Run Logs"
+        },
+        {
+          "id": "adf-pipeline-run-requests",
+          "name": "Pipeline Run Requests",
+          "contextualTitle": "Pipeline Run Requests"
         }
       ]
     },
@@ -99,6 +104,35 @@
         "command": "adf-pipeline-clone.selectDateFilter",
         "title": "Filter by Date Range",
         "icon": "$(filter)"
+      },
+      {
+        "command": "adf-pipeline-clone.refreshPipelineRequests",
+        "title": "Refresh Pipeline Requests",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "adf-pipeline-clone.selectRequestContainer",
+        "title": "Select Container",
+        "icon": "$(symbol-namespace)"
+      },
+      {
+        "command": "adf-pipeline-clone.filterPipelineRequests",
+        "title": "Filter by Status",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "adf-pipeline-clone.viewPipelineRequest",
+        "title": "View Request Details"
+      },
+      {
+        "command": "adf-pipeline-clone.requestPipelineRun",
+        "title": "Request Pipeline Run",
+        "icon": "$(run)"
+      },
+      {
+        "command": "adf-pipeline-clone.requestPipelineRunDirectly",
+        "title": "New Pipeline Run Request",
+        "icon": "$(add)"
       }
     ],
     "menus": {
@@ -123,6 +157,26 @@
           "command": "adf-pipeline-clone.selectContainer",
           "when": "view == adf-pipeline-runs",
           "group": "navigation"
+        },
+        {
+          "command": "adf-pipeline-clone.refreshPipelineRequests",
+          "when": "view == adf-pipeline-run-requests",
+          "group": "navigation"
+        },
+        {
+          "command": "adf-pipeline-clone.requestPipelineRunDirectly",
+          "when": "view == adf-pipeline-run-requests",
+          "group": "navigation"
+        },
+        {
+          "command": "adf-pipeline-clone.filterPipelineRequests",
+          "when": "view == adf-pipeline-run-requests",
+          "group": "navigation"
+        },
+        {
+          "command": "adf-pipeline-clone.selectRequestContainer",
+          "when": "view == adf-pipeline-run-requests",
+          "group": "navigation"
         }
       ],
       "view/item/context": [
@@ -140,6 +194,11 @@
         {
           "command": "adf-pipeline-clone.createTrigger",
           "when": "view == adf-pipelines && viewItem == folder-trigger",
+          "group": "inline"
+        },
+        {
+          "command": "adf-pipeline-clone.requestPipelineRun",
+          "when": "view == adf-pipelines && viewItem == pipeline",
           "group": "inline"
         }
       ]

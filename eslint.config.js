@@ -16,7 +16,8 @@ module.exports = {
 			fetch: "readonly",
 			window: "readonly",
 			JSON: "readonly",
-			Array: "readonly"
+			Array: "readonly",
+			Buffer: "readonly"
 		}
 	},
 	rules: {

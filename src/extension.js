@@ -6,6 +6,8 @@ const { PipelineTreeDataProvider } = require('./pipelineTreeProvider');
 const { DatasetTreeDataProvider } = require('./datasetTreeProvider');
 const { PipelineRunsTreeDataProvider } = require('./pipelineRunsTreeProvider');
 const { PipelineRunViewerProvider } = require('./pipelineRunViewer');
+const { PipelineRequestTreeDataProvider } = require('./pipelineRequestProvider');
+const { PipelineRequestViewerProvider } = require('./pipelineRequestViewer');
 const { buildDatasetJson } = require('./datasetUtils');
 const datasetConfig = require('./dataset-config.json');
 
@@ -125,6 +127,55 @@ function activate(context) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand('adf-pipeline-clone.selectDateFilter', () => {
 			pipelineRunsTreeProvider.selectDateFilter();
+		})
+	);
+
+	// -------------------------------------------------------------------------
+	// Pipeline Run Requests
+	// -------------------------------------------------------------------------
+	const pipelineRequestProvider = new PipelineRequestTreeDataProvider(context);
+	const pipelineRequestViewer = new PipelineRequestViewerProvider(context);
+	pipelineRequestProvider.setViewerProvider(pipelineRequestViewer);
+
+	const pipelineRequestTreeView = vscode.window.createTreeView('adf-pipeline-run-requests', {
+		treeDataProvider: pipelineRequestProvider,
+		showCollapseAll: false
+	});
+	context.subscriptions.push(pipelineRequestTreeView);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('adf-pipeline-clone.refreshPipelineRequests', () => {
+			pipelineRequestProvider.refresh();
+		})
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('adf-pipeline-clone.selectRequestContainer', () => {
+			pipelineRequestProvider.selectContainer();
+		})
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('adf-pipeline-clone.filterPipelineRequests', () => {
+			pipelineRequestProvider.selectStatusFilter();
+		})
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('adf-pipeline-clone.viewPipelineRequest', (req) => {
+			pipelineRequestProvider.viewRequest(req);
+		})
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('adf-pipeline-clone.requestPipelineRun', (item) => {
+			pipelineRequestProvider.requestPipelineRun(item);
+		})
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('adf-pipeline-clone.requestPipelineRunDirectly', () => {
+			pipelineRequestProvider.requestPipelineRunDirectly();
 		})
 	);
 

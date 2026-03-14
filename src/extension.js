@@ -179,6 +179,12 @@ function activate(context) {
 		})
 	);
 
+	context.subscriptions.push(
+		vscode.commands.registerCommand('adf-pipeline-clone.cancelPipelineRequest', (req) => {
+			pipelineRequestProvider.cancelRequest(req);
+		})
+	);
+
 	// Register create commands
 	context.subscriptions.push(
 		vscode.commands.registerCommand('adf-pipeline-clone.createPipeline', async (folderItem) => {

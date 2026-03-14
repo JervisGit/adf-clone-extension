@@ -40,13 +40,15 @@ class PipelineRequestViewerProvider {
             pending: '#f0ad4e',
             running: '#5bc0de',
             succeeded: '#5cb85c',
-            failed: '#d9534f'
+            failed: '#d9534f',
+            cancelled: '#888888'
         };
         const statusIcons = {
             pending: '⏳',
             running: '🔄',
             succeeded: '✅',
-            failed: '❌'
+            failed: '❌',
+            cancelled: '🚫'
         };
 
         const color = statusColors[req.status] || '#888';

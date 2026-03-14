@@ -133,6 +133,11 @@
         "command": "adf-pipeline-clone.requestPipelineRunDirectly",
         "title": "New Pipeline Run Request",
         "icon": "$(add)"
+      },
+      {
+        "command": "adf-pipeline-clone.cancelPipelineRequest",
+        "title": "Cancel Pipeline Run Request",
+        "icon": "$(circle-slash)"
       }
     ],
     "menus": {
@@ -199,6 +204,11 @@
         {
           "command": "adf-pipeline-clone.requestPipelineRun",
           "when": "view == adf-pipelines && viewItem == pipeline",
+          "group": "inline"
+        },
+        {
+          "command": "adf-pipeline-clone.cancelPipelineRequest",
+          "when": "view == adf-pipeline-run-requests && viewItem == pipeline-request-pending",
           "group": "inline"
         }
       ]

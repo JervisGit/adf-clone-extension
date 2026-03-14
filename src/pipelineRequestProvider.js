@@ -218,13 +218,27 @@ class PipelineRequestTreeDataProvider {
             if (!this.selectedContainer) return;
         }
 
-        const pipelineName = await vscode.window.showInputBox({
-            prompt: 'Enter the pipeline name to run',
-            placeHolder: 'e.g. SamplePipeline'
-        });
-        if (!pipelineName || !pipelineName.trim()) return;
+        const pipelineItems = this._getWorkspacePipelineItems();
+        let pipelineName, pipelineFilePath;
 
-        await this._submitRequest(pipelineName.trim());
+        if (pipelineItems.length > 0) {
+            const picked = await vscode.window.showQuickPick(pipelineItems, {
+                placeHolder: 'Select a pipeline to run'
+            });
+            if (!picked) return;
+            pipelineName = picked.pipelineName;
+            pipelineFilePath = picked.filePath;
+        } else {
+            const input = await vscode.window.showInputBox({
+                prompt: 'Enter the pipeline name to run',
+                placeHolder: 'e.g. SamplePipeline'
+            });
+            if (!input || !input.trim()) return;
+            pipelineName = input.trim();
+            pipelineFilePath = null;
+        }
+
+        await this._submitRequest(pipelineName, pipelineFilePath);
     }
 
     /**
@@ -253,38 +267,28 @@ class PipelineRequestTreeDataProvider {
             // fallback to filename
         }
 
-        await this._submitRequest(pipelineName);
+        await this._submitRequest(pipelineName, pipelineFileItem.filePath);
     }
 
     /**
      * Core submission logic shared by both entry points.
+     * @param {string} pipelineName
+     * @param {string|null} pipelineFilePath - local file path to read parameter definitions from
      */
-    async _submitRequest(pipelineName) {
-        const paramChoice = await vscode.window.showQuickPick(
-            [
-                { label: '$(dash) No parameters', value: 'none' },
-                { label: '$(symbol-key) Enter parameters as JSON', value: 'json' }
-            ],
-            { placeHolder: `Request run for pipeline: ${pipelineName}` }
-        );
-        if (!paramChoice) return;
-
-        let parameters = {};
-        if (paramChoice.value === 'json') {
-            const paramInput = await vscode.window.showInputBox({
-                prompt: 'Enter pipeline parameters as JSON',
-                placeHolder: '{"startDate": "2026-03-01", "env": "prod"}',
-                validateInput: (val) => {
-                    if (!val.trim()) return null; // allow empty
-                    try { JSON.parse(val); return null; }
-                    catch { return 'Invalid JSON'; }
-                }
-            });
-            if (paramInput === undefined) return; // cancelled
-            if (paramInput.trim()) {
-                parameters = JSON.parse(paramInput);
-            }
+    async _submitRequest(pipelineName, pipelineFilePath = null) {
+        // Read pipeline parameter definitions from local file if available
+        let paramDefs = {};
+        if (pipelineFilePath) {
+            try {
+                const raw = fs.readFileSync(pipelineFilePath, 'utf-8');
+                const parsed = JSON.parse(raw);
+                paramDefs = parsed.properties?.parameters || {};
+            } catch { /* ignore, treat as no params */ }
         }
+
+        // Prompt user for each defined parameter with type-aware UI
+        const parameters = await this._promptParameters(pipelineName, paramDefs);
+        if (parameters === null) return; // user cancelled
 
         // requestedBy: try git config user.email, fall back to input
         let requestedBy = await this._getGitUserEmail();
@@ -360,6 +364,129 @@ class PipelineRequestTreeDataProvider {
             return null;
         }
     }
+
+    /**
+     * Returns QuickPick items for every pipeline JSON in the workspace's pipeline/ folder.
+     */
+    _getWorkspacePipelineItems() {
+        const items = [];
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders) return items;
+
+        for (const wf of workspaceFolders) {
+            const pipelineDir = path.join(wf.uri.fsPath, 'pipeline');
+            if (!fs.existsSync(pipelineDir)) continue;
+
+            const files = fs.readdirSync(pipelineDir).filter(f => f.endsWith('.json'));
+            for (const file of files) {
+                const filePath = path.join(pipelineDir, file);
+                try {
+                    const raw = fs.readFileSync(filePath, 'utf-8');
+                    const parsed = JSON.parse(raw);
+                    const name = parsed.name || path.basename(file, '.json');
+                    items.push({ label: name, description: file, pipelineName: name, filePath });
+                } catch {
+                    const name = path.basename(file, '.json');
+                    items.push({ label: name, description: file, pipelineName: name, filePath });
+                }
+            }
+        }
+        return items;
+    }
+
+    /**
+     * Prompts the user for each parameter defined in the pipeline.
+     * Uses type-aware UI: QuickPick for Bool, InputBox for everything else.
+     * Returns an object of {paramName: value}, or null if the user cancelled.
+     */
+    async _promptParameters(pipelineName, paramDefs) {
+        const paramNames = Object.keys(paramDefs);
+        const parameters = {};
+
+        if (paramNames.length === 0) {
+            return parameters;
+        }
+
+        for (const name of paramNames) {
+            const def = paramDefs[name];
+            const type = (def.type || 'String').toLowerCase();
+            const defaultValue = def.defaultValue !== undefined ? String(def.defaultValue) : '';
+
+            if (type === 'bool') {
+                const picked = await vscode.window.showQuickPick(
+                    ['true', 'false'],
+                    { placeHolder: `${pipelineName} › ${name} (Bool)${defaultValue ? ` — default: ${defaultValue}` : ''}` }
+                );
+                if (picked === undefined) return null;
+                parameters[name] = picked === 'true';
+            } else {
+                const value = await vscode.window.showInputBox({
+                    prompt: `${pipelineName} › Parameter: ${name} (${def.type || 'String'})`,
+                    placeHolder: defaultValue || `Enter value for ${name}`,
+                    value: defaultValue,
+                    validateInput: (val) => {
+                        if (!val.trim()) return null;
+                        if (type === 'int' && isNaN(parseInt(val, 10))) return 'Must be an integer';
+                        if (type === 'float' && isNaN(parseFloat(val))) return 'Must be a number';
+                        if ((type === 'array' || type === 'object') && val.trim()) {
+                            try { JSON.parse(val); } catch { return 'Must be valid JSON'; }
+                        }
+                        return null;
+                    }
+                });
+                if (value === undefined) return null;
+
+                if (type === 'int') {
+                    parameters[name] = value.trim() ? parseInt(value, 10) : (def.defaultValue ?? 0);
+                } else if (type === 'float') {
+                    parameters[name] = value.trim() ? parseFloat(value) : (def.defaultValue ?? 0.0);
+                } else if (type === 'array' || type === 'object') {
+                    parameters[name] = value.trim() ? JSON.parse(value) : (def.defaultValue ?? (type === 'array' ? [] : {}));
+                } else {
+                    parameters[name] = value;
+                }
+            }
+        }
+        return parameters;
+    }
+
+    /**
+     * Cancel a pending request by overwriting its blob with status "cancelled".
+     */
+    async cancelRequest(item) {
+        // Context menu passes the TreeItem; click command passes raw req — handle both
+        const req = item.req ?? item;
+
+        if (req.status !== 'pending') {
+            vscode.window.showWarningMessage('Only pending requests can be cancelled.');
+            return;
+        }
+
+        const confirm = await vscode.window.showWarningMessage(
+            `Cancel the run request for pipeline "${req.pipelineName}"?`,
+            { modal: true },
+            'Cancel Request'
+        );
+        if (confirm !== 'Cancel Request') return;
+
+        await vscode.window.withProgress(
+            { location: vscode.ProgressLocation.Notification, title: 'Cancelling request...', cancellable: false },
+            async () => {
+                const now = new Date();
+                const updated = { ...req, status: 'cancelled', statusUpdatedAt: now.toISOString() };
+                delete updated._blobPath;
+                const client = new ADLSRestClient(this.storageAccountName);
+                await client.writeFile(this.selectedContainer, req._blobPath, JSON.stringify(updated, null, 2));
+
+                const cache = this.context.workspaceState.get(STATUS_CACHE_KEY, {});
+                cache[req.requestId] = 'cancelled';
+                await this.context.workspaceState.update(STATUS_CACHE_KEY, cache);
+            }
+        );
+
+        vscode.window.showInformationMessage(`Request for "${req.pipelineName}" has been cancelled.`);
+        await this.refresh();
+    }
 }
 
 class PipelineRequestItem extends vscode.TreeItem {
@@ -367,14 +494,15 @@ class PipelineRequestItem extends vscode.TreeItem {
         super(req.pipelineName, vscode.TreeItemCollapsibleState.None);
 
         this.req = req;
-        this.contextValue = 'pipeline-request';
+        this.contextValue = `pipeline-request-${req.status}`;
 
         // Icon by status
         const iconMap = {
             pending: 'clock',
             running: 'sync~spin',
             succeeded: 'pass',
-            failed: 'error'
+            failed: 'error',
+            cancelled: 'circle-slash'
         };
         this.iconPath = new vscode.ThemeIcon(iconMap[req.status] || 'circle-outline');
 

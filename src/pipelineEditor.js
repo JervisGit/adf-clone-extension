@@ -4527,6 +4527,13 @@ class PipelineEditorProvider {
                 this.setupEventListeners();
             }
 
+            refreshNameLabel() {
+                if (this.element) {
+                    const labelEl = this.element.querySelector('.activity-label');
+                    if (labelEl) labelEl.textContent = this.name;
+                }
+            }
+
             
             setupEventListeners() {
                 // Click to select
@@ -5835,6 +5842,7 @@ class PipelineEditorProvider {
                     
                     const act = new Activity(actData.type, x, y, canvasWrapper);
                     act.name = actData.name;
+                    act.refreshNameLabel();
                     act.description = actData.description || '';
                     
                     // Copy typeProperties without nesting
@@ -5973,6 +5981,7 @@ class PipelineEditorProvider {
                     
                     const act = new Activity(actData.type, x, y, canvasWrapper);
                     act.name = actData.name;
+                    act.refreshNameLabel();
                     act.description = actData.description || '';
                     
                     // Copy typeProperties without nesting
@@ -6124,6 +6133,7 @@ class PipelineEditorProvider {
 
                     const act = new Activity(actData.type, x, y, canvasWrapper);
                     act.name = actData.name;
+                    act.refreshNameLabel();
                     act.description = actData.description || '';
 
                     if (actData.typeProperties) {
@@ -10069,6 +10079,7 @@ class PipelineEditorProvider {
                     
                     const activity = new Activity(activityData.type, x, y, canvasWrapper);
                     activity.name = activityData.name;
+                    activity.refreshNameLabel();
                     activity.description = activityData.description || '';
                     
                     // Load policy properties

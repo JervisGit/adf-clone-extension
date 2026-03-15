@@ -14,6 +14,9 @@ const datasetConfig = require('./dataset-config.json');
 function activate(context) {
 	console.log('ADF Pipeline Clone extension is now active!');
 
+	// Sync JSON "name" field when a pipeline file is renamed via the file explorer
+	registerRenameHandler(context);
+
 	// Register the pipeline editor provider
 	const editorProvider = new PipelineEditorProvider(context);
 	context.subscriptions.push(
@@ -326,6 +329,35 @@ function activate(context) {
 }
 
 function deactivate() {}
+
+// When a pipeline JSON file is renamed in the workspace, update the "name" field inside the file
+// so the JSON definition stays in sync with the filename.
+function registerRenameHandler(context) {
+	const fs = require('fs');
+	const path = require('path');
+	context.subscriptions.push(
+		vscode.workspace.onDidRenameFiles(event => {
+			for (const { oldUri, newUri } of event.files) {
+				const newPath = newUri.fsPath;
+				// Only handle .json files inside a /pipeline/ directory
+				if (!newPath.endsWith('.json')) continue;
+				const parentFolder = path.basename(path.dirname(newPath));
+				if (parentFolder !== 'pipeline') continue;
+				try {
+					const raw = fs.readFileSync(newPath, 'utf8');
+					const json = JSON.parse(raw);
+					const newName = path.basename(newPath, '.json');
+					if (json.name !== newName) {
+						json.name = newName;
+						fs.writeFileSync(newPath, JSON.stringify(json, null, 2));
+					}
+				} catch (_) {
+					// Silently ignore parse/IO errors
+				}
+			}
+		})
+	);
+}
 
 module.exports = {
 	activate,

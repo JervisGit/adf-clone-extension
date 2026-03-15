@@ -193,12 +193,17 @@ class PipelineEditorProvider {
 						console.log('[Extension] Received save message:', message);
 						// Use filePath from message if available, otherwise use closure filePath
 						const saveFilePath = message.filePath || filePath;
-						await this.savePipelineToWorkspace(message.data, saveFilePath);
+						const newSaveFilePath = await this.savePipelineToWorkspace(message.data, saveFilePath);
+						// Update closure filePath if file was renamed
+						const finalSavePath = newSaveFilePath || saveFilePath;
+						if (newSaveFilePath && newSaveFilePath !== saveFilePath) {
+							filePath = newSaveFilePath;
+						}
 						// Clear dirty state after successful save
-						if (saveFilePath) {
-							this.markPanelAsDirty(saveFilePath, false);
-							// Notify webview that save completed
-							panel.webview.postMessage({ type: 'saveCompleted' });
+						if (finalSavePath) {
+							this.markPanelAsDirty(finalSavePath, false);
+							// Notify webview that save completed, passing new path if renamed
+							panel.webview.postMessage({ type: 'saveCompleted', newFilePath: finalSavePath });
 						}
 						break;
 					case 'contentChanged':
@@ -727,7 +732,8 @@ class PipelineEditorProvider {
                     ...(pipelineData.variables && Object.keys(pipelineData.variables).length > 0 ? { variables: pipelineData.variables } : {}),
                     ...(pipelineData.parameters && Object.keys(pipelineData.parameters).length > 0 ? { parameters: pipelineData.parameters } : {}),
                     ...(pipelineData.concurrency && pipelineData.concurrency !== 1 ? { concurrency: parseInt(pipelineData.concurrency) } : {}),
-					annotations: [],
+					...(pipelineData.description ? { description: pipelineData.description } : {}),
+					annotations: Array.isArray(pipelineData.annotations) ? pipelineData.annotations : [],
 					lastPublishTime: new Date().toISOString()
 				}
 			};
@@ -748,15 +754,44 @@ class PipelineEditorProvider {
 			}
 			
 			// Write file
+			let finalFilePath = filePath;
 			console.log('[Extension] Writing to file:', filePath);
 			console.log('[Extension] Final Synapse format:', JSON.stringify(synapseJson, null, 2));
 			fs.writeFileSync(filePath, JSON.stringify(synapseJson, null, 2));
 			console.log('[Extension] File written successfully');
-			vscode.window.showInformationMessage(`Pipeline saved: ${path.basename(filePath)}`);
+
+			// Rename file on disk if the pipeline name changed
+			if (filePath) {
+				const nameFromFile = path.basename(filePath, '.json');
+				if (pipelineData.name && pipelineData.name !== nameFromFile) {
+					const newFilePath = path.join(path.dirname(filePath), pipelineData.name + '.json');
+					if (!fs.existsSync(newFilePath)) {
+						fs.renameSync(filePath, newFilePath);
+						finalFilePath = newFilePath;
+						// Update panel mapping to reflect new file path
+						const panel = PipelineEditorProvider.panels.get(filePath);
+						if (panel) {
+							PipelineEditorProvider.panels.delete(filePath);
+							PipelineEditorProvider.panels.set(newFilePath, panel);
+							PipelineEditorProvider.dirtyStates.delete(filePath);
+							panel.title = pipelineData.name;
+						}
+						vscode.window.showInformationMessage(`Pipeline renamed and saved: ${pipelineData.name}.json`);
+					} else {
+						vscode.window.showWarningMessage(`Pipeline saved, but could not rename: "${pipelineData.name}.json" already exists.`);
+					}
+				} else {
+					vscode.window.showInformationMessage(`Pipeline saved: ${path.basename(filePath)}`);
+				}
+			} else {
+				vscode.window.showInformationMessage(`Pipeline saved: ${path.basename(synapseJson.name)}.json`);
+			}
+			return finalFilePath;
 			
 		} catch (error) {
 			console.error('[Extension] Save error:', error);
 			vscode.window.showErrorMessage(`Failed to save pipeline: ${error.message}`);
+			return null;
 		}
 	}
 
@@ -1690,6 +1725,9 @@ class PipelineEditorProvider {
         
         // Pipeline-level properties (when no activity selected)
         let pipelineData = {
+            name: '',
+            description: '',
+            annotations: [],
             parameters: {},
             variables: {},
             concurrency: 1
@@ -2534,7 +2572,9 @@ class PipelineEditorProvider {
             }
             
             const result = {
-                name: pipelineName,
+                name: pipelineData.name || pipelineName,
+                description: pipelineData.description || '',
+                annotations: Array.isArray(pipelineData.annotations) ? pipelineData.annotations : [],
                 activities: activities.map(a => {
                     // Build the activity JSON with all properties
                     const activity = {
@@ -6708,7 +6748,70 @@ class PipelineEditorProvider {
                     concurrencyInput.value = pipelineData.concurrency || 1;
                 }
                 
-                rightPanel.innerHTML = '<div class="empty-state">Select an activity to view its properties</div>';
+                rightPanel.innerHTML = \`
+                    <div style="padding:12px 12px 0 12px;">
+                        <div class="form-group" style="margin-bottom:10px;">
+                            <label style="display:block;font-size:11px;font-weight:600;margin-bottom:4px;color:var(--vscode-input-foreground);">Name</label>
+                            <input id="pipelineNameInput" type="text"
+                                style="width:100%;box-sizing:border-box;padding:4px 6px;background:var(--vscode-input-background);color:var(--vscode-input-foreground);border:1px solid var(--vscode-input-border);border-radius:2px;font-size:12px;"
+                                value="\${(pipelineData.name || '').replace(/"/g,'&quot;')}" />
+                        </div>
+                        <div class="form-group" style="margin-bottom:10px;">
+                            <label style="display:block;font-size:11px;font-weight:600;margin-bottom:4px;color:var(--vscode-input-foreground);">Description</label>
+                            <textarea id="pipelineDescInput" rows="3"
+                                style="width:100%;box-sizing:border-box;padding:4px 6px;background:var(--vscode-input-background);color:var(--vscode-input-foreground);border:1px solid var(--vscode-input-border);border-radius:2px;font-size:12px;resize:vertical;">\${(pipelineData.description || '').replace(/</g,'&lt;')}</textarea>
+                        </div>
+                        <div class="form-group">
+                            <label style="display:block;font-size:11px;font-weight:600;margin-bottom:4px;color:var(--vscode-input-foreground);">Annotations</label>
+                            <div id="annotationsList" style="margin-bottom:6px;"></div>
+                            <button id="addAnnotationBtn"
+                                style="font-size:11px;padding:2px 8px;background:var(--vscode-button-background);color:var(--vscode-button-foreground);border:none;border-radius:2px;cursor:pointer;">+ Add</button>
+                        </div>
+                    </div>
+                \`;
+                
+                // Populate annotations
+                function _renderAnnotations() {
+                    const list = document.getElementById('annotationsList');
+                    if (!list) return;
+                    list.innerHTML = '';
+                    (pipelineData.annotations || []).forEach((ann, i) => {
+                        const row = document.createElement('div');
+                        row.style.cssText = 'display:flex;align-items:center;gap:4px;margin-bottom:4px;';
+                        const inp = document.createElement('input');
+                        inp.type = 'text';
+                        inp.value = ann;
+                        inp.style.cssText = 'flex:1;padding:3px 5px;background:var(--vscode-input-background);color:var(--vscode-input-foreground);border:1px solid var(--vscode-input-border);border-radius:2px;font-size:12px;';
+                        inp.addEventListener('input', () => { pipelineData.annotations[i] = inp.value; markAsDirty(); });
+                        const del = document.createElement('button');
+                        del.textContent = '×';
+                        del.title = 'Remove';
+                        del.style.cssText = 'background:none;border:none;color:var(--vscode-errorForeground);cursor:pointer;font-size:14px;line-height:1;padding:0 2px;';
+                        del.addEventListener('click', () => { pipelineData.annotations.splice(i, 1); _renderAnnotations(); markAsDirty(); });
+                        row.appendChild(inp);
+                        row.appendChild(del);
+                        list.appendChild(row);
+                    });
+                }
+                _renderAnnotations();
+                
+                document.getElementById('addAnnotationBtn')?.addEventListener('click', () => {
+                    pipelineData.annotations.push('');
+                    _renderAnnotations();
+                    // Focus the last input
+                    const inputs = document.querySelectorAll('#annotationsList input');
+                    if (inputs.length) inputs[inputs.length - 1].focus();
+                    markAsDirty();
+                });
+                
+                document.getElementById('pipelineNameInput')?.addEventListener('input', (e) => {
+                    pipelineData.name = e.target.value;
+                    markAsDirty();
+                });
+                document.getElementById('pipelineDescInput')?.addEventListener('input', (e) => {
+                    pipelineData.description = e.target.value;
+                    markAsDirty();
+                });
                 return;
             }
             
@@ -7703,7 +7806,15 @@ class PipelineEditorProvider {
             }
             
             // Build content for each tab
-            let generalContent = '';
+            let generalContent =
+                '<div class="property-group" style="margin-bottom:12px;">' +
+                    '<div class="property-label">Name</div>' +
+                    '<input type="text" class="property-input" id="propName" value="' + (activity.name || '').replace(/"/g,'&quot;') + '" style="width:100%;">' +
+                '</div>' +
+                '<div class="property-group" style="margin-bottom:12px;">' +
+                    '<div class="property-label">Description</div>' +
+                    '<textarea class="property-input" id="propDescription" rows="3" style="width:100%;resize:vertical;">' + (activity.description || '').replace(/</g,'&lt;') + '</textarea>' +
+                '</div>';
             if (schema && schema.commonProperties) {
                 for (const [key, prop] of Object.entries(schema.commonProperties)) {
                     if (prop.section === 'policy') continue;
@@ -7960,30 +8071,6 @@ class PipelineEditorProvider {
             tabsContainer.innerHTML = tabsHtml;
             panesContainer.innerHTML = panesHtml;
 
-            // Right sidebar - basic properties
-            rightPanel.innerHTML = \`
-                <div class="property-group">
-                    <div class="property-label">Name</div>
-                    <input type="text" class="property-input" id="propName" value="\${activity.name}">
-                </div>
-                <div class="property-group">
-                    <div class="property-label">Type</div>
-                    <input type="text" class="property-input" value="\${activity.type}" readonly>
-                </div>
-                <div class="property-group">
-                    <div class="property-label">Description</div>
-                    <textarea class="property-input" id="propDescription" rows="3">\${activity.description}</textarea>
-                </div>
-                <div class="property-group">
-                    <div class="property-label">Position</div>
-                    <div style="display: flex; gap: 8px; flex: 1;">
-                        <input type="number" class="property-input" id="propX" value="\${Math.round(activity.x)}" placeholder="X">
-                        <input type="number" class="property-input" id="propY" value="\${Math.round(activity.y)}" placeholder="Y">
-                    </div>
-                </div>
-            \`;
-            
-            // Add event listeners for user properties
             const addUserPropBtn = document.getElementById('addUserPropBtn');
             if (addUserPropBtn) {
                 addUserPropBtn.addEventListener('click', () => {
@@ -8069,6 +8156,24 @@ class PipelineEditorProvider {
                 }
             });
             
+            // Expression / On / Timeout listeners for container activities (fields live in Activities tab)
+            document.getElementById('propExpression')?.addEventListener('input', (e) => {
+                activity.expression = e.target.value;
+                markAsDirty();
+            });
+            document.getElementById('propUntilExpression')?.addEventListener('input', (e) => {
+                activity.expression = e.target.value;
+                markAsDirty();
+            });
+            document.getElementById('propUntilTimeout')?.addEventListener('input', (e) => {
+                activity.timeout = e.target.value;
+                markAsDirty();
+            });
+            document.getElementById('propOn')?.addEventListener('input', (e) => {
+                activity.on = e.target.value;
+                markAsDirty();
+            });
+
             // Add event listeners for dataset dropdowns to trigger dynamic field loading
             document.querySelectorAll('#configContent .dataset-select').forEach(select => {
                 select.addEventListener('change', (e) => {
@@ -9660,86 +9765,34 @@ class PipelineEditorProvider {
                 });
             });
 
-            // Right sidebar - basic properties
-            rightPanel.innerHTML = \`
-                <div class="property-group">
-                    <div class="property-label">Name</div>
-                    <input type="text" class="property-input" id="propName" value="\${activity.name}">
-                </div>
-                <div class="property-group">
-                    <div class="property-label">Type</div>
-                    <input type="text" class="property-input" value="\${activity.type}" readonly>
-                </div>
-                <div class="property-group">
-                    <div class="property-label">Description</div>
-                    <textarea class="property-input" id="propDescription" rows="3">\${activity.description}</textarea>
-                </div>
-                <div class="property-group">
-                    <div class="property-label">Position</div>
-                    <div style="display: flex; gap: 8px; flex: 1;">
-                        <input type="number" class="property-input" id="propX" value="\${Math.round(activity.x)}" placeholder="X">
-                        <input type="number" class="property-input" id="propY" value="\${Math.round(activity.y)}" placeholder="Y">
-                    </div>
-                </div>
-            \`;
-
-            document.getElementById('propName').addEventListener('input', (e) => {
+            // Activity name/description are edited in the General tab \u2014 right panel shows pipeline properties
+            document.getElementById('propName')?.addEventListener('input', (e) => {
                 activity.updateName(e.target.value);
                 markAsDirty();
                 draw();
             });
 
-            document.getElementById('propDescription').addEventListener('input', (e) => {
+            document.getElementById('propDescription')?.addEventListener('input', (e) => {
                 activity.description = e.target.value;
                 markAsDirty();
             });
-            
-            // Expression field for IfCondition activities
-            const propExpression = document.getElementById('propExpression');
-            if (propExpression) {
-                propExpression.addEventListener('input', (e) => {
-                    activity.expression = e.target.value;
-                    markAsDirty();
-                });
-            }
 
-            // On expression field for Switch activities
-            const propOn = document.getElementById('propOn');
-            if (propOn) {
-                propOn.addEventListener('input', (e) => {
-                    activity.on = e.target.value;
-                    markAsDirty();
-                });
-            }
-
-            // Expression + timeout for Until activities
-            const propUntilExpression = document.getElementById('propUntilExpression');
-            if (propUntilExpression) {
-                propUntilExpression.addEventListener('input', (e) => {
-                    activity.expression = e.target.value;
-                    markAsDirty();
-                });
-            }
-            const propUntilTimeout = document.getElementById('propUntilTimeout');
-            if (propUntilTimeout) {
-                propUntilTimeout.addEventListener('input', (e) => {
-                    activity.timeout = e.target.value;
-                    markAsDirty();
-                });
-            }
-            
-            document.getElementById('propX').addEventListener('input', (e) => {
-                const x = parseInt(e.target.value) || 0;
-                activity.updatePosition(x, activity.y);
+            // Expression / On / Timeout listeners for container activities (fields live in Activities tab)
+            document.getElementById('propExpression')?.addEventListener('input', (e) => {
+                activity.expression = e.target.value;
                 markAsDirty();
-                draw();
             });
-            
-            document.getElementById('propY').addEventListener('input', (e) => {
-                const y = parseInt(e.target.value) || 0;
-                activity.updatePosition(activity.x, y);
+            document.getElementById('propUntilExpression')?.addEventListener('input', (e) => {
+                activity.expression = e.target.value;
                 markAsDirty();
-                draw();
+            });
+            document.getElementById('propUntilTimeout')?.addEventListener('input', (e) => {
+                activity.timeout = e.target.value;
+                markAsDirty();
+            });
+            document.getElementById('propOn')?.addEventListener('input', (e) => {
+                activity.on = e.target.value;
+                markAsDirty();
             });
         }
 
@@ -10013,6 +10066,10 @@ class PipelineEditorProvider {
             } else if (message.type === 'saveCompleted') {
                 // Clear dirty state after successful save
                 clearDirty();
+                // Update currentFilePath if the file was renamed
+                if (message.newFilePath && message.newFilePath !== currentFilePath) {
+                    currentFilePath = message.newFilePath;
+                }
                 // Strip empty entries from noEmpty/filterEmpty arrays on all activities so UI reflects clean state
                 activities.forEach(a => {
                     if (a.type === 'Copy') {
@@ -10068,6 +10125,9 @@ class PipelineEditorProvider {
                 pipelineData.variables = pipelineVariables;
                 pipelineData.parameters = pipelineParameters;
                 pipelineData.concurrency = pipelineConcurrency;
+                pipelineData.name = pipelineJson.name || getPipelineNameFromPath();
+                pipelineData.description = pipelineJson.properties?.description || '';
+                pipelineData.annotations = Array.isArray(pipelineJson.properties?.annotations) ? pipelineJson.properties.annotations : [];
                 
                 // Create activities first
                 const canvasWrapper = document.getElementById('canvasWrapper');

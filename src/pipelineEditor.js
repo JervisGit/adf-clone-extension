@@ -5614,6 +5614,175 @@ class PipelineEditorProvider {
         // Context switching for IfCondition/ForEach branch editing
         let editingContext = null; // current { parentActivity, branch, savedState }
         let editingContextStack = []; // ancestor contexts when nesting editors (oldest first)
+
+        // Shared helper: after Object.assign(act, actData.typeProperties), normalize the fields
+        // that the top-level loadPipelineFromJson unpacks specially so that the properties panel
+        // renders them correctly.  Call this once per nested activity in every branch loader.
+        function _applyNestedActivitySpecialFields(act, actData) {
+            const tp = actData.typeProperties;
+            if (!tp) return;
+
+            // SynapseNotebook: unpack conf → dynamicAllocation / minExecutors / maxExecutors
+            //                  unwrap notebook/sparkPool reference objects → plain name strings
+            if (act.type === 'SynapseNotebook') {
+                if (tp.conf) {
+                    const conf = tp.conf;
+                    if (conf['spark.dynamicAllocation.enabled'] !== undefined)
+                        act.dynamicAllocation = conf['spark.dynamicAllocation.enabled'] ? 'Enabled' : 'Disabled';
+                    if (conf['spark.dynamicAllocation.minExecutors'] !== undefined)
+                        act.minExecutors = conf['spark.dynamicAllocation.minExecutors'];
+                    if (conf['spark.dynamicAllocation.maxExecutors'] !== undefined)
+                        act.maxExecutors = conf['spark.dynamicAllocation.maxExecutors'];
+                    delete act.conf;
+                }
+                if (act.notebook && typeof act.notebook === 'object') {
+                    const ref = act.notebook.referenceName;
+                    act.notebook = (ref && typeof ref === 'object' && ref.value) ? ref.value
+                                 : (typeof ref === 'string' ? ref : '');
+                }
+                if (act.sparkPool && typeof act.sparkPool === 'object') {
+                    const ref = act.sparkPool.referenceName;
+                    act.sparkPool = (ref && typeof ref === 'object' && ref.value) ? ref.value
+                                  : (typeof ref === 'string' ? ref : '');
+                }
+            }
+
+            // SetVariable: handle pipeline return value case (value is an array of objects)
+            if (act.type === 'SetVariable') {
+                if (act.setSystemVariable && act.variableName === 'pipelineReturnValue' && Array.isArray(act.value)) {
+                    act.variableType = 'Pipeline return value';
+                    act.returnValues = {};
+                    act.value.forEach(item => {
+                        if (item.key && item.value) {
+                            const rv = { type: item.value.type };
+                            if (item.value.type === 'Null') rv.value = '';
+                            else if (item.value.type === 'Array') rv.content = item.value.content || [];
+                            else rv.value = item.value.content !== undefined ? String(item.value.content) : '';
+                            act.returnValues[item.key] = rv;
+                        }
+                    });
+                    delete act.setSystemVariable; delete act.variableName; delete act.value;
+                } else {
+                    act.variableType = 'Pipeline variable';
+                    if (!act.pipelineVariableType) act.pipelineVariableType = 'String';
+                }
+            }
+
+            // Lookup: unwrap dataset reference object → plain string, set _datasetType,
+            //         parse source.storeSettings → flat filePathType/prefix/wildcard/etc. fields
+            if (act.type === 'Lookup') {
+                if (act.dataset && typeof act.dataset === 'object') {
+                    const dsName = act.dataset.referenceName || '';
+                    act.dataset = dsName;
+                    if (dsName && datasetContents[dsName])
+                        act._datasetType = datasetContents[dsName].properties?.type;
+                }
+                if (act.source && typeof act.source === 'object') {
+                    const src = act.source;
+                    if (src.storeSettings) {
+                        const ss = src.storeSettings;
+                        if (ss.fileListPath)       { act.filePathType = 'listOfFiles';    act.fileListPath = ss.fileListPath; }
+                        else if (ss.prefix)        { act.filePathType = 'prefix';         act.prefix = ss.prefix; }
+                        else if (ss.wildcardFileName || ss.wildcardFolderPath) {
+                            act.filePathType = 'wildcardFilePath';
+                            if (ss.wildcardFolderPath) act.wildcardFolderPath = ss.wildcardFolderPath;
+                            if (ss.wildcardFileName)   act.wildcardFileName   = ss.wildcardFileName;
+                        } else { act.filePathType = 'filePathInDataset'; }
+                        if (ss.recursive !== undefined) act.recursive = ss.recursive;
+                        if (ss.enablePartitionDiscovery !== undefined) act.enablePartitionDiscovery = ss.enablePartitionDiscovery;
+                        if (ss.maxConcurrentConnections !== undefined) act.maxConcurrentConnections = ss.maxConcurrentConnections;
+                        if (ss.modifiedDatetimeStart) act.modifiedDatetimeStart = new Date(ss.modifiedDatetimeStart).toISOString().slice(0, 19);
+                        if (ss.modifiedDatetimeEnd)   act.modifiedDatetimeEnd   = new Date(ss.modifiedDatetimeEnd).toISOString().slice(0, 19);
+                    }
+                    if (src.formatSettings?.skipLineCount !== undefined) act.skipLineCount = src.formatSettings.skipLineCount;
+                    delete act.source; // no longer needed; flat fields are set
+                }
+            }
+
+            // GetMetadata: unwrap dataset → string, set _datasetLocationType, convert fieldList strings → UI format
+            if (act.type === 'GetMetadata') {
+                const gmDs = typeof act.dataset === 'object' ? act.dataset?.referenceName : act.dataset;
+                act.dataset = gmDs || '';
+                if (gmDs && datasetContents[gmDs]) {
+                    const loc = datasetContents[gmDs].properties?.typeProperties?.location?.type;
+                    if (loc) act._datasetLocationType = loc;
+                }
+                if (Array.isArray(act.fieldList)) {
+                    act.fieldList = act.fieldList.map(f => {
+                        if (typeof f === 'string') return { type: 'predefined', value: f };
+                        if (typeof f === 'object' && f.type === 'Expression') return { type: 'dynamic', value: f.value };
+                        return f;
+                    });
+                }
+            }
+
+            // Validation: childItems boolean → string, set _datasetLocationType
+            if (act.type === 'Validation') {
+                if (act.childItems !== undefined && act.childItems !== null && act.childItems !== 'ignore')
+                    act.childItems = String(act.childItems);
+                else if (act.childItems === undefined || act.childItems === null)
+                    act.childItems = 'ignore';
+                const valDs = act.dataset && typeof act.dataset === 'object' ? act.dataset.referenceName : act.dataset;
+                if (valDs && datasetContents[valDs]) {
+                    const loc = datasetContents[valDs].properties?.typeProperties?.location?.type;
+                    if (loc) act._datasetLocationType = loc;
+                }
+            }
+
+            // SqlServerStoredProcedure: derive _selectedLinkedServiceType from linkedServiceName
+            if (act.type === 'SqlServerStoredProcedure' && actData.linkedServiceName) {
+                const lsRef = actData.linkedServiceName.referenceName;
+                const ls = window.linkedServicesList?.find(l => l.name === lsRef);
+                act._selectedLinkedServiceType = ls
+                    ? (ls.type === 'AzureSqlDatabase' ? 'AzureSqlDatabase' : 'AzureSynapse')
+                    : (actData.linkedServiceName.parameters ? 'AzureSynapse' : 'AzureSqlDatabase');
+                if (actData.linkedServiceName.parameters?.DBName)
+                    act.linkedServiceProperties = { DBName: actData.linkedServiceName.parameters.DBName };
+            }
+
+            // WebActivity / WebHook: unpack authentication object → flat fields,
+            //                        unpack headers object → array of {name, value},
+            //                        rename turnOffAsync → disableAsyncPattern
+            if (act.type === 'WebActivity' || act.type === 'WebHook') {
+                if (act.authentication && typeof act.authentication === 'object') {
+                    const auth = act.authentication;
+                    if (auth.credential && !auth.type) {
+                        // ServicePrincipal + Credential reference method
+                        act.authenticationType = 'ServicePrincipal';
+                        act.servicePrincipalAuthMethod = 'Credential';
+                        if (auth.credential.referenceName) act.credential = auth.credential.referenceName;
+                        if (auth.resource) act.credentialResource = auth.resource;
+                    } else {
+                        act.authenticationType = auth.type || 'None';
+                        if (act.authenticationType === 'Basic') {
+                            if (auth.username) act.username = auth.username;
+                            if (auth.password) act.password = auth.password;
+                        } else if (act.authenticationType === 'MSI' || act.authenticationType === 'UserAssignedManagedIdentity') {
+                            if (auth.resource) act.resource = auth.resource;
+                            if (auth.credential?.referenceName) act.credentialUserAssigned = auth.credential.referenceName;
+                        } else if (act.authenticationType === 'ClientCertificate') {
+                            if (auth.pfx) act.pfx = auth.pfx;
+                            if (auth.password) act.pfxPassword = auth.password;
+                        } else if (act.authenticationType === 'ServicePrincipal') {
+                            if (auth.resource) act.servicePrincipalResource = auth.resource;
+                            if (auth.userTenant) act.tenant = auth.userTenant;
+                            if (auth.username) act.servicePrincipalId = auth.username;
+                            if (auth.password) act.servicePrincipalKey = auth.password;
+                            if (auth.pfx) act.servicePrincipalCert = auth.pfx;
+                            if (!act.servicePrincipalAuthMethod) act.servicePrincipalAuthMethod = 'Inline';
+                        }
+                    }
+                    delete act.authentication;
+                }
+                if (act.headers && typeof act.headers === 'object' && !Array.isArray(act.headers)) {
+                    act.headers = Object.entries(act.headers).map(([name, value]) => ({ name, value }));
+                }
+                if (act.type === 'WebActivity' && act.turnOffAsync !== undefined) {
+                    act.disableAsyncPattern = act.turnOffAsync;
+                    delete act.turnOffAsync;
+                }
+            }
+        }
         
         window.openIfConditionEditor = function(activityId, branch) {
             const activity = activities.find(a => a.id == activityId);
@@ -5683,6 +5852,28 @@ class PipelineEditorProvider {
                             if (act.items     && typeof act.items     === 'object') act.items     = _unwrap(act.items);
                             if (act.condition && typeof act.condition === 'object') act.condition = _unwrap(act.condition);
                         }
+                        // Unwrap ExecutePipeline pipeline reference object → string
+                        if (act.type === 'ExecutePipeline' && act.pipeline && typeof act.pipeline === 'object') {
+                            act.pipeline = act.pipeline.referenceName || '';
+                        }
+                        // For nested Delete: unwrap dataset reference and parse storeSettings to UI fields
+                        if (act.type === 'Delete') {
+                            if (act.dataset && typeof act.dataset === 'object') act.dataset = act.dataset.referenceName || '';
+                            if (act.storeSettings) {
+                                const ss = act.storeSettings;
+                                if (ss.fileListPath) { act.filePathType = 'listOfFiles'; act.fileListPath = ss.fileListPath; }
+                                else if (ss.prefix) { act.filePathType = 'prefix'; act.prefix = ss.prefix; }
+                                else if (ss.wildcardFileName || ss.wildcardFolderPath) {
+                                    act.filePathType = 'wildcardFilePath';
+                                    if (ss.wildcardFolderPath) act.wildcardFolderPath = ss.wildcardFolderPath;
+                                    if (ss.wildcardFileName) act.wildcardFileName = ss.wildcardFileName;
+                                } else { act.filePathType = 'filePathInDataset'; }
+                                if (ss.maxConcurrentConnections !== undefined) act.maxConcurrentConnections = ss.maxConcurrentConnections;
+                                if (ss.recursive !== undefined) act.recursive = ss.recursive;
+                            }
+                        }
+                        // SynapseNotebook: unpack conf block + unwrap reference objects
+                        _applyNestedActivitySpecialFields(act, actData);
                     }
                     // Copy activity-level fields that live outside typeProperties in the JSON
                     // (e.g. linkedServiceName for Script / SqlServerStoredProcedure).
@@ -5799,6 +5990,28 @@ class PipelineEditorProvider {
                             if (act.items     && typeof act.items     === 'object') act.items     = _unwrap(act.items);
                             if (act.condition && typeof act.condition === 'object') act.condition = _unwrap(act.condition);
                         }
+                        // Unwrap ExecutePipeline pipeline reference object → string
+                        if (act.type === 'ExecutePipeline' && act.pipeline && typeof act.pipeline === 'object') {
+                            act.pipeline = act.pipeline.referenceName || '';
+                        }
+                        // For nested Delete: unwrap dataset reference and parse storeSettings to UI fields
+                        if (act.type === 'Delete') {
+                            if (act.dataset && typeof act.dataset === 'object') act.dataset = act.dataset.referenceName || '';
+                            if (act.storeSettings) {
+                                const ss = act.storeSettings;
+                                if (ss.fileListPath) { act.filePathType = 'listOfFiles'; act.fileListPath = ss.fileListPath; }
+                                else if (ss.prefix) { act.filePathType = 'prefix'; act.prefix = ss.prefix; }
+                                else if (ss.wildcardFileName || ss.wildcardFolderPath) {
+                                    act.filePathType = 'wildcardFilePath';
+                                    if (ss.wildcardFolderPath) act.wildcardFolderPath = ss.wildcardFolderPath;
+                                    if (ss.wildcardFileName) act.wildcardFileName = ss.wildcardFileName;
+                                } else { act.filePathType = 'filePathInDataset'; }
+                                if (ss.maxConcurrentConnections !== undefined) act.maxConcurrentConnections = ss.maxConcurrentConnections;
+                                if (ss.recursive !== undefined) act.recursive = ss.recursive;
+                            }
+                        }
+                        // SynapseNotebook: unpack conf block + unwrap reference objects
+                        _applyNestedActivitySpecialFields(act, actData);
                     }
                     // Copy activity-level fields that live outside typeProperties in the JSON
                     // (e.g. linkedServiceName for Script / SqlServerStoredProcedure).
@@ -5928,7 +6141,32 @@ class PipelineEditorProvider {
                         if (act.type === 'Until' && act.expression && typeof act.expression === 'object') {
                             act.expression = act.expression.value || '';
                         }
+                        // Unwrap ExecutePipeline pipeline reference object → string
+                        if (act.type === 'ExecutePipeline' && act.pipeline && typeof act.pipeline === 'object') {
+                            act.pipeline = act.pipeline.referenceName || '';
+                        }
+                        // For nested Delete: unwrap dataset reference and parse storeSettings to UI fields
+                        if (act.type === 'Delete') {
+                            if (act.dataset && typeof act.dataset === 'object') act.dataset = act.dataset.referenceName || '';
+                            if (act.storeSettings) {
+                                const ss = act.storeSettings;
+                                if (ss.fileListPath) { act.filePathType = 'listOfFiles'; act.fileListPath = ss.fileListPath; }
+                                else if (ss.prefix) { act.filePathType = 'prefix'; act.prefix = ss.prefix; }
+                                else if (ss.wildcardFileName || ss.wildcardFolderPath) {
+                                    act.filePathType = 'wildcardFilePath';
+                                    if (ss.wildcardFolderPath) act.wildcardFolderPath = ss.wildcardFolderPath;
+                                    if (ss.wildcardFileName) act.wildcardFileName = ss.wildcardFileName;
+                                } else { act.filePathType = 'filePathInDataset'; }
+                                if (ss.maxConcurrentConnections !== undefined) act.maxConcurrentConnections = ss.maxConcurrentConnections;
+                                if (ss.recursive !== undefined) act.recursive = ss.recursive;
+                            }
+                        }
+                        // SynapseNotebook: unpack conf block + unwrap reference objects
+                        _applyNestedActivitySpecialFields(act, actData);
                     }
+
+                    // Copy activity-level fields outside typeProperties (linkedServiceName for Script/SqlServerStoredProcedure)
+                    if (actData.linkedServiceName) act.linkedServiceName = actData.linkedServiceName;
 
                     act.userProperties = actData.userProperties || [];
                     act.container = canvasWrapper;
@@ -9014,6 +9252,7 @@ class PipelineEditorProvider {
             _scanForConditionals(schema?.commonProperties, 'general');
             _scanForConditionals(schema?.typeProperties, 'settings');
             _scanForConditionals(schema?.advancedProperties, 'advanced');
+            _scanForConditionals(schema?.sourceProperties, 'source');
             // Lookup activity: dataset-specific fields also go to settings
             if (activity.type === 'Lookup' && activity._datasetType) {
                 _scanForConditionals(datasetSchemas?.[activity._datasetType]?.lookupFields, 'settings');

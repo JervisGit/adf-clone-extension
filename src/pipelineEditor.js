@@ -430,8 +430,11 @@ class PipelineEditorProvider {
                             }
                         }
                         
-                        // Collect typeProperties
-                        const typeProperties = {};
+                        // Collect typeProperties — start from the webview's already-correctly-formatted
+                        // typeProperties (built by buildPipelineDataForSave) so all activity types
+                        // (AppendVariable, SetVariable, Until, ForEach, IfCondition, etc.) get their
+                        // fields preserved.  Special-case handlers below override as needed.
+                        const typeProperties = a.typeProperties ? Object.assign({}, a.typeProperties) : {};
                         const commonProps = ['id', 'type', 'x', 'y', 'width', 'height', 'name', 'description', 'color', 'container', 'element', 
                                              'timeout', 'retry', 'retryIntervalInSeconds', 'secureOutput', 'secureInput', 'userProperties', 'state', 'onInactiveMarkAs',
                                              'dynamicAllocation', 'minExecutors', 'maxExecutors', 'numExecutors', 'dependsOn', 'policy',
@@ -4086,10 +4089,10 @@ class PipelineEditorProvider {
         let connectionStart = null;
         let isDragging = false;
         let dragOffset = { x: 0, y: 0 };
+        let isPanning = false;
+        let panStart = { x: 0, y: 0, scrollLeft: 0, scrollTop: 0 };
         let scale = 1;
         let panOffset = { x: 0, y: 0 };
-        let isPanning = false;
-        let panStart = { x: 0, y: 0 };
         let animationFrameId = null;
         let needsRedraw = false;
 
@@ -4921,19 +4924,31 @@ class PipelineEditorProvider {
             draw();
         });
 
-        // Canvas mousedown - deselect when clicking empty space
+        // Canvas mousedown - deselect when clicking empty space, or start panning
         document.getElementById('canvasWrapper').addEventListener('mousedown', (e) => {
-            // Only handle if clicking directly on the wrapper (not on an activity or canvas)
-            if (e.target.id === 'canvasWrapper') {
+            // Only handle if clicking directly on the wrapper or the background canvas (not on an activity)
+            if (e.target.id === 'canvasWrapper' || e.target.id === 'canvas') {
                 selectedActivity = null;
-                // Deselect all activities
                 activities.forEach(a => a.setSelected(false));
                 showProperties(null);
                 draw();
+
+                // Start panning
+                const canvasWrapper = document.getElementById('canvasWrapper');
+                isPanning = true;
+                panStart = { x: e.clientX, y: e.clientY, scrollLeft: canvasWrapper.scrollLeft, scrollTop: canvasWrapper.scrollTop };
+                canvasWrapper.style.cursor = 'grabbing';
+                e.preventDefault();
             }
         });
 
         document.addEventListener('mousemove', (e) => {
+            if (isPanning) {
+                const canvasWrapper = document.getElementById('canvasWrapper');
+                canvasWrapper.scrollLeft = panStart.scrollLeft - (e.clientX - panStart.x);
+                canvasWrapper.scrollTop  = panStart.scrollTop  - (e.clientY - panStart.y);
+                return;
+            }
             if (isDragging && draggedActivity) {
                 const canvasWrapper = document.getElementById('canvasWrapper');
                 const wrapperRect = canvasWrapper.getBoundingClientRect();
@@ -4961,6 +4976,11 @@ class PipelineEditorProvider {
         });
 
         document.addEventListener('mouseup', (e) => {
+            if (isPanning) {
+                isPanning = false;
+                document.getElementById('canvasWrapper').style.cursor = '';
+            }
+
             if (connectionStart) {
                 // Check if mouse is over an activity element
                 const targetElement = document.elementFromPoint(e.clientX, e.clientY);

@@ -5761,6 +5761,13 @@ class PipelineEditorProvider {
                         return f;
                     });
                 }
+                // Extract modifiedDatetimeStart/End from storeSettings (set by Object.assign on typeProperties)
+                if (act.storeSettings && typeof act.storeSettings === 'object') {
+                    const ss = act.storeSettings;
+                    if (ss.modifiedDatetimeStart) act.modifiedDatetimeStart = new Date(ss.modifiedDatetimeStart).toISOString().slice(0, 19);
+                    if (ss.modifiedDatetimeEnd)   act.modifiedDatetimeEnd   = new Date(ss.modifiedDatetimeEnd).toISOString().slice(0, 19);
+                    if (ss.skipLineCount !== undefined) act.skipLineCount = ss.skipLineCount;
+                }
             }
 
             // Validation: childItems boolean → string, set _datasetLocationType
@@ -5918,6 +5925,8 @@ class PipelineEditorProvider {
                                 } else { act.filePathType = 'filePathInDataset'; }
                                 if (ss.maxConcurrentConnections !== undefined) act.maxConcurrentConnections = ss.maxConcurrentConnections;
                                 if (ss.recursive !== undefined) act.recursive = ss.recursive;
+                                if (ss.modifiedDatetimeStart) act.modifiedDatetimeStart = new Date(ss.modifiedDatetimeStart).toISOString().slice(0, 19);
+                                if (ss.modifiedDatetimeEnd)   act.modifiedDatetimeEnd   = new Date(ss.modifiedDatetimeEnd).toISOString().slice(0, 19);
                             }
                         }
                         // SynapseNotebook: unpack conf block + unwrap reference objects
@@ -6057,6 +6066,8 @@ class PipelineEditorProvider {
                                 } else { act.filePathType = 'filePathInDataset'; }
                                 if (ss.maxConcurrentConnections !== undefined) act.maxConcurrentConnections = ss.maxConcurrentConnections;
                                 if (ss.recursive !== undefined) act.recursive = ss.recursive;
+                                if (ss.modifiedDatetimeStart) act.modifiedDatetimeStart = new Date(ss.modifiedDatetimeStart).toISOString().slice(0, 19);
+                                if (ss.modifiedDatetimeEnd)   act.modifiedDatetimeEnd   = new Date(ss.modifiedDatetimeEnd).toISOString().slice(0, 19);
                             }
                         }
                         // SynapseNotebook: unpack conf block + unwrap reference objects
@@ -6209,6 +6220,8 @@ class PipelineEditorProvider {
                                 } else { act.filePathType = 'filePathInDataset'; }
                                 if (ss.maxConcurrentConnections !== undefined) act.maxConcurrentConnections = ss.maxConcurrentConnections;
                                 if (ss.recursive !== undefined) act.recursive = ss.recursive;
+                                if (ss.modifiedDatetimeStart) act.modifiedDatetimeStart = new Date(ss.modifiedDatetimeStart).toISOString().slice(0, 19);
+                                if (ss.modifiedDatetimeEnd)   act.modifiedDatetimeEnd   = new Date(ss.modifiedDatetimeEnd).toISOString().slice(0, 19);
                             }
                         }
                         // SynapseNotebook: unpack conf block + unwrap reference objects

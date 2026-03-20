@@ -173,15 +173,27 @@ body.properties-visible .expand-properties-btn { display: none; }
 .canvas-wrapper {
     flex: 1;
     position: relative;
-    overflow: auto;
+    overflow: hidden;
     background: var(--vscode-editor-background);
     border: 1px solid var(--vscode-panel-border);
+    cursor: default;
+}
+
+#worldContainer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 4000px;
+    height: 4000px;
+    transform-origin: 0 0;
 }
 
 #canvas {
     position: absolute;
     top: 0;
     left: 0;
+    width: 4000px;
+    height: 4000px;
     pointer-events: none;
     z-index: 1;
 }

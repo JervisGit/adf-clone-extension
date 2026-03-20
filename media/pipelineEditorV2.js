@@ -34,6 +34,7 @@ let connectionStart = null;
 let isPanning = false;
 let panStart = { x: 0, y: 0, scrollLeft: 0, scrollTop: 0 };
 let scale = 1;
+let tx = 0, ty = 0;  // pan offset in screen pixels
 let animationFrameId = null;
 let needsRedraw = false;
 
@@ -46,6 +47,44 @@ function markAsDirty() {
         isDirty = true;
         vscode.postMessage({ type: 'contentChanged', isDirty: true });
     }
+}
+
+function applyTransform() {
+    document.getElementById('worldContainer').style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+}
+
+function screenToWorld(clientX, clientY) {
+    const rect = document.getElementById('canvasWrapper').getBoundingClientRect();
+    return { x: (clientX - rect.left - tx) / scale, y: (clientY - rect.top - ty) / scale };
+}
+
+function zoomBy(factor, cx, cy) {
+    const oldScale = scale;
+    scale = Math.min(Math.max(scale * factor, 0.1), 4);
+    tx = cx - (cx - tx) * (scale / oldScale);
+    ty = cy - (cy - ty) * (scale / oldScale);
+    applyTransform();
+    draw();
+}
+
+function fitToScreen() {
+    const wrapper = document.getElementById('canvasWrapper');
+    if (activities.length === 0) { scale = 1; tx = 20; ty = 20; applyTransform(); draw(); return; }
+    const padding = 60;
+    const minX = Math.min(...activities.map(a => a.x));
+    const minY = Math.min(...activities.map(a => a.y));
+    const maxX = Math.max(...activities.map(a => a.x + a.width));
+    const maxY = Math.max(...activities.map(a => a.y + a.height));
+    const worldW = maxX - minX || 1;
+    const worldH = maxY - minY || 1;
+    const viewW = wrapper.clientWidth - padding * 2;
+    const viewH = wrapper.clientHeight - padding * 2;
+    scale = Math.min(viewW / worldW, viewH / worldH, 2);
+    scale = Math.max(0.1, scale);
+    tx = padding - minX * scale;
+    ty = padding - minY * scale;
+    applyTransform();
+    draw();
 }
 
 // ─── Panel toggles ─────────────────────────────────────────────────────────────
@@ -97,7 +136,7 @@ function buildSidebar() {
         });
         item.addEventListener('dblclick', () => {
             const type = item.getAttribute('data-type');
-            const wrapper = document.getElementById('canvasWrapper');
+            const wrapper = document.getElementById('worldContainer');
             const a = new Activity(type, 100 + activities.length * 20, 100 + activities.length * 20, wrapper);
             activities.push(a);
             markAsDirty();
@@ -148,9 +187,8 @@ document.addEventListener('DOMContentLoaded', () => {
 // ─── Canvas ────────────────────────────────────────────────────────────────────
 function resizeCanvas() {
     if (!canvas) return;
-    const wrapper = document.getElementById('canvasWrapper');
-    canvas.width = Math.max(wrapper.clientWidth, 2000);
-    canvas.height = Math.max(wrapper.clientHeight, 2000);
+    canvas.width = 4000;
+    canvas.height = 4000;
     draw();
 }
 
@@ -361,9 +399,9 @@ class Activity {
         selectedActivity = this;
         draggedActivity = this;
         isDragging = true;
-        const rect = this.element.getBoundingClientRect();
-        dragOffset.x = e.clientX - rect.left;
-        dragOffset.y = e.clientY - rect.top;
+        const wPos = screenToWorld(e.clientX, e.clientY);
+        dragOffset.x = wPos.x - this.x;
+        dragOffset.y = wPos.y - this.y;
         this.element.classList.add('dragging');
         this._setSelected(true);
         showProperties(this);
@@ -371,15 +409,13 @@ class Activity {
     }
 
     _handleDelete() {
-        if (confirm(`Delete activity "${this.name}"?`)) {
-            activities = activities.filter(a => a !== this);
-            connections = connections.filter(c => c.from !== this && c.to !== this);
-            this.remove();
-            selectedActivity = null;
-            showProperties(null);
-            markAsDirty();
-            draw();
-        }
+        activities = activities.filter(a => a !== this);
+        connections = connections.filter(c => c.from !== this && c.to !== this);
+        this.remove();
+        selectedActivity = null;
+        showProperties(null);
+        markAsDirty();
+        draw();
     }
 
     _setSelected(sel) {
@@ -476,59 +512,61 @@ class Connection {
 // ─── Mouse event handlers ──────────────────────────────────────────────────────
 function setupCanvasEvents() {
     const wrapper = document.getElementById('canvasWrapper');
+    const worldEl = document.getElementById('worldContainer');
 
     wrapper.addEventListener('dragover', e => e.preventDefault());
     wrapper.addEventListener('drop', e => {
         e.preventDefault();
         const type = e.dataTransfer.getData('activityType');
         if (!type) return;
-        const rect = wrapper.getBoundingClientRect();
-        const x = e.clientX - rect.left + wrapper.scrollLeft;
-        const y = e.clientY - rect.top  + wrapper.scrollTop;
-        const a = new Activity(type, x - 90, y - 28, wrapper);
+        const pos = screenToWorld(e.clientX, e.clientY);
+        const a = new Activity(type, pos.x - 90, pos.y - 28, worldEl);
         activities.push(a);
         markAsDirty();
         draw();
     });
 
     wrapper.addEventListener('mousedown', e => {
-        if (e.target.id === 'canvasWrapper' || e.target.id === 'canvas') {
+        if (!e.target.closest('.activity-box') && !e.target.closest('.context-menu')) {
             selectedActivity = null;
             activities.forEach(a => a.element?.classList.remove('selected'));
             showProperties(null);
             draw();
             isPanning = true;
-            panStart = { x: e.clientX, y: e.clientY, scrollLeft: wrapper.scrollLeft, scrollTop: wrapper.scrollTop };
+            panStart = { x: e.clientX, y: e.clientY, tx, ty };
             wrapper.style.cursor = 'grabbing';
             e.preventDefault();
         }
     });
 
+    wrapper.addEventListener('wheel', e => {
+        e.preventDefault();
+        const rect = wrapper.getBoundingClientRect();
+        zoomBy(e.deltaY < 0 ? 1.1 : 1 / 1.1, e.clientX - rect.left, e.clientY - rect.top);
+    }, { passive: false });
+
     document.addEventListener('mousemove', e => {
         if (isPanning) {
-            wrapper.scrollLeft = panStart.scrollLeft - (e.clientX - panStart.x);
-            wrapper.scrollTop  = panStart.scrollTop  - (e.clientY - panStart.y);
+            tx = panStart.tx + (e.clientX - panStart.x);
+            ty = panStart.ty + (e.clientY - panStart.y);
+            applyTransform();
             return;
         }
         if (isDragging && draggedActivity) {
-            const rect = wrapper.getBoundingClientRect();
-            const x = e.clientX - rect.left + wrapper.scrollLeft - dragOffset.x;
-            const y = e.clientY - rect.top  + wrapper.scrollTop  - dragOffset.y;
-            draggedActivity.updatePosition(x, y);
+            const pos = screenToWorld(e.clientX, e.clientY);
+            draggedActivity.updatePosition(pos.x - dragOffset.x, pos.y - dragOffset.y);
             requestDraw();
             return;
         }
         if (connectionStart) {
-            const rect = wrapper.getBoundingClientRect();
-            const mx = e.clientX - rect.left + wrapper.scrollLeft;
-            const my = e.clientY - rect.top  + wrapper.scrollTop;
+            const pos = screenToWorld(e.clientX, e.clientY);
             draw();
             ctx.strokeStyle = '#0078d4';
             ctx.lineWidth = 2;
             ctx.setLineDash([5, 5]);
             ctx.beginPath();
             ctx.moveTo(connectionStart.x, connectionStart.y);
-            ctx.lineTo(mx, my);
+            ctx.lineTo(pos.x, pos.y);
             ctx.stroke();
             ctx.setLineDash([]);
         }
@@ -581,22 +619,16 @@ function setupToolbarButtons() {
     });
 
     document.getElementById('zoomInBtn').addEventListener('click', () => {
-        scale *= 1.2;
-        ctx.scale(1.2, 1.2);
-        draw();
+        const wEl = document.getElementById('canvasWrapper');
+        zoomBy(1.25, wEl.clientWidth / 2, wEl.clientHeight / 2);
     });
 
     document.getElementById('zoomOutBtn').addEventListener('click', () => {
-        scale /= 1.2;
-        ctx.scale(1 / 1.2, 1 / 1.2);
-        draw();
+        const wEl = document.getElementById('canvasWrapper');
+        zoomBy(1 / 1.25, wEl.clientWidth / 2, wEl.clientHeight / 2);
     });
 
-    document.getElementById('fitBtn').addEventListener('click', () => {
-        scale = 1;
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
-        draw();
-    });
+    document.getElementById('fitBtn').addEventListener('click', fitToScreen);
 }
 
 // ─── Context menu ──────────────────────────────────────────────────────────────
@@ -782,7 +814,7 @@ function loadPipelineFromJson(pipelineJson) {
         pipelineData.variables   = pipelineJson.properties?.variables   || {};
         pipelineData.concurrency = pipelineJson.properties?.concurrency || 1;
 
-        const wrapper = document.getElementById('canvasWrapper');
+        const wrapper = document.getElementById('worldContainer');
         const activityMap = new Map();
 
         src.forEach((ad, index) => {
@@ -852,9 +884,9 @@ function loadPipelineFromJson(pipelineJson) {
             });
         });
 
-        draw();
         showProperties(null);
         log(`Loaded ${activities.length} activities from "${pipelineData.name}"`);
+        fitToScreen();
 
         // Mark clean after load
         isDirty = false;
@@ -887,7 +919,7 @@ window.addEventListener('message', event => {
     }
 
     if (msg.type === 'addActivity') {
-        const wrapper = document.getElementById('canvasWrapper');
+        const wrapper = document.getElementById('worldContainer');
         const a = new Activity(msg.activityType, 100, 100 + activities.length * 30, wrapper);
         activities.push(a);
         markAsDirty();

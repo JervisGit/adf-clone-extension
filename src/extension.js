@@ -1,5 +1,6 @@
 const vscode = require('vscode');
 const { PipelineEditorProvider } = require('./pipelineEditor');
+const { PipelineEditorV2Provider } = require('./pipelineEditorV2');
 const { TriggerEditorProvider } = require('./triggerEditor');
 const { DatasetEditorProvider } = require('./datasetEditor');
 const { PipelineTreeDataProvider } = require('./pipelineTreeProvider');
@@ -22,6 +23,21 @@ function activate(context) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand('adf-pipeline-clone.openPipeline', () => {
 			editorProvider.createOrShow();
+		})
+	);
+
+	// Register the V2 pipeline editor provider (parallel view, save disabled)
+	const editorV2Provider = new PipelineEditorV2Provider(context);
+	context.subscriptions.push(
+		vscode.commands.registerCommand('adf-pipeline-clone.openPipelineV2', () => {
+			editorV2Provider.createOrShow();
+		})
+	);
+	context.subscriptions.push(
+		vscode.commands.registerCommand('adf-pipeline-clone.openPipelineFileV2', (item) => {
+			if (item && item.filePath) {
+				editorV2Provider.loadPipelineFile(item.filePath);
+			}
 		})
 	);
 

@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src {{CSP_SOURCE}} 'unsafe-inline'; script-src {{CSP_SOURCE}};">
+    <link rel="stylesheet" href="{{CSS_URI}}">
+    <title>Pipeline Editor V2</title>
+</head>
+<body>
+    <div class="v2-banner">
+        ⚗ V2 Editor Preview — Canvas view only. Save is disabled. Activity editing is being migrated activity by activity.
+    </div>
+
+    <div class="container">
+        <div class="main-content">
+            <!-- Sidebar with Activities -->
+            <div class="sidebar">
+                <div class="sidebar-header">Activities</div>
+                <div id="sidebarCategories">
+                    <div class="empty-state" style="padding:16px;font-size:12px;">Loading...</div>
+                </div>
+            </div>
+
+            <!-- Canvas Area -->
+            <div class="canvas-container">
+                <div class="toolbar">
+                    <div id="breadcrumb" style="flex:1;padding:0 12px;font-size:13px;">
+                        <span style="font-weight:600;">Pipeline</span>
+                    </div>
+                    <button class="toolbar-button" id="saveBtn" title="Save not yet available in V2 preview">Save (N/A)</button>
+                    <button class="toolbar-button" id="clearBtn">Clear</button>
+                    <button class="toolbar-button" id="zoomInBtn">Zoom In</button>
+                    <button class="toolbar-button" id="zoomOutBtn">Zoom Out</button>
+                    <button class="toolbar-button" id="fitBtn">Fit to Screen</button>
+                    <div class="toolbar-spacer"></div>
+                    <button class="expand-properties-btn" id="expandPropertiesBtn" onclick="toggleProperties()">Properties</button>
+                </div>
+                <div class="canvas-wrapper" id="canvasWrapper">
+                    <canvas id="canvas"></canvas>
+                </div>
+            </div>
+
+            <!-- Properties Panel (Right Sidebar) -->
+            <div class="properties-panel" id="propertiesPanel">
+                <div class="properties-header">
+                    <span id="propertiesPanelTitle">Pipeline Properties</span>
+                    <button class="properties-collapse-btn" onclick="toggleProperties()" title="Collapse">»</button>
+                </div>
+                <div id="propertiesContent" class="properties-content">
+                    <div class="empty-state">Select an activity to view its properties.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Configuration Panel (Bottom) -->
+    <div class="config-panel" style="position:fixed;bottom:0;left:0;right:0;height:250px;background:var(--vscode-panel-background);border-top:1px solid var(--vscode-panel-border);display:flex;flex-direction:column;z-index:100;">
+        <div class="config-tabs" id="configTabs">
+            <button class="config-tab pipeline-tab active" data-tab="parameters">Parameters</button>
+            <button class="config-tab pipeline-tab" data-tab="pipeline-variables">Variables</button>
+            <button class="config-tab pipeline-tab" data-tab="pipeline-settings">Settings</button>
+            <div id="activityTabsContainer"></div>
+            <button class="config-collapse-btn" id="configCollapseBtn" onclick="toggleConfig()">»</button>
+        </div>
+        <div class="config-content" id="configContent" style="flex:1;overflow-y:auto;padding:16px;background:var(--vscode-editor-background);">
+            <div class="config-tab-pane pipeline-pane active" id="tab-parameters">
+                <div style="font-weight:600;margin-bottom:12px;">Pipeline Parameters</div>
+                <div id="parametersList"><div class="empty-state">No parameters defined.</div></div>
+            </div>
+            <div class="config-tab-pane pipeline-pane" id="tab-pipeline-variables">
+                <div style="font-weight:600;margin-bottom:12px;">Pipeline Variables</div>
+                <div id="variablesList"><div class="empty-state">No variables defined.</div></div>
+            </div>
+            <div class="config-tab-pane pipeline-pane" id="tab-pipeline-settings">
+                <div style="font-weight:600;margin-bottom:12px;">Pipeline Settings</div>
+                <div class="property-group">
+                    <div class="property-label">Concurrency</div>
+                    <input type="number" id="concurrencyInput" class="property-input" min="1" style="width:100px;" disabled>
+                </div>
+            </div>
+            <div id="activityPanesContainer"></div>
+        </div>
+    </div>
+
+    <!-- Context Menu -->
+    <div class="context-menu" id="contextMenu">
+        <div class="context-menu-item" data-action="delete">Delete</div>
+        <div class="context-menu-separator"></div>
+        <div class="context-menu-item" data-action="copy">Copy</div>
+        <div class="context-menu-item" data-action="paste">Paste</div>
+    </div>
+
+    <script src="{{SCRIPT_URI}}"></script>
+</body>
+</html>

@@ -34,7 +34,7 @@
                     <button class="toolbar-button" id="zoomOutBtn">Zoom Out</button>
                     <button class="toolbar-button" id="fitBtn">Fit to Screen</button>
                     <div class="toolbar-spacer"></div>
-                    <button class="expand-properties-btn" id="expandPropertiesBtn" onclick="toggleProperties()">Properties</button>
+                    <button class="expand-properties-btn" id="expandPropertiesBtn">Properties</button>
                 </div>
                 <div class="canvas-wrapper" id="canvasWrapper">
                     <canvas id="canvas"></canvas>
@@ -45,7 +45,7 @@
             <div class="properties-panel" id="propertiesPanel">
                 <div class="properties-header">
                     <span id="propertiesPanelTitle">Pipeline Properties</span>
-                    <button class="properties-collapse-btn" onclick="toggleProperties()" title="Collapse">»</button>
+                    <button class="properties-collapse-btn" id="propertiesCollapseBtn" title="Collapse">»</button>
                 </div>
                 <div id="propertiesContent" class="properties-content">
                     <div class="empty-state">Select an activity to view its properties.</div>
@@ -61,7 +61,7 @@
             <button class="config-tab pipeline-tab" data-tab="pipeline-variables">Variables</button>
             <button class="config-tab pipeline-tab" data-tab="pipeline-settings">Settings</button>
             <div id="activityTabsContainer"></div>
-            <button class="config-collapse-btn" id="configCollapseBtn" onclick="toggleConfig()">»</button>
+            <button class="config-collapse-btn" id="configCollapseBtn">»</button>
         </div>
         <div class="config-content" id="configContent" style="flex:1;overflow-y:auto;padding:16px;background:var(--vscode-editor-background);">
             <div class="config-tab-pane pipeline-pane active" id="tab-parameters">

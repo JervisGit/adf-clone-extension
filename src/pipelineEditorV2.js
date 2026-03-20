@@ -2,7 +2,7 @@ const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
 const activitiesConfig = require('./activities-config-verified.json');
-const activitySchemas = require('./activity-schemas.json');
+const activitySchemas = require('./activity-schemas-v2.json');
 const copyActivityConfig = require('./copy-activity-config.json');
 
 class PipelineEditorV2Provider {

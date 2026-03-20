@@ -71,7 +71,7 @@ function buildSidebar() {
     const container = document.getElementById('sidebarCategories');
     container.innerHTML = activitiesConfig.categories.map(cat => `
         <div class="activity-group collapsed">
-            <div class="activity-group-title" onclick="toggleCategory(this)">
+            <div class="activity-group-title">
                 <span class="category-arrow">▼</span> ${escHtml(cat.name)}
             </div>
             <div class="activity-group-content">
@@ -82,6 +82,13 @@ function buildSidebar() {
                     </div>`).join('')}
             </div>
         </div>`).join('');
+
+    // Attach category collapse toggles via event delegation (CSP: no inline onclick)
+    container.querySelectorAll('.activity-group-title').forEach(title => {
+        title.addEventListener('click', () => {
+            title.closest('.activity-group').classList.toggle('collapsed');
+        });
+    });
 
     // Attach drag events
     container.querySelectorAll('.activity-item').forEach(item => {
@@ -120,6 +127,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if (pane) { pane.classList.add('active'); pane.style.display = 'block'; }
         });
     });
+
+    // Panel toggles
+    document.getElementById('expandPropertiesBtn').addEventListener('click', toggleProperties);
+    document.getElementById('propertiesCollapseBtn').addEventListener('click', toggleProperties);
+    document.getElementById('configCollapseBtn').addEventListener('click', toggleConfig);
 
     // Canvas setup
     canvas = document.getElementById('canvas');

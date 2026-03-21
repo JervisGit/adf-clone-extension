@@ -173,8 +173,8 @@ function serializeActivity(flat) {
 	if (flat.description)       output.description      = flat.description;
 	if (flat.state)             output.state            = flat.state;
 	if (flat.onInactiveMarkAs)  output.onInactiveMarkAs = flat.onInactiveMarkAs;
-	if (flat.dependsOn?.length) output.dependsOn        = flat.dependsOn;
-	if (flat.userProperties?.length) output.userProperties = flat.userProperties;
+	output.dependsOn      = flat.dependsOn      || [];
+	output.userProperties = flat.userProperties || [];
 
 	const FIELD_GROUPS = ['commonProperties', 'typeProperties', 'sourceProperties', 'sinkProperties', 'advancedProperties'];
 
@@ -296,9 +296,10 @@ function validateActivityList(activities) {
 	for (const a of (activities || [])) {
 		const errs = validateActivity(a);
 		if (errs.length) allErrors[a.name || String(a.id)] = errs;
-		// Recurse into container children (raw arrays — validate as best we can)
+		// Recurse into container children only when they are already deserialized (flat format).
+		// Raw ADF JSON arrays still have typeProperties — skip those to avoid false validation errors.
 		for (const key of ['activities', 'ifTrueActivities', 'ifFalseActivities', 'defaultActivities']) {
-			if (Array.isArray(a[key]) && a[key].length > 0 && a[key][0].type) {
+			if (Array.isArray(a[key]) && a[key].length > 0 && a[key][0].type && !a[key][0].typeProperties) {
 				Object.assign(allErrors, validateActivityList(a[key]));
 			}
 		}
@@ -356,13 +357,7 @@ const TRANSFORMERS = {
 		serialize(flat, output) {
 			if (!output.typeProperties) output.typeProperties = {};
 			output.typeProperties.snapshot = true;
-			if (flat.dynamicAllocation === undefined) {
-				// Activity loaded via V1 path — conf is already the raw ADF object on flat; preserve it
-				if (flat.conf && typeof flat.conf === 'object') {
-					output.typeProperties.conf = flat.conf;
-				}
-				return;
-			}
+			if (flat.dynamicAllocation === undefined) return;
 
 			const enabled = flat.dynamicAllocation === 'Enabled';
 			output.typeProperties.conf = output.typeProperties.conf || {};
@@ -441,15 +436,7 @@ const TRANSFORMERS = {
 	// Disk: typeProperties.authentication.{type, username, password, ...}
 	webAuthentication: {
 		serialize(flat, output) {
-			if (!flat.authenticationType) {
-				// Activity loaded via V1 path — authentication is already the raw ADF object on flat; preserve it
-				if (flat.authentication && typeof flat.authentication === 'object') {
-					if (!output.typeProperties) output.typeProperties = {};
-					output.typeProperties.authentication = flat.authentication;
-				}
-				return;
-			}
-			if (flat.authenticationType === 'None') return;
+			if (!flat.authenticationType || flat.authenticationType === 'None') return;
 			if (!output.typeProperties) output.typeProperties = {};
 			const auth = { type: flat.authenticationType };
 			switch (flat.authenticationType) {

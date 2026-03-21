@@ -703,6 +703,41 @@
         ],
         "default": "Activated",
         "jsonPath": "@state"
+      },
+      "timeout": {
+        "type": "string",
+        "label": "Timeout",
+        "default": "0.12:00:00",
+        "section": "policy",
+        "jsonPath": "policy.timeout"
+      },
+      "retry": {
+        "type": "number",
+        "label": "Retry",
+        "default": 0,
+        "section": "policy",
+        "jsonPath": "policy.retry"
+      },
+      "retryIntervalInSeconds": {
+        "type": "number",
+        "label": "Retry interval (seconds)",
+        "default": 30,
+        "section": "policy",
+        "jsonPath": "policy.retryIntervalInSeconds"
+      },
+      "secureOutput": {
+        "type": "boolean",
+        "label": "Secure output",
+        "default": false,
+        "section": "policy",
+        "jsonPath": "policy.secureOutput"
+      },
+      "secureInput": {
+        "type": "boolean",
+        "label": "Secure input",
+        "default": false,
+        "section": "policy",
+        "jsonPath": "policy.secureInput"
       }
     },
     "typeProperties": {
@@ -732,6 +767,11 @@
           "value": false
         },
         "jsonPath": "typeProperties.batchCount"
+      },
+      "activities": {
+        "type": "containerActivities",
+        "label": "Activities",
+        "jsonPath": "typeProperties.activities"
       }
     }
   },
@@ -765,6 +805,41 @@
         ],
         "default": "Activated",
         "jsonPath": "@state"
+      },
+      "timeout": {
+        "type": "string",
+        "label": "Timeout",
+        "default": "0.12:00:00",
+        "section": "policy",
+        "jsonPath": "policy.timeout"
+      },
+      "retry": {
+        "type": "number",
+        "label": "Retry",
+        "default": 0,
+        "section": "policy",
+        "jsonPath": "policy.retry"
+      },
+      "retryIntervalInSeconds": {
+        "type": "number",
+        "label": "Retry interval (seconds)",
+        "default": 30,
+        "section": "policy",
+        "jsonPath": "policy.retryIntervalInSeconds"
+      },
+      "secureOutput": {
+        "type": "boolean",
+        "label": "Secure output",
+        "default": false,
+        "section": "policy",
+        "jsonPath": "policy.secureOutput"
+      },
+      "secureInput": {
+        "type": "boolean",
+        "label": "Secure input",
+        "default": false,
+        "section": "policy",
+        "jsonPath": "policy.secureInput"
       }
     },
     "typeProperties": {
@@ -782,6 +857,11 @@
         "default": "0.12:00:00",
         "placeholder": "0.12:00:00",
         "jsonPath": "typeProperties.timeout"
+      },
+      "activities": {
+        "type": "containerActivities",
+        "label": "Activities",
+        "jsonPath": "typeProperties.activities"
       }
     }
   },
@@ -815,6 +895,41 @@
         ],
         "default": "Activated",
         "jsonPath": "@state"
+      },
+      "timeout": {
+        "type": "string",
+        "label": "Timeout",
+        "default": "0.12:00:00",
+        "section": "policy",
+        "jsonPath": "policy.timeout"
+      },
+      "retry": {
+        "type": "number",
+        "label": "Retry",
+        "default": 0,
+        "section": "policy",
+        "jsonPath": "policy.retry"
+      },
+      "retryIntervalInSeconds": {
+        "type": "number",
+        "label": "Retry interval (seconds)",
+        "default": 30,
+        "section": "policy",
+        "jsonPath": "policy.retryIntervalInSeconds"
+      },
+      "secureOutput": {
+        "type": "boolean",
+        "label": "Secure output",
+        "default": false,
+        "section": "policy",
+        "jsonPath": "policy.secureOutput"
+      },
+      "secureInput": {
+        "type": "boolean",
+        "label": "Secure input",
+        "default": false,
+        "section": "policy",
+        "jsonPath": "policy.secureInput"
       }
     },
     "typeProperties": {
@@ -825,6 +940,16 @@
         "placeholder": "@equals(pipeline().parameters.value, 'expected')",
         "helpText": "Boolean expression to evaluate",
         "jsonPath": "typeProperties.expression"
+      },
+      "ifTrueActivities": {
+        "type": "containerActivities",
+        "label": "If True Activities",
+        "jsonPath": "typeProperties.ifTrueActivities"
+      },
+      "ifFalseActivities": {
+        "type": "containerActivities",
+        "label": "If False Activities",
+        "jsonPath": "typeProperties.ifFalseActivities"
       }
     }
   },
@@ -858,6 +983,41 @@
         ],
         "default": "Activated",
         "jsonPath": "@state"
+      },
+      "timeout": {
+        "type": "string",
+        "label": "Timeout",
+        "default": "0.12:00:00",
+        "section": "policy",
+        "jsonPath": "policy.timeout"
+      },
+      "retry": {
+        "type": "number",
+        "label": "Retry",
+        "default": 0,
+        "section": "policy",
+        "jsonPath": "policy.retry"
+      },
+      "retryIntervalInSeconds": {
+        "type": "number",
+        "label": "Retry interval (seconds)",
+        "default": 30,
+        "section": "policy",
+        "jsonPath": "policy.retryIntervalInSeconds"
+      },
+      "secureOutput": {
+        "type": "boolean",
+        "label": "Secure output",
+        "default": false,
+        "section": "policy",
+        "jsonPath": "policy.secureOutput"
+      },
+      "secureInput": {
+        "type": "boolean",
+        "label": "Secure input",
+        "default": false,
+        "section": "policy",
+        "jsonPath": "policy.secureInput"
       }
     },
     "typeProperties": {
@@ -868,6 +1028,11 @@
         "placeholder": "@pipeline().parameters.channel",
         "helpText": "Expression whose value determines which case to execute",
         "jsonPath": "typeProperties.on"
+      },
+      "cases": {
+        "type": "switchCases",
+        "label": "Cases",
+        "jsonPath": "typeProperties.cases"
       }
     }
   },

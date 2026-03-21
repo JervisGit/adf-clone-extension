@@ -879,7 +879,7 @@ function _buildSettingsPane(a) {
 }
 
 // ─── Load pipeline from JSON ───────────────────────────────────────────────────
-function loadPipelineFromJson(pipelineJson) {
+function loadPipelineFromJson(pipelineJson, flatActivities) {
     try {
         activities.forEach(a => a.remove());
         activities = [];
@@ -896,61 +896,37 @@ function loadPipelineFromJson(pipelineJson) {
         const wrapper = document.getElementById('worldContainer');
         const activityMap = new Map();
 
-        src.forEach((ad, index) => {
+        // flatActivities: pre-deserialized flat objects from the extension host (engine.deserializeActivity).
+        // Falls back to raw ADF JSON for unsupported types (same index order as src).
+        const flats = flatActivities || src;
+
+        flats.forEach((flat, index) => {
             const cols = 3;
             const x = 100 + (index % cols) * 210;
             const y = 100 + Math.floor(index / cols) * 160;
-            const a = new Activity(ad.type, x, y, wrapper);
-            a.name = ad.name;
+
+            const a = new Activity(flat.type, x, y, wrapper);
+
+            // Copy all flat fields onto the activity object.
+            // For pre-deserialized objects these are clean UI fields (e.g. dynamicAllocation, minExecutors).
+            // For raw pass-through objects (unsupported types) this mirrors the old Object.assign behaviour.
+            for (const key of Object.keys(flat)) {
+                if (key === 'id') continue; // keep Activity's own id
+                a[key] = flat[key];
+            }
+
             a.refreshNameLabel();
-            a.description = ad.description || '';
-            a.userProperties = ad.userProperties || [];
-            if (ad.state) a.state = ad.state;
-            if (ad.onInactiveMarkAs) a.onInactiveMarkAs = ad.onInactiveMarkAs;
-            if (ad.policy) {
-                a.timeout = ad.policy.timeout;
-                a.retry = ad.policy.retry;
-                a.retryIntervalInSeconds = ad.policy.retryIntervalInSeconds;
-                a.secureOutput = ad.policy.secureOutput;
-                a.secureInput = ad.policy.secureInput;
-            }
 
-            // Flatten typeProperties onto the activity object for the properties panel
-            if (ad.typeProperties) {
-                Object.assign(a, ad.typeProperties);
-            }
-
-            // Store child activity arrays for container types (read-only in Step 1)
-            if (ad.type === 'IfCondition' && ad.typeProperties) {
-                a.expression = ad.typeProperties.expression?.value ?? ad.typeProperties.expression ?? '';
-                a.ifTrueActivities = ad.typeProperties.ifTrueActivities || [];
-                a.ifFalseActivities = ad.typeProperties.ifFalseActivities || [];
-            }
-            if (ad.type === 'ForEach' && ad.typeProperties) {
-                a.items = ad.typeProperties.items?.value ?? ad.typeProperties.items ?? '';
-                a.activities = ad.typeProperties.activities || [];
-            }
-            if (ad.type === 'Until' && ad.typeProperties) {
-                a.expression = ad.typeProperties.expression?.value ?? ad.typeProperties.expression ?? '';
-                a.activities = ad.typeProperties.activities || [];
-            }
-            if (ad.type === 'Switch' && ad.typeProperties) {
-                a.on = ad.typeProperties.on?.value ?? ad.typeProperties.on ?? '';
-                a.cases = ad.typeProperties.cases || [];
-                a.defaultActivities = ad.typeProperties.defaultActivities || [];
-            }
-
-            // Refresh container info display if needed
             if (a.isContainer) {
                 const infoEl = a.element?.querySelector('[data-info-el]');
                 if (infoEl) a._refreshContainerInfo(infoEl);
             }
 
             activities.push(a);
-            activityMap.set(ad.name, a);
+            activityMap.set(a.name, a);
         });
 
-        // Build connections from dependsOn
+        // Build connections from dependsOn (use raw src which always has dependsOn)
         src.forEach(ad => {
             if (!ad.dependsOn?.length) return;
             const toActivity = activityMap.get(ad.name);
@@ -966,10 +942,8 @@ function loadPipelineFromJson(pipelineJson) {
 
         showProperties(null);
         log(`Loaded ${activities.length} activities from "${pipelineData.name}"`);
-        // Defer fit until after paint so offsetWidth/Height are accurate
         setTimeout(fitToScreen, 0);
 
-        // Mark clean after load
         isDirty = false;
         vscode.postMessage({ type: 'contentChanged', isDirty: false });
     } catch (err) {
@@ -996,7 +970,7 @@ window.addEventListener('message', event => {
 
     if (msg.type === 'loadPipeline') {
         currentFilePath = msg.filePath || null;
-        loadPipelineFromJson(msg.data);
+        loadPipelineFromJson(msg.data, msg.flatActivities);
     }
 
     if (msg.type === 'saveResult') {

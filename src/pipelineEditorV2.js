@@ -166,7 +166,18 @@ class PipelineEditorV2Provider {
 		try {
 			const content = fs.readFileSync(filePath, 'utf8');
 			const pipelineJson = JSON.parse(content);
-			const msg = { type: 'loadPipeline', data: pipelineJson, filePath };
+
+			// Deserialize activities to flat canvas objects before sending to webview.
+			// Supported types go through engine.deserializeActivity(); unsupported types
+			// are passed through as raw ADF JSON so they can still be placed on the canvas.
+			const rawActivities = pipelineJson.properties?.activities || pipelineJson.activities || [];
+			const flatActivities = rawActivities.map(raw =>
+				engine.isActivityTypeSupported(raw.type)
+					? engine.deserializeActivity(raw)
+					: raw
+			);
+
+			const msg = { type: 'loadPipeline', data: pipelineJson, flatActivities, filePath };
 
 			const panel = this.createOrShow(filePath);
 

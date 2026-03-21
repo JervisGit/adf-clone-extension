@@ -68,19 +68,45 @@ function zoomBy(factor, cx, cy) {
 }
 
 function fitToScreen() {
-    const wrapper = document.getElementById('canvasWrapper');
     if (activities.length === 0) { scale = 1; tx = 20; ty = 20; applyTransform(); draw(); return; }
-    const padding = 60;
+
+    // Measure available canvas area using window dimensions for reliability
+    const sidebarEl  = document.querySelector('.sidebar');
+    const propsEl    = document.getElementById('propertiesPanel');
+    const toolbarEl  = document.querySelector('.toolbar');
+    const bannerEl   = document.querySelector('.v2-banner');
+    const configEl   = document.querySelector('.config-panel');
+
+    const sidebarW = sidebarEl ? sidebarEl.offsetWidth : 250;
+    const propsW   = (propsEl && !propsEl.classList.contains('collapsed')) ? (propsEl.offsetWidth || 300) : 0;
+    const toolbarH = toolbarEl ? toolbarEl.offsetHeight : 48;
+    const bannerH  = bannerEl  ? bannerEl.offsetHeight  : 27;
+    const configH  = configEl  ? configEl.offsetHeight  : 40;
+
+    const vW = window.innerWidth  - sidebarW - propsW;
+    const vH = window.innerHeight - bannerH - toolbarH - configH;
+
+    if (vW < 80 || vH < 40) {
+        log(`fitToScreen: retrying (vW=${vW} vH=${vH})`);
+        setTimeout(fitToScreen, 80);
+        return;
+    }
+
+    const padding = 40;
+    const ACT_W = 180, ACT_H = 90;
     const minX = Math.min(...activities.map(a => a.x));
     const minY = Math.min(...activities.map(a => a.y));
-    const maxX = Math.max(...activities.map(a => a.x + a.width));
-    const maxY = Math.max(...activities.map(a => a.y + a.height));
-    const worldW = maxX - minX || 1;
-    const worldH = maxY - minY || 1;
-    const viewW = wrapper.clientWidth - padding * 2;
-    const viewH = wrapper.clientHeight - padding * 2;
-    scale = Math.min(viewW / worldW, viewH / worldH, 2);
-    scale = Math.max(0.1, scale);
+    const maxX = Math.max(...activities.map(a => a.x + ACT_W));
+    const maxY = Math.max(...activities.map(a => a.y + ACT_H));
+    const worldW = Math.max(maxX - minX, 1);
+    const worldH = Math.max(maxY - minY, 1);
+
+    const viewW = vW - padding * 2;
+    const viewH = vH - padding * 2;
+    log(`fitToScreen: world=${worldW}x${worldH} view=${viewW}x${viewH} window=${window.innerWidth}x${window.innerHeight} sidebar=${sidebarW} props=${propsW}`);
+
+    scale = Math.min(viewW / worldW, viewH / worldH, 1.0);
+    scale = Math.max(0.15, scale);
     tx = padding - minX * scale;
     ty = padding - minY * scale;
     applyTransform();
@@ -97,8 +123,13 @@ function toggleProperties() {
 function toggleConfig() {
     const panel = document.querySelector('.config-panel');
     const btn = document.getElementById('configCollapseBtn');
+    const container = document.querySelector('.container');
     panel.classList.toggle('minimized');
-    btn.textContent = panel.classList.contains('minimized') ? '«' : '»';
+    const isMin = panel.classList.contains('minimized');
+    btn.textContent = isMin ? '«' : '»';
+    container.style.height = isMin ? 'calc(100vh - 27px - 40px)' : 'calc(100vh - 27px - 250px)';
+    // Re-fit after panel animates
+    setTimeout(fitToScreen, 220);
 }
 
 function toggleCategory(element) {
@@ -147,6 +178,8 @@ function buildSidebar() {
 
 // ─── Config panel tabs ─────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+    // Signal to extension host that the webview JS is ready to receive messages
+    vscode.postMessage({ type: 'ready' });
     document.querySelectorAll('.config-tab').forEach(tab => {
         tab.addEventListener('click', () => {
             const target = tab.getAttribute('data-tab');
@@ -172,6 +205,14 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('propertiesCollapseBtn').addEventListener('click', toggleProperties);
     document.getElementById('configCollapseBtn').addEventListener('click', toggleConfig);
 
+    // Start with properties panel collapsed and config panel minimized
+    // so the canvas gets maximum initial space
+    document.getElementById('propertiesPanel').classList.add('collapsed');
+    document.querySelector('.config-panel')?.classList.add('minimized');
+    document.getElementById('configCollapseBtn').textContent = '\u00ab';
+    // body.properties-visible controls whether the expand button shows
+    document.body.classList.remove('properties-visible');
+
     // Canvas setup
     canvas = document.getElementById('canvas');
     ctx = canvas.getContext('2d');
@@ -180,8 +221,6 @@ document.addEventListener('DOMContentLoaded', () => {
     setupCanvasEvents();
     setupToolbarButtons();
     setupContextMenu();
-
-    document.body.classList.add('properties-visible');
 });
 
 // ─── Canvas ────────────────────────────────────────────────────────────────────
@@ -698,6 +737,15 @@ function showProperties(activity) {
     const tabsContainer = document.getElementById('activityTabsContainer');
     const panesContainer = document.getElementById('activityPanesContainer');
 
+    // Auto-expand properties panel when something is selected
+    if (activity) {
+        const propsPanel = document.getElementById('propertiesPanel');
+        if (propsPanel.classList.contains('collapsed')) {
+            propsPanel.classList.remove('collapsed');
+            document.body.classList.add('properties-visible');
+        }
+    }
+
     // Show pipeline tabs when nothing selected
     document.querySelectorAll('.pipeline-tab').forEach(t => t.style.display = activity ? 'none' : '');
     document.querySelectorAll('.pipeline-pane').forEach(p => p.style.display = activity ? 'none' : '');
@@ -818,8 +866,9 @@ function loadPipelineFromJson(pipelineJson) {
         const activityMap = new Map();
 
         src.forEach((ad, index) => {
-            const x = 100 + (index % 5) * 210;
-            const y = 100 + Math.floor(index / 5) * 160;
+            const cols = 3;
+            const x = 100 + (index % cols) * 210;
+            const y = 100 + Math.floor(index / cols) * 160;
             const a = new Activity(ad.type, x, y, wrapper);
             a.name = ad.name;
             a.refreshNameLabel();
@@ -886,7 +935,8 @@ function loadPipelineFromJson(pipelineJson) {
 
         showProperties(null);
         log(`Loaded ${activities.length} activities from "${pipelineData.name}"`);
-        fitToScreen();
+        // Defer fit until after paint so offsetWidth/Height are accurate
+        setTimeout(fitToScreen, 0);
 
         // Mark clean after load
         isDirty = false;

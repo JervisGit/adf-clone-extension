@@ -6,9 +6,11 @@ const activitySchemas = require('./activity-schemas-v2.json');
 const copyActivityConfig = require('./copy-activity-config.json');
 
 class PipelineEditorV2Provider {
-	static panels = new Map();      // Map<filePath, panel>
-	static dirtyStates = new Map(); // Map<filePath, isDirty>
-	static stateCache = new Map();  // Map<filePath, pipelineData>
+	static panels = new Map();           // Map<filePath, panel>
+	static dirtyStates = new Map();      // Map<filePath, isDirty>
+	static stateCache = new Map();       // Map<filePath, pipelineData>
+	static initializedPanels = new Set(); // Set<filePath> — panels that sent 'ready'
+	static pendingLoads = new Map();     // Map<filePath, postMessage payload>
 
 	constructor(context) {
 		this.context = context;
@@ -56,12 +58,21 @@ class PipelineEditorV2Provider {
 
 		panel.webview.html = this._getHtmlContent(panel.webview);
 
-		// Post schemas once the panel has loaded
-		setImmediate(() => this._postInitSchemas(panel));
-
 		panel.webview.onDidReceiveMessage(
 			async message => {
 				switch (message.type) {
+					case 'ready':
+						// Webview is initialised — send schemas, then any queued pipeline load
+						if (!PipelineEditorV2Provider.initializedPanels.has(filePath)) {
+							if (filePath) PipelineEditorV2Provider.initializedPanels.add(filePath);
+							this._postInitSchemas(panel);
+							const pending = filePath && PipelineEditorV2Provider.pendingLoads.get(filePath);
+							if (pending) {
+								PipelineEditorV2Provider.pendingLoads.delete(filePath);
+								panel.webview.postMessage(pending);
+							}
+						}
+						break;
 					case 'alert':
 						vscode.window.showInformationMessage(message.text);
 						break;
@@ -96,6 +107,8 @@ class PipelineEditorV2Provider {
 					PipelineEditorV2Provider.panels.delete(filePath);
 					PipelineEditorV2Provider.dirtyStates.delete(filePath);
 					PipelineEditorV2Provider.stateCache.delete(filePath);
+					PipelineEditorV2Provider.initializedPanels.delete(filePath);
+					PipelineEditorV2Provider.pendingLoads.delete(filePath);
 				}
 			},
 			null,
@@ -106,18 +119,20 @@ class PipelineEditorV2Provider {
 	}
 
 	loadPipelineFile(filePath) {
-		const panel = this.createOrShow(filePath);
 		try {
 			const content = fs.readFileSync(filePath, 'utf8');
 			const pipelineJson = JSON.parse(content);
-			// Small delay to let the webview JS finish initialising
-			setTimeout(() => {
-				panel.webview.postMessage({
-					type: 'loadPipeline',
-					data: pipelineJson,
-					filePath
-				});
-			}, 300);
+			const msg = { type: 'loadPipeline', data: pipelineJson, filePath };
+
+			const panel = this.createOrShow(filePath);
+
+			if (PipelineEditorV2Provider.initializedPanels.has(filePath)) {
+				// Webview already ready — post directly
+				panel.webview.postMessage(msg);
+			} else {
+				// Webview not yet ready — queue; will be sent when 'ready' is received
+				PipelineEditorV2Provider.pendingLoads.set(filePath, msg);
+			}
 		} catch (error) {
 			vscode.window.showErrorMessage(`Failed to load pipeline: ${error.message}`);
 		}

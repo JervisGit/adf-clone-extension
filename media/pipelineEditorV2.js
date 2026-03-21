@@ -49,6 +49,25 @@ function markAsDirty() {
     }
 }
 
+function markAsClean() {
+    isDirty = false;
+    vscode.postMessage({ type: 'contentChanged', isDirty: false });
+}
+
+// Strip canvas-only / non-serializable properties before sending to extension host for save
+const CANVAS_ONLY_KEYS = new Set(['element', 'container', 'color', 'isContainer', 'x', 'y', 'width', 'height', 'id']);
+function toSaveData(a) {
+    const obj = {};
+    for (const key of Object.keys(a)) {
+        if (CANVAS_ONLY_KEYS.has(key)) continue;
+        const val = a[key];
+        if (typeof val === 'function') continue;
+        if (val instanceof EventTarget) continue;
+        obj[key] = val;
+    }
+    return obj;
+}
+
 function applyTransform() {
     document.getElementById('worldContainer').style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
 }
@@ -640,8 +659,20 @@ function setupCanvasEvents() {
 
 // ─── Toolbar ────────────────────────────────────────────────────────────────────
 function setupToolbarButtons() {
-    document.getElementById('saveBtn').addEventListener('click', () => {
-        vscode.postMessage({ type: 'saveNotImplemented' });
+    const saveBtn = document.getElementById('saveBtn');
+    saveBtn.addEventListener('click', () => {
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving…';
+        vscode.postMessage({
+            type: 'savePipeline',
+            pipelineData,
+            activities: activities.map(toSaveData),
+            connections: connections.map(c => ({
+                fromName: c.from.name,
+                toName:   c.to.name,
+                condition: c.condition,
+            })),
+        });
     });
 
     document.getElementById('clearBtn').addEventListener('click', () => {
@@ -966,6 +997,13 @@ window.addEventListener('message', event => {
     if (msg.type === 'loadPipeline') {
         currentFilePath = msg.filePath || null;
         loadPipelineFromJson(msg.data);
+    }
+
+    if (msg.type === 'saveResult') {
+        const saveBtn = document.getElementById('saveBtn');
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save';
+        if (msg.success) markAsClean();
     }
 
     if (msg.type === 'addActivity') {

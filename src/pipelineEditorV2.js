@@ -4,6 +4,7 @@ const path = require('path');
 const activitiesConfig = require('./activities-config-verified.json');
 const activitySchemas = require('./activity-schemas-v2.json');
 const copyActivityConfig = require('./copy-activity-config.json');
+const engine = require('./activityEngine/engine');
 
 class PipelineEditorV2Provider {
 	static panels = new Map();           // Map<filePath, panel>
@@ -87,11 +88,54 @@ class PipelineEditorV2Provider {
 							PipelineEditorV2Provider.stateCache.set(filePath, message.data);
 						}
 						break;
-					case 'saveNotImplemented':
-						vscode.window.showInformationMessage(
-							'Save is not yet available in the V2 editor. Use the original editor (right-click pipeline → Open Pipeline File) to save changes.'
-						);
+					case 'savePipeline': {
+						try {
+							// Check all activity types are supported before attempting serialization
+							const unsupported = [...new Set(
+								(message.activities || []).map(a => a.type).filter(t => !engine.isActivityTypeSupported(t))
+							)];
+							if (unsupported.length) {
+								vscode.window.showErrorMessage(
+									`Cannot save: activity type(s) not yet supported in V2 editor: ${unsupported.join(', ')}. ` +
+									'Use the original editor for pipelines with these activities.'
+								);
+								panel.webview.postMessage({ type: 'saveResult', success: false });
+								break;
+							}
+
+							// Validate — warn but let the user choose to save anyway
+							const errors = engine.validateActivityList(message.activities || []);
+							if (Object.keys(errors).length > 0) {
+								const summary = Object.entries(errors)
+									.map(([name, errs]) => `${name}: ${errs.join(', ')}`)
+									.join('; ');
+								const choice = await vscode.window.showWarningMessage(
+									`Validation warnings — ${summary}. Save anyway?`,
+									'Save', 'Cancel'
+								);
+								if (choice !== 'Save') {
+									panel.webview.postMessage({ type: 'saveResult', success: false });
+									break;
+								}
+							}
+
+							// Serialize and write
+							const pipelineJson = engine.serializePipeline(
+								message.pipelineData,
+								message.activities,
+								message.connections
+							);
+							if (!filePath) throw new Error('No file path associated with this panel');
+							fs.writeFileSync(filePath, JSON.stringify(pipelineJson, null, 4), 'utf8');
+							panel.webview.postMessage({ type: 'saveResult', success: true });
+							vscode.window.showInformationMessage(`Saved: ${path.basename(filePath)}`);
+						} catch (err) {
+							console.error('[V2 Save]', err);
+							panel.webview.postMessage({ type: 'saveResult', success: false, error: err.message });
+							vscode.window.showErrorMessage(`V2 save failed: ${err.message}`);
+						}
 						break;
+					}
 					case 'log':
 						console.log('[V2 Webview]', message.text);
 						break;

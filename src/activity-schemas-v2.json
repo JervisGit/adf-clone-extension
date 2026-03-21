@@ -1,150 +1,709 @@
 {
   "SynapseNotebook": {
     "name": "Synapse Notebook",
-    "tabs": ["General", "Settings", "User Properties"],
+    "tabs": [
+      "General",
+      "Settings",
+      "User Properties"
+    ],
     "commonProperties": {
-      "name": { "type": "string", "label": "Name", "required": true },
-      "description": { "type": "string", "label": "Description", "multiline": true },
-      "state": { "type": "radio", "label": "Activity state", "options": ["Activated", "Deactivated"] },
-      "timeout": { "type": "string", "label": "Timeout", "default": "0.12:00:00", "section": "policy" },
-      "retry": { "type": "number", "label": "Retry", "default": 0, "section": "policy" },
-      "retryIntervalInSeconds": { "type": "number", "label": "Retry interval (seconds)", "default": 30, "section": "policy" },
-      "secureOutput": { "type": "boolean", "label": "Secure output", "default": false, "section": "policy" },
-      "secureInput": { "type": "boolean", "label": "Secure input", "default": false, "section": "policy" }
+      "name": {
+        "type": "string",
+        "label": "Name",
+        "required": true,
+        "jsonPath": "@name"
+      },
+      "description": {
+        "type": "string",
+        "label": "Description",
+        "multiline": true,
+        "jsonPath": "@description"
+      },
+      "state": {
+        "type": "radio",
+        "label": "Activity state",
+        "options": [
+          "Activated",
+          "Deactivated"
+        ],
+        "jsonPath": "@state"
+      },
+      "timeout": {
+        "type": "string",
+        "label": "Timeout",
+        "default": "0.12:00:00",
+        "section": "policy",
+        "jsonPath": "policy.timeout"
+      },
+      "retry": {
+        "type": "number",
+        "label": "Retry",
+        "default": 0,
+        "section": "policy",
+        "jsonPath": "policy.retry"
+      },
+      "retryIntervalInSeconds": {
+        "type": "number",
+        "label": "Retry interval (seconds)",
+        "default": 30,
+        "section": "policy",
+        "jsonPath": "policy.retryIntervalInSeconds"
+      },
+      "secureOutput": {
+        "type": "boolean",
+        "label": "Secure output",
+        "default": false,
+        "section": "policy",
+        "jsonPath": "policy.secureOutput"
+      },
+      "secureInput": {
+        "type": "boolean",
+        "label": "Secure input",
+        "default": false,
+        "section": "policy",
+        "jsonPath": "policy.secureInput"
+      }
     },
     "typeProperties": {
-      "notebook": { "type": "text", "label": "Notebook", "required": true, "placeholder": "Enter notebook name" },
-      "parameters": { "type": "keyvalue", "label": "Base parameters", "valueTypes": ["string", "int", "float", "bool"] },
-      "sparkPool": { "type": "text", "label": "Spark pool", "placeholder": "Enter Spark pool name" },
-      "executorSize": { "type": "select", "label": "Executor size", "options": ["Small", "Medium", "Large", "XLarge", "XXLarge"], "placeholder": "Select..." },
-      "driverSize": { "type": "text", "label": "Driver size", "readonly": true, "placeholder": "Select..." },
-      "dynamicAllocation": { "type": "radio", "label": "Dynamically allocate executors", "options": ["Enabled", "Disabled"] },
-      "minExecutors": { "type": "number", "label": "Min executors", "min": 1, "conditional": { "field": "dynamicAllocation", "value": "Enabled" } },
-      "maxExecutors": { "type": "number", "label": "Max executors", "min": 1, "conditional": { "field": "dynamicAllocation", "value": "Enabled" } },
-      "numExecutors": { "type": "number", "label": "Number of executors", "min": 1, "conditional": { "field": "dynamicAllocation", "value": "Disabled" } }
+      "notebook": {
+        "type": "text",
+        "label": "Notebook",
+        "required": true,
+        "placeholder": "Enter notebook name",
+        "jsonPath": "typeProperties.notebook"
+      },
+      "parameters": {
+        "type": "keyvalue",
+        "label": "Base parameters",
+        "valueTypes": [
+          "string",
+          "int",
+          "float",
+          "bool"
+        ],
+        "jsonPath": "typeProperties.parameters"
+      },
+      "sparkPool": {
+        "type": "text",
+        "label": "Spark pool",
+        "placeholder": "Enter Spark pool name",
+        "jsonPath": "typeProperties.sparkPool"
+      },
+      "executorSize": {
+        "type": "select",
+        "label": "Executor size",
+        "options": [
+          "Small",
+          "Medium",
+          "Large",
+          "XLarge",
+          "XXLarge"
+        ],
+        "placeholder": "Select...",
+        "jsonPath": "typeProperties.executorSize"
+      },
+      "driverSize": {
+        "type": "text",
+        "label": "Driver size",
+        "readonly": true,
+        "placeholder": "Select...",
+        "jsonPath": "typeProperties.driverSize"
+      },
+      "dynamicAllocation": {
+        "type": "radio",
+        "label": "Dynamically allocate executors",
+        "options": [
+          "Enabled",
+          "Disabled"
+        ],
+        "jsonPath": "typeProperties.conf[spark.dynamicAllocation.enabled]",
+        "serializeAs": "synapseNotebookConf"
+      },
+      "minExecutors": {
+        "type": "number",
+        "label": "Min executors",
+        "min": 1,
+        "conditional": {
+          "field": "dynamicAllocation",
+          "value": "Enabled"
+        },
+        "jsonPath": "typeProperties.conf[spark.dynamicAllocation.minExecutors]",
+        "serializeAs": "synapseNotebookConf"
+      },
+      "maxExecutors": {
+        "type": "number",
+        "label": "Max executors",
+        "min": 1,
+        "conditional": {
+          "field": "dynamicAllocation",
+          "value": "Enabled"
+        },
+        "jsonPath": "typeProperties.conf[spark.dynamicAllocation.maxExecutors]",
+        "serializeAs": "synapseNotebookConf"
+      },
+      "numExecutors": {
+        "type": "number",
+        "label": "Number of executors",
+        "min": 1,
+        "conditional": {
+          "field": "dynamicAllocation",
+          "value": "Disabled"
+        },
+        "jsonPath": "typeProperties.numExecutors"
+      }
     }
   },
   "Copy": {
     "name": "Copy Data",
-    "tabs": ["General", "Source", "Sink", "Mapping", "Settings", "User Properties"],
+    "tabs": [
+      "General",
+      "Source",
+      "Sink",
+      "Mapping",
+      "Settings",
+      "User Properties"
+    ],
     "commonProperties": {
-      "name": { "type": "string", "label": "Name", "required": true },
-      "description": { "type": "string", "label": "Description", "multiline": true },
-      "state": { "type": "select", "label": "Activity state", "options": ["Active", "Inactive"], "default": "Active" },
-      "onInactiveMarkAs": { "type": "select", "label": "Mark activity as", "options": ["Succeeded", "Failed", "Skipped"], "default": "Succeeded" },
-      "timeout": { "type": "string", "label": "Timeout", "default": "0.12:00:00", "section": "policy" },
-      "retry": { "type": "number", "label": "Retry", "default": 0, "section": "policy" },
-      "retryIntervalInSeconds": { "type": "number", "label": "Retry interval (sec)", "default": 30, "section": "policy" },
-      "secureOutput": { "type": "boolean", "label": "Secure output", "default": false, "section": "policy" },
-      "secureInput": { "type": "boolean", "label": "Secure input", "default": false, "section": "policy" }
+      "name": {
+        "type": "string",
+        "label": "Name",
+        "required": true,
+        "jsonPath": "@name"
+      },
+      "description": {
+        "type": "string",
+        "label": "Description",
+        "multiline": true,
+        "jsonPath": "@description"
+      },
+      "state": {
+        "type": "select",
+        "label": "Activity state",
+        "options": [
+          "Active",
+          "Inactive"
+        ],
+        "default": "Active",
+        "jsonPath": "@state"
+      },
+      "onInactiveMarkAs": {
+        "type": "select",
+        "label": "Mark activity as",
+        "options": [
+          "Succeeded",
+          "Failed",
+          "Skipped"
+        ],
+        "default": "Succeeded",
+        "jsonPath": "@onInactiveMarkAs"
+      },
+      "timeout": {
+        "type": "string",
+        "label": "Timeout",
+        "default": "0.12:00:00",
+        "section": "policy",
+        "jsonPath": "policy.timeout"
+      },
+      "retry": {
+        "type": "number",
+        "label": "Retry",
+        "default": 0,
+        "section": "policy",
+        "jsonPath": "policy.retry"
+      },
+      "retryIntervalInSeconds": {
+        "type": "number",
+        "label": "Retry interval (sec)",
+        "default": 30,
+        "section": "policy",
+        "jsonPath": "policy.retryIntervalInSeconds"
+      },
+      "secureOutput": {
+        "type": "boolean",
+        "label": "Secure output",
+        "default": false,
+        "section": "policy",
+        "jsonPath": "policy.secureOutput"
+      },
+      "secureInput": {
+        "type": "boolean",
+        "label": "Secure input",
+        "default": false,
+        "section": "policy",
+        "jsonPath": "policy.secureInput"
+      }
     },
     "sourceProperties": {
-      "sourceDataset": { "type": "dataset", "label": "Source dataset", "required": true, "datasetFilter": { "excludeTypes": ["Iceberg"] } }
+      "sourceDataset": {
+        "type": "dataset",
+        "label": "Source dataset",
+        "required": true,
+        "datasetFilter": {
+          "excludeTypes": [
+            "Iceberg"
+          ]
+        },
+        "jsonPath": "@inputs[0].referenceName",
+        "serializeAs": "copyDatasetRef"
+      }
     },
     "sinkProperties": {
-      "sinkDataset": { "type": "dataset", "label": "Sink dataset", "required": true, "datasetFilter": { "excludeTypes": ["Iceberg", "Excel"] } }
+      "sinkDataset": {
+        "type": "dataset",
+        "label": "Sink dataset",
+        "required": true,
+        "datasetFilter": {
+          "excludeTypes": [
+            "Iceberg",
+            "Excel"
+          ]
+        },
+        "jsonPath": "@outputs[0].referenceName",
+        "serializeAs": "copyDatasetRef"
+      }
     },
     "typeProperties": {
-      "dataIntegrationUnits": { "type": "number", "label": "Maximum data integration unit", "default": 4, "min": 2, "max": 256 },
-      "parallelCopies": { "type": "number", "label": "Degree of copy parallelism", "min": 1 },
-      "enableSkipIncompatibleRow": { "type": "boolean", "label": "Fault tolerance - Skip incompatible rows", "default": false }
+      "dataIntegrationUnits": {
+        "type": "number",
+        "label": "Maximum data integration unit",
+        "default": 4,
+        "min": 2,
+        "max": 256,
+        "jsonPath": "typeProperties.dataIntegrationUnits"
+      },
+      "parallelCopies": {
+        "type": "number",
+        "label": "Degree of copy parallelism",
+        "min": 1,
+        "jsonPath": "typeProperties.parallelCopies"
+      },
+      "enableSkipIncompatibleRow": {
+        "type": "boolean",
+        "label": "Fault tolerance - Skip incompatible rows",
+        "default": false,
+        "jsonPath": "typeProperties.enableSkipIncompatibleRow"
+      }
     }
   },
   "SparkJob": {
     "name": "Spark Job Definition",
-    "tabs": ["General", "Settings", "User Properties"],
+    "tabs": [
+      "General",
+      "Settings",
+      "User Properties"
+    ],
     "commonProperties": {
-      "name": { "type": "string", "label": "Name", "required": true },
-      "description": { "type": "string", "label": "Description", "multiline": true },
-      "timeout": { "type": "string", "label": "Timeout", "default": "0.12:00:00", "section": "policy" },
-      "retry": { "type": "number", "label": "Retry", "default": 0, "section": "policy" },
-      "retryIntervalInSeconds": { "type": "number", "label": "Retry interval (seconds)", "default": 30, "section": "policy" }
+      "name": {
+        "type": "string",
+        "label": "Name",
+        "required": true,
+        "jsonPath": "@name"
+      },
+      "description": {
+        "type": "string",
+        "label": "Description",
+        "multiline": true,
+        "jsonPath": "@description"
+      },
+      "timeout": {
+        "type": "string",
+        "label": "Timeout",
+        "default": "0.12:00:00",
+        "section": "policy",
+        "jsonPath": "policy.timeout"
+      },
+      "retry": {
+        "type": "number",
+        "label": "Retry",
+        "default": 0,
+        "section": "policy",
+        "jsonPath": "policy.retry"
+      },
+      "retryIntervalInSeconds": {
+        "type": "number",
+        "label": "Retry interval (seconds)",
+        "default": 30,
+        "section": "policy",
+        "jsonPath": "policy.retryIntervalInSeconds"
+      }
     },
     "typeProperties": {
-      "sparkJob": { "type": "text", "label": "Spark job definition", "required": true },
-      "sparkPool": { "type": "text", "label": "Spark pool", "default": "defaultSparkPool", "readonly": true },
-      "executorSize": { "type": "select", "label": "Executor size", "options": ["Small", "Medium", "Large"], "default": "Small" },
-      "driverSize": { "type": "select", "label": "Driver size", "options": ["Small", "Medium", "Large"], "default": "Small" },
-      "numExecutors": { "type": "number", "label": "Number of executors", "default": 2, "min": 1 }
+      "sparkJob": {
+        "type": "text",
+        "label": "Spark job definition",
+        "required": true,
+        "jsonPath": "typeProperties.sparkJob"
+      },
+      "sparkPool": {
+        "type": "text",
+        "label": "Spark pool",
+        "default": "defaultSparkPool",
+        "readonly": true,
+        "jsonPath": "typeProperties.sparkPool"
+      },
+      "executorSize": {
+        "type": "select",
+        "label": "Executor size",
+        "options": [
+          "Small",
+          "Medium",
+          "Large"
+        ],
+        "default": "Small",
+        "jsonPath": "typeProperties.executorSize"
+      },
+      "driverSize": {
+        "type": "select",
+        "label": "Driver size",
+        "options": [
+          "Small",
+          "Medium",
+          "Large"
+        ],
+        "default": "Small",
+        "jsonPath": "typeProperties.driverSize"
+      },
+      "numExecutors": {
+        "type": "number",
+        "label": "Number of executors",
+        "default": 2,
+        "min": 1,
+        "jsonPath": "typeProperties.numExecutors"
+      }
     }
   },
   "AppendVariable": {
     "name": "Append Variable",
-    "tabs": ["General", "Settings", "User Properties"],
+    "tabs": [
+      "General",
+      "Settings",
+      "User Properties"
+    ],
     "commonProperties": {
-      "name": { "type": "string", "label": "Name", "required": true },
-      "description": { "type": "string", "label": "Description", "multiline": true },
-      "state": { "type": "radio", "label": "Activity state", "options": ["Activated", "Deactivated"] }
+      "name": {
+        "type": "string",
+        "label": "Name",
+        "required": true,
+        "jsonPath": "@name"
+      },
+      "description": {
+        "type": "string",
+        "label": "Description",
+        "multiline": true,
+        "jsonPath": "@description"
+      },
+      "state": {
+        "type": "radio",
+        "label": "Activity state",
+        "options": [
+          "Activated",
+          "Deactivated"
+        ],
+        "jsonPath": "@state"
+      }
     },
     "typeProperties": {
-      "variableName": { "type": "text", "label": "Name", "required": true, "placeholder": "Enter variable name" },
-      "value": { "type": "text", "label": "Value", "required": true, "placeholder": "Enter value" }
+      "variableName": {
+        "type": "text",
+        "label": "Name",
+        "required": true,
+        "placeholder": "Enter variable name",
+        "jsonPath": "typeProperties.variableName"
+      },
+      "value": {
+        "type": "text",
+        "label": "Value",
+        "required": true,
+        "placeholder": "Enter value",
+        "jsonPath": "typeProperties.value"
+      }
     }
   },
   "SetVariable": {
     "name": "Set Variable",
-    "tabs": ["General", "Settings", "User Properties"],
+    "tabs": [
+      "General",
+      "Settings",
+      "User Properties"
+    ],
     "commonProperties": {
-      "name": { "type": "string", "label": "Name", "required": true },
-      "description": { "type": "string", "label": "Description", "multiline": true },
-      "state": { "type": "radio", "label": "Activity state", "options": ["Activated", "Deactivated"] },
-      "secureOutput": { "type": "boolean", "label": "Secure output", "default": false, "section": "policy" },
-      "secureInput": { "type": "boolean", "label": "Secure input", "default": false, "section": "policy" }
+      "name": {
+        "type": "string",
+        "label": "Name",
+        "required": true,
+        "jsonPath": "@name"
+      },
+      "description": {
+        "type": "string",
+        "label": "Description",
+        "multiline": true,
+        "jsonPath": "@description"
+      },
+      "state": {
+        "type": "radio",
+        "label": "Activity state",
+        "options": [
+          "Activated",
+          "Deactivated"
+        ],
+        "jsonPath": "@state"
+      },
+      "secureOutput": {
+        "type": "boolean",
+        "label": "Secure output",
+        "default": false,
+        "section": "policy",
+        "jsonPath": "policy.secureOutput"
+      },
+      "secureInput": {
+        "type": "boolean",
+        "label": "Secure input",
+        "default": false,
+        "section": "policy",
+        "jsonPath": "policy.secureInput"
+      }
     },
     "typeProperties": {
-      "variableType": { "type": "radio", "label": "Variable type", "options": ["Pipeline variable", "Pipeline return value"], "default": "Pipeline variable" },
-      "variableName": { "type": "text", "label": "Name", "required": true, "placeholder": "Enter variable name", "conditional": { "field": "variableType", "value": "Pipeline variable" } },
-      "value": { "type": "text", "label": "Value", "required": true, "placeholder": "Enter value", "conditional": { "field": "variableType", "value": "Pipeline variable" } },
-      "pipelineVariableType": { "type": "select", "label": "Type", "options": ["String", "Boolean", "Array", "Integer"], "default": "String", "conditional": { "field": "variableType", "value": "Pipeline variable" } },
-      "returnValues": { "type": "keyvalue", "label": "Return values", "valueTypes": ["String", "Expression", "Object", "Array", "Int", "Float", "Boolean", "Null"], "conditional": { "field": "variableType", "value": "Pipeline return value" } }
+      "variableType": {
+        "type": "radio",
+        "label": "Variable type",
+        "options": [
+          "Pipeline variable",
+          "Pipeline return value"
+        ],
+        "default": "Pipeline variable",
+        "jsonPath": null,
+        "uiOnly": true
+      },
+      "variableName": {
+        "type": "text",
+        "label": "Name",
+        "required": true,
+        "placeholder": "Enter variable name",
+        "conditional": {
+          "field": "variableType",
+          "value": "Pipeline variable"
+        },
+        "jsonPath": "typeProperties.variableName"
+      },
+      "value": {
+        "type": "text",
+        "label": "Value",
+        "required": true,
+        "placeholder": "Enter value",
+        "conditional": {
+          "field": "variableType",
+          "value": "Pipeline variable"
+        },
+        "jsonPath": "typeProperties.value"
+      },
+      "pipelineVariableType": {
+        "type": "select",
+        "label": "Type",
+        "options": [
+          "String",
+          "Boolean",
+          "Array",
+          "Integer"
+        ],
+        "default": "String",
+        "conditional": {
+          "field": "variableType",
+          "value": "Pipeline variable"
+        },
+        "jsonPath": null,
+        "uiOnly": true
+      },
+      "returnValues": {
+        "type": "keyvalue",
+        "label": "Return values",
+        "valueTypes": [
+          "String",
+          "Expression",
+          "Object",
+          "Array",
+          "Int",
+          "Float",
+          "Boolean",
+          "Null"
+        ],
+        "conditional": {
+          "field": "variableType",
+          "value": "Pipeline return value"
+        },
+        "jsonPath": "typeProperties.value",
+        "serializeAs": "setVariableReturnValues"
+      }
     }
   },
   "Fail": {
     "name": "Fail",
-    "tabs": ["General", "Settings", "User Properties"],
+    "tabs": [
+      "General",
+      "Settings",
+      "User Properties"
+    ],
     "commonProperties": {
-      "name": { "type": "string", "label": "Name", "required": true },
-      "description": { "type": "string", "label": "Description", "multiline": true },
-      "state": { "type": "radio", "label": "Activity state", "options": ["Activated", "Deactivated"] }
+      "name": {
+        "type": "string",
+        "label": "Name",
+        "required": true,
+        "jsonPath": "@name"
+      },
+      "description": {
+        "type": "string",
+        "label": "Description",
+        "multiline": true,
+        "jsonPath": "@description"
+      },
+      "state": {
+        "type": "radio",
+        "label": "Activity state",
+        "options": [
+          "Activated",
+          "Deactivated"
+        ],
+        "jsonPath": "@state"
+      }
     },
     "typeProperties": {
-      "message": { "type": "text", "label": "Fail message", "required": true, "placeholder": "Enter fail message" },
-      "errorCode": { "type": "text", "label": "Error code", "required": true, "placeholder": "Enter error code" }
+      "message": {
+        "type": "text",
+        "label": "Fail message",
+        "required": true,
+        "placeholder": "Enter fail message",
+        "jsonPath": "typeProperties.message"
+      },
+      "errorCode": {
+        "type": "text",
+        "label": "Error code",
+        "required": true,
+        "placeholder": "Enter error code",
+        "jsonPath": "typeProperties.errorCode"
+      }
     }
   },
   "Wait": {
     "name": "Wait",
-    "tabs": ["General", "Settings", "User Properties"],
+    "tabs": [
+      "General",
+      "Settings",
+      "User Properties"
+    ],
     "commonProperties": {
-      "name": { "type": "string", "label": "Name", "required": true },
-      "description": { "type": "string", "label": "Description", "multiline": true },
-      "state": { "type": "radio", "label": "Activity state", "options": ["Activated", "Deactivated"] }
+      "name": {
+        "type": "string",
+        "label": "Name",
+        "required": true,
+        "jsonPath": "@name"
+      },
+      "description": {
+        "type": "string",
+        "label": "Description",
+        "multiline": true,
+        "jsonPath": "@description"
+      },
+      "state": {
+        "type": "radio",
+        "label": "Activity state",
+        "options": [
+          "Activated",
+          "Deactivated"
+        ],
+        "jsonPath": "@state"
+      }
     },
     "typeProperties": {
-      "waitTimeInSeconds": { "type": "number", "label": "Wait time in seconds", "required": true, "default": 1, "min": 1, "placeholder": "Enter wait time in seconds" }
+      "waitTimeInSeconds": {
+        "type": "number",
+        "label": "Wait time in seconds",
+        "required": true,
+        "default": 1,
+        "min": 1,
+        "placeholder": "Enter wait time in seconds",
+        "jsonPath": "typeProperties.waitTimeInSeconds"
+      }
     }
   },
   "Filter": {
     "name": "Filter",
-    "tabs": ["General", "Settings", "User Properties"],
+    "tabs": [
+      "General",
+      "Settings",
+      "User Properties"
+    ],
     "commonProperties": {
-      "name": { "type": "string", "label": "Name", "required": true },
-      "description": { "type": "string", "label": "Description", "multiline": true },
-      "state": { "type": "radio", "label": "Activity state", "options": ["Activated", "Deactivated"] }
+      "name": {
+        "type": "string",
+        "label": "Name",
+        "required": true,
+        "jsonPath": "@name"
+      },
+      "description": {
+        "type": "string",
+        "label": "Description",
+        "multiline": true,
+        "jsonPath": "@description"
+      },
+      "state": {
+        "type": "radio",
+        "label": "Activity state",
+        "options": [
+          "Activated",
+          "Deactivated"
+        ],
+        "jsonPath": "@state"
+      }
     },
     "typeProperties": {
-      "items": { "type": "expression", "label": "Items", "required": true, "placeholder": "This property should be parameterized." },
-      "condition": { "type": "expression", "label": "Condition", "required": true, "placeholder": "This property should be parameterized." }
+      "items": {
+        "type": "expression",
+        "label": "Items",
+        "required": true,
+        "placeholder": "This property should be parameterized.",
+        "jsonPath": "typeProperties.items"
+      },
+      "condition": {
+        "type": "expression",
+        "label": "Condition",
+        "required": true,
+        "placeholder": "This property should be parameterized.",
+        "jsonPath": "typeProperties.condition"
+      }
     }
   },
   "ForEach": {
     "name": "ForEach",
     "isContainer": true,
-    "tabs": ["General", "Settings", "Activities", "User Properties"],
+    "tabs": [
+      "General",
+      "Settings",
+      "Activities",
+      "User Properties"
+    ],
     "commonProperties": {
-      "name": { "type": "string", "label": "Name", "required": true },
-      "description": { "type": "string", "label": "Description", "multiline": true },
-      "state": { "type": "radio", "label": "Activity state", "options": ["Activated", "Deactivated"], "default": "Activated" }
+      "name": {
+        "type": "string",
+        "label": "Name",
+        "required": true,
+        "jsonPath": "@name"
+      },
+      "description": {
+        "type": "string",
+        "label": "Description",
+        "multiline": true,
+        "jsonPath": "@description"
+      },
+      "state": {
+        "type": "radio",
+        "label": "Activity state",
+        "options": [
+          "Activated",
+          "Deactivated"
+        ],
+        "default": "Activated",
+        "jsonPath": "@state"
+      }
     },
     "typeProperties": {
       "items": {
@@ -152,13 +711,15 @@
         "label": "Items",
         "required": true,
         "placeholder": "@pipeline().parameters.myArray",
-        "helpText": "Collection or array to iterate over"
+        "helpText": "Collection or array to iterate over",
+        "jsonPath": "typeProperties.items"
       },
       "isSequential": {
         "type": "boolean",
         "label": "Sequential",
         "default": false,
-        "helpText": "Run activities sequentially (true) or in parallel (false)"
+        "helpText": "Run activities sequentially (true) or in parallel (false)",
+        "jsonPath": "typeProperties.isSequential"
       },
       "batchCount": {
         "type": "number",
@@ -166,18 +727,45 @@
         "min": 1,
         "max": 50,
         "placeholder": "Max 50 (default)",
-        "conditional": { "field": "isSequential", "value": false }
+        "conditional": {
+          "field": "isSequential",
+          "value": false
+        },
+        "jsonPath": "typeProperties.batchCount"
       }
     }
   },
   "Until": {
     "name": "Until",
     "isContainer": true,
-    "tabs": ["General", "Activities", "User Properties"],
+    "tabs": [
+      "General",
+      "Activities",
+      "User Properties"
+    ],
     "commonProperties": {
-      "name": { "type": "string", "label": "Name", "required": true },
-      "description": { "type": "string", "label": "Description", "multiline": true },
-      "state": { "type": "radio", "label": "Activity state", "options": ["Activated", "Deactivated"], "default": "Activated" }
+      "name": {
+        "type": "string",
+        "label": "Name",
+        "required": true,
+        "jsonPath": "@name"
+      },
+      "description": {
+        "type": "string",
+        "label": "Description",
+        "multiline": true,
+        "jsonPath": "@description"
+      },
+      "state": {
+        "type": "radio",
+        "label": "Activity state",
+        "options": [
+          "Activated",
+          "Deactivated"
+        ],
+        "default": "Activated",
+        "jsonPath": "@state"
+      }
     },
     "typeProperties": {
       "expression": {
@@ -185,43 +773,92 @@
         "label": "Expression",
         "required": true,
         "placeholder": "@equals(variables('myVar'), true)",
-        "helpText": "Boolean expression — when true, the loop stops"
+        "helpText": "Boolean expression — when true, the loop stops",
+        "jsonPath": "typeProperties.expression"
       },
       "timeout": {
         "type": "string",
         "label": "Timeout",
         "default": "0.12:00:00",
-        "placeholder": "0.12:00:00"
+        "placeholder": "0.12:00:00",
+        "jsonPath": "typeProperties.timeout"
       }
     }
   },
   "IfCondition": {
     "name": "If Condition",
     "isContainer": true,
-    "tabs": ["General", "Activities", "User Properties"],
+    "tabs": [
+      "General",
+      "Activities",
+      "User Properties"
+    ],
     "commonProperties": {
-      "name": { "type": "string", "label": "Name", "required": true },
-      "description": { "type": "string", "label": "Description", "multiline": true },
-      "state": { "type": "radio", "label": "Activity state", "options": ["Activated", "Deactivated"], "default": "Activated" }
+      "name": {
+        "type": "string",
+        "label": "Name",
+        "required": true,
+        "jsonPath": "@name"
+      },
+      "description": {
+        "type": "string",
+        "label": "Description",
+        "multiline": true,
+        "jsonPath": "@description"
+      },
+      "state": {
+        "type": "radio",
+        "label": "Activity state",
+        "options": [
+          "Activated",
+          "Deactivated"
+        ],
+        "default": "Activated",
+        "jsonPath": "@state"
+      }
     },
     "typeProperties": {
-      "expression": { 
-        "type": "expression", 
-        "label": "Expression", 
+      "expression": {
+        "type": "expression",
+        "label": "Expression",
         "required": true,
         "placeholder": "@equals(pipeline().parameters.value, 'expected')",
-        "helpText": "Boolean expression to evaluate"
+        "helpText": "Boolean expression to evaluate",
+        "jsonPath": "typeProperties.expression"
       }
     }
   },
   "Switch": {
     "name": "Switch",
     "isContainer": true,
-    "tabs": ["General", "Activities", "User Properties"],
+    "tabs": [
+      "General",
+      "Activities",
+      "User Properties"
+    ],
     "commonProperties": {
-      "name": { "type": "string", "label": "Name", "required": true },
-      "description": { "type": "string", "label": "Description", "multiline": true },
-      "state": { "type": "radio", "label": "Activity state", "options": ["Activated", "Deactivated"], "default": "Activated" }
+      "name": {
+        "type": "string",
+        "label": "Name",
+        "required": true,
+        "jsonPath": "@name"
+      },
+      "description": {
+        "type": "string",
+        "label": "Description",
+        "multiline": true,
+        "jsonPath": "@description"
+      },
+      "state": {
+        "type": "radio",
+        "label": "Activity state",
+        "options": [
+          "Activated",
+          "Deactivated"
+        ],
+        "default": "Activated",
+        "jsonPath": "@state"
+      }
     },
     "typeProperties": {
       "on": {
@@ -229,219 +866,1412 @@
         "label": "On Expression",
         "required": true,
         "placeholder": "@pipeline().parameters.channel",
-        "helpText": "Expression whose value determines which case to execute"
+        "helpText": "Expression whose value determines which case to execute",
+        "jsonPath": "typeProperties.on"
       }
     }
   },
   "Lookup": {
     "name": "Lookup",
-    "tabs": ["General", "Settings", "User Properties"],
+    "tabs": [
+      "General",
+      "Settings",
+      "User Properties"
+    ],
     "commonProperties": {
-      "name": { "type": "string", "label": "Name", "required": true },
-      "description": { "type": "string", "label": "Description", "multiline": true },
-      "state": { "type": "radio", "label": "Activity state", "options": ["Activated", "Deactivated"] },
-      "timeout": { "type": "string", "label": "Timeout", "default": "0.12:00:00", "section": "policy" },
-      "retry": { "type": "number", "label": "Retry", "default": 0, "section": "policy" },
-      "retryIntervalInSeconds": { "type": "number", "label": "Retry interval (sec)", "default": 30, "section": "policy" },
-      "secureOutput": { "type": "boolean", "label": "Secure output", "default": false, "section": "policy" },
-      "secureInput": { "type": "boolean", "label": "Secure input", "default": false, "section": "policy" }
+      "name": {
+        "type": "string",
+        "label": "Name",
+        "required": true,
+        "jsonPath": "@name"
+      },
+      "description": {
+        "type": "string",
+        "label": "Description",
+        "multiline": true,
+        "jsonPath": "@description"
+      },
+      "state": {
+        "type": "radio",
+        "label": "Activity state",
+        "options": [
+          "Activated",
+          "Deactivated"
+        ],
+        "jsonPath": "@state"
+      },
+      "timeout": {
+        "type": "string",
+        "label": "Timeout",
+        "default": "0.12:00:00",
+        "section": "policy",
+        "jsonPath": "policy.timeout"
+      },
+      "retry": {
+        "type": "number",
+        "label": "Retry",
+        "default": 0,
+        "section": "policy",
+        "jsonPath": "policy.retry"
+      },
+      "retryIntervalInSeconds": {
+        "type": "number",
+        "label": "Retry interval (sec)",
+        "default": 30,
+        "section": "policy",
+        "jsonPath": "policy.retryIntervalInSeconds"
+      },
+      "secureOutput": {
+        "type": "boolean",
+        "label": "Secure output",
+        "default": false,
+        "section": "policy",
+        "jsonPath": "policy.secureOutput"
+      },
+      "secureInput": {
+        "type": "boolean",
+        "label": "Secure input",
+        "default": false,
+        "section": "policy",
+        "jsonPath": "policy.secureInput"
+      }
     },
     "typeProperties": {
-      "dataset": { "type": "dataset-lookup", "label": "Source dataset", "required": true, "placeholder": "Select dataset..." },
-      "firstRowOnly": { "type": "boolean", "label": "First row only", "default": true }
+      "dataset": {
+        "type": "dataset-lookup",
+        "label": "Source dataset",
+        "required": true,
+        "placeholder": "Select dataset...",
+        "jsonPath": "typeProperties.dataset"
+      },
+      "firstRowOnly": {
+        "type": "boolean",
+        "label": "First row only",
+        "default": true,
+        "jsonPath": "typeProperties.firstRowOnly"
+      }
     }
   },
   "Delete": {
     "name": "Delete",
-    "tabs": ["General", "Source", "User Properties"],
+    "tabs": [
+      "General",
+      "Source",
+      "User Properties"
+    ],
     "commonProperties": {
-      "name": { "type": "string", "label": "Name", "required": true },
-      "description": { "type": "string", "label": "Description", "multiline": true },
-      "state": { "type": "radio", "label": "Activity state", "options": ["Activated", "Deactivated"] },
-      "timeout": { "type": "string", "label": "Timeout", "default": "0.12:00:00", "section": "policy" },
-      "retry": { "type": "number", "label": "Retry", "default": 0, "section": "policy" },
-      "retryIntervalInSeconds": { "type": "number", "label": "Retry interval (sec)", "default": 30, "section": "policy" },
-      "secureOutput": { "type": "boolean", "label": "Secure output", "default": false, "section": "policy" },
-      "secureInput": { "type": "boolean", "label": "Secure input", "default": false, "section": "policy" }
+      "name": {
+        "type": "string",
+        "label": "Name",
+        "required": true,
+        "jsonPath": "@name"
+      },
+      "description": {
+        "type": "string",
+        "label": "Description",
+        "multiline": true,
+        "jsonPath": "@description"
+      },
+      "state": {
+        "type": "radio",
+        "label": "Activity state",
+        "options": [
+          "Activated",
+          "Deactivated"
+        ],
+        "jsonPath": "@state"
+      },
+      "timeout": {
+        "type": "string",
+        "label": "Timeout",
+        "default": "0.12:00:00",
+        "section": "policy",
+        "jsonPath": "policy.timeout"
+      },
+      "retry": {
+        "type": "number",
+        "label": "Retry",
+        "default": 0,
+        "section": "policy",
+        "jsonPath": "policy.retry"
+      },
+      "retryIntervalInSeconds": {
+        "type": "number",
+        "label": "Retry interval (sec)",
+        "default": 30,
+        "section": "policy",
+        "jsonPath": "policy.retryIntervalInSeconds"
+      },
+      "secureOutput": {
+        "type": "boolean",
+        "label": "Secure output",
+        "default": false,
+        "section": "policy",
+        "jsonPath": "policy.secureOutput"
+      },
+      "secureInput": {
+        "type": "boolean",
+        "label": "Secure input",
+        "default": false,
+        "section": "policy",
+        "jsonPath": "policy.secureInput"
+      }
     },
     "sourceProperties": {
-      "dataset": { "type": "dataset", "label": "Dataset", "required": true, "datasetFilter": "storageOnly" },
-      "filePathType": { "type": "radio", "label": "File path type", "options": ["File path in dataset", "Prefix", "Wildcard file path", "List of files"], "optionValues": ["filePathInDataset", "prefix", "wildcardFilePath", "listOfFiles"], "default": "filePathInDataset" },
-      "prefix": { "type": "text", "label": "Prefix", "placeholder": "Enter prefix", "conditional": { "field": "filePathType", "value": "prefix" } },
-      "wildcardFileName": { "type": "text", "label": "Wildcard file name", "placeholder": "Enter wildcard file name", "conditional": { "field": "filePathType", "value": "wildcardFilePath" } },
-      "fileListPath": { "type": "text", "label": "Path to file list", "placeholder": "Enter path to file list", "conditional": { "field": "filePathType", "value": "listOfFiles" } },
-      "modifiedDatetimeStart": { "type": "datetime", "label": "Start time (UTC)", "placeholder": "2/18/2026, 12:00:00 AM", "conditional": { "field": "filePathType", "value": ["filePathInDataset", "wildcardFilePath", "prefix"] } },
-      "modifiedDatetimeEnd": { "type": "datetime", "label": "End time (UTC)", "placeholder": "2/18/2026, 12:00:00 AM", "conditional": { "field": "filePathType", "value": ["filePathInDataset", "wildcardFilePath", "prefix"] } },
-      "recursive": { "type": "boolean", "label": "Delete file recursively", "default": false, "conditional": { "field": "filePathType", "value": ["filePathInDataset", "wildcardFilePath", "prefix"] } },
-      "maxConcurrentConnections": { "type": "number", "label": "Max concurrent connections", "min": 1 }
+      "dataset": {
+        "type": "dataset",
+        "label": "Dataset",
+        "required": true,
+        "datasetFilter": "storageOnly",
+        "jsonPath": "typeProperties.dataset"
+      },
+      "filePathType": {
+        "type": "radio",
+        "label": "File path type",
+        "options": [
+          "File path in dataset",
+          "Prefix",
+          "Wildcard file path",
+          "List of files"
+        ],
+        "optionValues": [
+          "filePathInDataset",
+          "prefix",
+          "wildcardFilePath",
+          "listOfFiles"
+        ],
+        "default": "filePathInDataset",
+        "jsonPath": null,
+        "uiOnly": true
+      },
+      "prefix": {
+        "type": "text",
+        "label": "Prefix",
+        "placeholder": "Enter prefix",
+        "conditional": {
+          "field": "filePathType",
+          "value": "prefix"
+        },
+        "jsonPath": "typeProperties.storeSettings.prefix"
+      },
+      "wildcardFileName": {
+        "type": "text",
+        "label": "Wildcard file name",
+        "placeholder": "Enter wildcard file name",
+        "conditional": {
+          "field": "filePathType",
+          "value": "wildcardFilePath"
+        },
+        "jsonPath": "typeProperties.storeSettings.wildcardFileName"
+      },
+      "fileListPath": {
+        "type": "text",
+        "label": "Path to file list",
+        "placeholder": "Enter path to file list",
+        "conditional": {
+          "field": "filePathType",
+          "value": "listOfFiles"
+        },
+        "jsonPath": "typeProperties.storeSettings.fileListPath"
+      },
+      "modifiedDatetimeStart": {
+        "type": "datetime",
+        "label": "Start time (UTC)",
+        "placeholder": "2/18/2026, 12:00:00 AM",
+        "conditional": {
+          "field": "filePathType",
+          "value": [
+            "filePathInDataset",
+            "wildcardFilePath",
+            "prefix"
+          ]
+        },
+        "jsonPath": "typeProperties.storeSettings.modifiedDatetimeStart"
+      },
+      "modifiedDatetimeEnd": {
+        "type": "datetime",
+        "label": "End time (UTC)",
+        "placeholder": "2/18/2026, 12:00:00 AM",
+        "conditional": {
+          "field": "filePathType",
+          "value": [
+            "filePathInDataset",
+            "wildcardFilePath",
+            "prefix"
+          ]
+        },
+        "jsonPath": "typeProperties.storeSettings.modifiedDatetimeEnd"
+      },
+      "recursive": {
+        "type": "boolean",
+        "label": "Delete file recursively",
+        "default": false,
+        "conditional": {
+          "field": "filePathType",
+          "value": [
+            "filePathInDataset",
+            "wildcardFilePath",
+            "prefix"
+          ]
+        },
+        "jsonPath": "typeProperties.storeSettings.recursive"
+      },
+      "maxConcurrentConnections": {
+        "type": "number",
+        "label": "Max concurrent connections",
+        "min": 1,
+        "jsonPath": "typeProperties.maxConcurrentConnections"
+      }
     }
   },
   "ExecutePipeline": {
     "name": "Execute Pipeline",
-    "tabs": ["General", "Settings", "User Properties"],
+    "tabs": [
+      "General",
+      "Settings",
+      "User Properties"
+    ],
     "commonProperties": {
-      "name": { "type": "string", "label": "Name", "required": true },
-      "description": { "type": "string", "label": "Description", "multiline": true },
-      "state": { "type": "radio", "label": "Activity state", "options": ["Activated", "Deactivated"] },
-      "secureInput": { "type": "boolean", "label": "Secure input", "default": false, "section": "policy" }
+      "name": {
+        "type": "string",
+        "label": "Name",
+        "required": true,
+        "jsonPath": "@name"
+      },
+      "description": {
+        "type": "string",
+        "label": "Description",
+        "multiline": true,
+        "jsonPath": "@description"
+      },
+      "state": {
+        "type": "radio",
+        "label": "Activity state",
+        "options": [
+          "Activated",
+          "Deactivated"
+        ],
+        "jsonPath": "@state"
+      },
+      "secureInput": {
+        "type": "boolean",
+        "label": "Secure input",
+        "default": false,
+        "section": "policy",
+        "jsonPath": "policy.secureInput"
+      }
     },
     "typeProperties": {
-      "pipeline": { "type": "pipeline", "label": "Invoked pipeline", "required": true, "placeholder": "Select pipeline..." },
-      "waitOnCompletion": { "type": "boolean", "label": "Wait on completion", "default": true }
+      "pipeline": {
+        "type": "pipeline",
+        "label": "Invoked pipeline",
+        "required": true,
+        "placeholder": "Select pipeline...",
+        "jsonPath": "typeProperties.pipeline"
+      },
+      "waitOnCompletion": {
+        "type": "boolean",
+        "label": "Wait on completion",
+        "default": true,
+        "jsonPath": "typeProperties.waitOnCompletion"
+      }
     }
   },
   "Validation": {
     "name": "Validation",
-    "tabs": ["General", "Settings", "User Properties"],
+    "tabs": [
+      "General",
+      "Settings",
+      "User Properties"
+    ],
     "commonProperties": {
-      "name": { "type": "string", "label": "Name", "required": true },
-      "description": { "type": "string", "label": "Description", "multiline": true },
-      "state": { "type": "radio", "label": "Activity state", "options": ["Activated", "Deactivated"], "default": "Activated" }
+      "name": {
+        "type": "string",
+        "label": "Name",
+        "required": true,
+        "jsonPath": "@name"
+      },
+      "description": {
+        "type": "string",
+        "label": "Description",
+        "multiline": true,
+        "jsonPath": "@description"
+      },
+      "state": {
+        "type": "radio",
+        "label": "Activity state",
+        "options": [
+          "Activated",
+          "Deactivated"
+        ],
+        "default": "Activated",
+        "jsonPath": "@state"
+      }
     },
     "typeProperties": {
-      "dataset": { "type": "validation-dataset", "label": "Dataset", "required": true, "placeholder": "Select dataset..." },
-      "timeout": { "type": "text", "label": "Timeout", "default": "0.12:00:00", "placeholder": "0.12:00:00", "required": true },
-      "sleep": { "type": "number", "label": "Sleep", "default": 10, "placeholder": "10", "min": 1, "required": true },
-      "childItems": { "type": "radio-with-info", "label": "Child items", "options": ["ignore", "true", "false"], "default": "ignore", "conditional": { "field": "_datasetLocationType", "value": ["AzureBlobStorageLocation", "AzureBlobFSLocation"] } }
+      "dataset": {
+        "type": "validation-dataset",
+        "label": "Dataset",
+        "required": true,
+        "placeholder": "Select dataset...",
+        "jsonPath": "typeProperties.dataset"
+      },
+      "timeout": {
+        "type": "text",
+        "label": "Timeout",
+        "default": "0.12:00:00",
+        "placeholder": "0.12:00:00",
+        "required": true,
+        "jsonPath": "typeProperties.timeout"
+      },
+      "sleep": {
+        "type": "number",
+        "label": "Sleep",
+        "default": 10,
+        "placeholder": "10",
+        "min": 1,
+        "required": true,
+        "jsonPath": "typeProperties.sleep"
+      },
+      "childItems": {
+        "type": "radio-with-info",
+        "label": "Child items",
+        "options": [
+          "ignore",
+          "true",
+          "false"
+        ],
+        "default": "ignore",
+        "conditional": {
+          "field": "_datasetLocationType",
+          "value": [
+            "AzureBlobStorageLocation",
+            "AzureBlobFSLocation"
+          ]
+        },
+        "jsonPath": "typeProperties.childItems",
+        "serializeAs": "validationChildItems"
+      }
     }
   },
   "GetMetadata": {
     "name": "Get Metadata",
-    "tabs": ["General", "Settings", "User Properties"],
+    "tabs": [
+      "General",
+      "Settings",
+      "User Properties"
+    ],
     "commonProperties": {
-      "name": { "type": "string", "label": "Name", "required": true },
-      "description": { "type": "string", "label": "Description", "multiline": true },
-      "state": { "type": "radio", "label": "Activity state", "options": ["Activated", "Deactivated"], "default": "Activated" },
-      "timeout": { "type": "string", "label": "Timeout", "default": "0.12:00:00", "section": "policy" },
-      "retry": { "type": "number", "label": "Retry", "default": 0, "section": "policy" },
-      "retryIntervalInSeconds": { "type": "number", "label": "Retry interval (sec)", "default": 30, "section": "policy" },
-      "secureOutput": { "type": "boolean", "label": "Secure output", "default": false, "section": "policy" },
-      "secureInput": { "type": "boolean", "label": "Secure input", "default": false, "section": "policy" }
+      "name": {
+        "type": "string",
+        "label": "Name",
+        "required": true,
+        "jsonPath": "@name"
+      },
+      "description": {
+        "type": "string",
+        "label": "Description",
+        "multiline": true,
+        "jsonPath": "@description"
+      },
+      "state": {
+        "type": "radio",
+        "label": "Activity state",
+        "options": [
+          "Activated",
+          "Deactivated"
+        ],
+        "default": "Activated",
+        "jsonPath": "@state"
+      },
+      "timeout": {
+        "type": "string",
+        "label": "Timeout",
+        "default": "0.12:00:00",
+        "section": "policy",
+        "jsonPath": "policy.timeout"
+      },
+      "retry": {
+        "type": "number",
+        "label": "Retry",
+        "default": 0,
+        "section": "policy",
+        "jsonPath": "policy.retry"
+      },
+      "retryIntervalInSeconds": {
+        "type": "number",
+        "label": "Retry interval (sec)",
+        "default": 30,
+        "section": "policy",
+        "jsonPath": "policy.retryIntervalInSeconds"
+      },
+      "secureOutput": {
+        "type": "boolean",
+        "label": "Secure output",
+        "default": false,
+        "section": "policy",
+        "jsonPath": "policy.secureOutput"
+      },
+      "secureInput": {
+        "type": "boolean",
+        "label": "Secure input",
+        "default": false,
+        "section": "policy",
+        "jsonPath": "policy.secureInput"
+      }
     },
     "typeProperties": {
-      "dataset": { "type": "getmetadata-dataset", "label": "Dataset", "required": true, "placeholder": "Select dataset..." },
-      "fieldList": { "type": "getmetadata-fieldlist", "label": "Field list" },
-      "modifiedDatetimeStart": { "type": "datetime", "label": "Start time (UTC)", "placeholder": "2/6/2026, 12:00:00 AM", "conditional": { "field": "_datasetLocationType", "value": ["AzureBlobStorageLocation", "AzureBlobFSLocation"] } },
-      "modifiedDatetimeEnd": { "type": "datetime", "label": "End time (UTC)", "placeholder": "2/6/2026, 12:00:00 AM", "conditional": { "field": "_datasetLocationType", "value": ["AzureBlobStorageLocation", "AzureBlobFSLocation"] } },
-      "skipLineCount": { "type": "number", "label": "Skip line count", "min": 0, "conditional": { "field": "_datasetLocationType", "value": ["AzureBlobStorageLocation", "AzureBlobFSLocation"] } }
+      "dataset": {
+        "type": "getmetadata-dataset",
+        "label": "Dataset",
+        "required": true,
+        "placeholder": "Select dataset...",
+        "jsonPath": "typeProperties.dataset"
+      },
+      "fieldList": {
+        "type": "getmetadata-fieldlist",
+        "label": "Field list",
+        "jsonPath": "typeProperties.fieldList"
+      },
+      "modifiedDatetimeStart": {
+        "type": "datetime",
+        "label": "Start time (UTC)",
+        "placeholder": "2/6/2026, 12:00:00 AM",
+        "conditional": {
+          "field": "_datasetLocationType",
+          "value": [
+            "AzureBlobStorageLocation",
+            "AzureBlobFSLocation"
+          ]
+        },
+        "jsonPath": "typeProperties.storeSettings.modifiedDatetimeStart"
+      },
+      "modifiedDatetimeEnd": {
+        "type": "datetime",
+        "label": "End time (UTC)",
+        "placeholder": "2/6/2026, 12:00:00 AM",
+        "conditional": {
+          "field": "_datasetLocationType",
+          "value": [
+            "AzureBlobStorageLocation",
+            "AzureBlobFSLocation"
+          ]
+        },
+        "jsonPath": "typeProperties.storeSettings.modifiedDatetimeEnd"
+      },
+      "skipLineCount": {
+        "type": "number",
+        "label": "Skip line count",
+        "min": 0,
+        "conditional": {
+          "field": "_datasetLocationType",
+          "value": [
+            "AzureBlobStorageLocation",
+            "AzureBlobFSLocation"
+          ]
+        },
+        "jsonPath": "typeProperties.storeSettings.skipLineCount"
+      }
     }
   },
   "Script": {
     "name": "Script",
-    "tabs": ["General", "Settings", "User Properties"],
+    "tabs": [
+      "General",
+      "Settings",
+      "User Properties"
+    ],
     "commonProperties": {
-      "name": { "type": "string", "label": "Name", "required": true },
-      "description": { "type": "string", "label": "Description", "multiline": true },
-      "state": { "type": "radio", "label": "Activity state", "options": ["Activated", "Deactivated"], "default": "Activated" },
-      "timeout": { "type": "string", "label": "Timeout", "default": "0.12:00:00", "section": "policy" },
-      "retry": { "type": "number", "label": "Retry", "default": 0, "section": "policy" },
-      "retryIntervalInSeconds": { "type": "number", "label": "Retry interval (sec)", "default": 30, "section": "policy" },
-      "secureOutput": { "type": "boolean", "label": "Secure output", "default": false, "section": "policy" },
-      "secureInput": { "type": "boolean", "label": "Secure input", "default": false, "section": "policy" }
+      "name": {
+        "type": "string",
+        "label": "Name",
+        "required": true,
+        "jsonPath": "@name"
+      },
+      "description": {
+        "type": "string",
+        "label": "Description",
+        "multiline": true,
+        "jsonPath": "@description"
+      },
+      "state": {
+        "type": "radio",
+        "label": "Activity state",
+        "options": [
+          "Activated",
+          "Deactivated"
+        ],
+        "default": "Activated",
+        "jsonPath": "@state"
+      },
+      "timeout": {
+        "type": "string",
+        "label": "Timeout",
+        "default": "0.12:00:00",
+        "section": "policy",
+        "jsonPath": "policy.timeout"
+      },
+      "retry": {
+        "type": "number",
+        "label": "Retry",
+        "default": 0,
+        "section": "policy",
+        "jsonPath": "policy.retry"
+      },
+      "retryIntervalInSeconds": {
+        "type": "number",
+        "label": "Retry interval (sec)",
+        "default": 30,
+        "section": "policy",
+        "jsonPath": "policy.retryIntervalInSeconds"
+      },
+      "secureOutput": {
+        "type": "boolean",
+        "label": "Secure output",
+        "default": false,
+        "section": "policy",
+        "jsonPath": "policy.secureOutput"
+      },
+      "secureInput": {
+        "type": "boolean",
+        "label": "Secure input",
+        "default": false,
+        "section": "policy",
+        "jsonPath": "policy.secureInput"
+      }
     },
     "typeProperties": {
-      "linkedServiceName": { "type": "script-linkedservice", "label": "Linked service", "required": true, "placeholder": "Select linked service..." },
-      "scripts": { "type": "script-array", "label": "Scripts", "required": true },
-      "scriptBlockExecutionTimeout": { "type": "string", "label": "Script block execution timeout (minutes)", "default": "02:00:00", "placeholder": "02:00:00" }
+      "linkedServiceName": {
+        "type": "script-linkedservice",
+        "label": "Linked service",
+        "required": true,
+        "placeholder": "Select linked service...",
+        "jsonPath": "@linkedServiceName"
+      },
+      "scripts": {
+        "type": "script-array",
+        "label": "Scripts",
+        "required": true,
+        "jsonPath": "typeProperties.scripts"
+      },
+      "scriptBlockExecutionTimeout": {
+        "type": "string",
+        "label": "Script block execution timeout (minutes)",
+        "default": "02:00:00",
+        "placeholder": "02:00:00",
+        "jsonPath": "typeProperties.scriptBlockExecutionTimeout"
+      }
     }
   },
   "SqlServerStoredProcedure": {
     "name": "Stored Procedure",
-    "tabs": ["General", "Settings", "User Properties"],
+    "tabs": [
+      "General",
+      "Settings",
+      "User Properties"
+    ],
     "commonProperties": {
-      "name": { "type": "string", "label": "Name", "required": true },
-      "description": { "type": "string", "label": "Description", "multiline": true },
-      "state": { "type": "radio", "label": "Activity state", "options": ["Activated", "Deactivated"], "default": "Activated" },
-      "timeout": { "type": "string", "label": "Timeout", "default": "0.12:00:00", "placeholder": "0.12:00:00", "section": "policy" },
-      "retry": { "type": "number", "label": "Retry", "default": 0, "section": "policy" },
-      "retryIntervalInSeconds": { "type": "number", "label": "Retry interval (sec)", "default": 30, "section": "policy" },
-      "secureOutput": { "type": "boolean", "label": "Secure output", "default": false, "section": "policy" },
-      "secureInput": { "type": "boolean", "label": "Secure input", "default": false, "section": "policy" }
+      "name": {
+        "type": "string",
+        "label": "Name",
+        "required": true,
+        "jsonPath": "@name"
+      },
+      "description": {
+        "type": "string",
+        "label": "Description",
+        "multiline": true,
+        "jsonPath": "@description"
+      },
+      "state": {
+        "type": "radio",
+        "label": "Activity state",
+        "options": [
+          "Activated",
+          "Deactivated"
+        ],
+        "default": "Activated",
+        "jsonPath": "@state"
+      },
+      "timeout": {
+        "type": "string",
+        "label": "Timeout",
+        "default": "0.12:00:00",
+        "placeholder": "0.12:00:00",
+        "section": "policy",
+        "jsonPath": "policy.timeout"
+      },
+      "retry": {
+        "type": "number",
+        "label": "Retry",
+        "default": 0,
+        "section": "policy",
+        "jsonPath": "policy.retry"
+      },
+      "retryIntervalInSeconds": {
+        "type": "number",
+        "label": "Retry interval (sec)",
+        "default": 30,
+        "section": "policy",
+        "jsonPath": "policy.retryIntervalInSeconds"
+      },
+      "secureOutput": {
+        "type": "boolean",
+        "label": "Secure output",
+        "default": false,
+        "section": "policy",
+        "jsonPath": "policy.secureOutput"
+      },
+      "secureInput": {
+        "type": "boolean",
+        "label": "Secure input",
+        "default": false,
+        "section": "policy",
+        "jsonPath": "policy.secureInput"
+      }
     },
     "typeProperties": {
-      "linkedServiceName": { "type": "storedprocedure-linkedservice", "label": "Linked service", "required": true, "placeholder": "Select linked service..." },
-      "linkedServiceProperties": { "type": "storedprocedure-linkedservice-properties", "label": "Linked service properties", "conditional": { "field": "_selectedLinkedServiceType", "value": "AzureSynapse" } },
-      "storedProcedureName": { "type": "text", "label": "Stored procedure name", "required": true, "placeholder": "Enter stored procedure name" },
-      "storedProcedureParameters": { "type": "storedprocedure-parameters", "label": "Stored procedure parameters" }
+      "linkedServiceName": {
+        "type": "storedprocedure-linkedservice",
+        "label": "Linked service",
+        "required": true,
+        "placeholder": "Select linked service...",
+        "jsonPath": "@linkedServiceName"
+      },
+      "linkedServiceProperties": {
+        "type": "storedprocedure-linkedservice-properties",
+        "label": "Linked service properties",
+        "conditional": {
+          "field": "_selectedLinkedServiceType",
+          "value": "AzureSynapse"
+        },
+        "jsonPath": null,
+        "uiOnly": true
+      },
+      "storedProcedureName": {
+        "type": "text",
+        "label": "Stored procedure name",
+        "required": true,
+        "placeholder": "Enter stored procedure name",
+        "jsonPath": "typeProperties.storedProcedureName"
+      },
+      "storedProcedureParameters": {
+        "type": "storedprocedure-parameters",
+        "label": "Stored procedure parameters",
+        "jsonPath": "typeProperties.storedProcedureParameters"
+      }
     }
   },
   "WebActivity": {
     "name": "Web Activity",
-    "tabs": ["General", "Settings", "Advanced", "User Properties"],
+    "tabs": [
+      "General",
+      "Settings",
+      "Advanced",
+      "User Properties"
+    ],
     "commonProperties": {
-      "name": { "type": "string", "label": "Name", "required": true },
-      "description": { "type": "string", "label": "Description", "multiline": true },
-      "state": { "type": "radio", "label": "Activity state", "options": ["Activated", "Deactivated"], "default": "Activated" },
-      "timeout": { "type": "string", "label": "Timeout", "default": "0.12:00:00", "placeholder": "0.12:00:00", "section": "policy" },
-      "retry": { "type": "number", "label": "Retry", "default": 0, "section": "policy" },
-      "retryIntervalInSeconds": { "type": "number", "label": "Retry interval (sec)", "default": 30, "section": "policy" },
-      "secureOutput": { "type": "boolean", "label": "Secure output", "default": false, "section": "policy" },
-      "secureInput": { "type": "boolean", "label": "Secure input", "default": false, "section": "policy" }
+      "name": {
+        "type": "string",
+        "label": "Name",
+        "required": true,
+        "jsonPath": "@name"
+      },
+      "description": {
+        "type": "string",
+        "label": "Description",
+        "multiline": true,
+        "jsonPath": "@description"
+      },
+      "state": {
+        "type": "radio",
+        "label": "Activity state",
+        "options": [
+          "Activated",
+          "Deactivated"
+        ],
+        "default": "Activated",
+        "jsonPath": "@state"
+      },
+      "timeout": {
+        "type": "string",
+        "label": "Timeout",
+        "default": "0.12:00:00",
+        "placeholder": "0.12:00:00",
+        "section": "policy",
+        "jsonPath": "policy.timeout"
+      },
+      "retry": {
+        "type": "number",
+        "label": "Retry",
+        "default": 0,
+        "section": "policy",
+        "jsonPath": "policy.retry"
+      },
+      "retryIntervalInSeconds": {
+        "type": "number",
+        "label": "Retry interval (sec)",
+        "default": 30,
+        "section": "policy",
+        "jsonPath": "policy.retryIntervalInSeconds"
+      },
+      "secureOutput": {
+        "type": "boolean",
+        "label": "Secure output",
+        "default": false,
+        "section": "policy",
+        "jsonPath": "policy.secureOutput"
+      },
+      "secureInput": {
+        "type": "boolean",
+        "label": "Secure input",
+        "default": false,
+        "section": "policy",
+        "jsonPath": "policy.secureInput"
+      }
     },
     "typeProperties": {
-      "url": { "type": "text", "label": "URL", "required": true, "placeholder": "Enter URL" },
-      "method": { "type": "select", "label": "Method", "required": true, "options": ["GET", "POST", "PUT", "DELETE", "PATCH"], "placeholder": "Select method..." },
-      "body": { "type": "string", "label": "Body", "multiline": true, "placeholder": "Enter request body...", "conditional": { "field": "method", "value": ["POST", "PUT", "DELETE", "PATCH"] } },
-      "authenticationType": { "type": "select", "label": "Authentication", "options": ["None", "Basic", "MSI", "ClientCertificate", "ServicePrincipal", "UserAssignedManagedIdentity"], "optionLabels": { "MSI": "System-assigned managed identity", "ClientCertificate": "Client Certificate", "ServicePrincipal": "Service Principal", "UserAssignedManagedIdentity": "User-assigned managed identity" }, "default": "None" },
-      "username": { "type": "text", "label": "Username", "placeholder": "Enter username", "conditional": { "field": "authenticationType", "value": "Basic" } },
-      "password": { "type": "web-secret", "label": "Password", "placeholder": "Enter password or Azure Key Vault secret", "conditional": { "field": "authenticationType", "value": "Basic" } },
-      "resource": { "type": "text", "label": "Resource", "placeholder": "Enter resource", "conditional": { "field": "authenticationType", "value": ["MSI", "UserAssignedManagedIdentity"] } },
-      "pfx": { "type": "web-secret", "label": "Pfx", "placeholder": "Select Azure Key Vault secret", "conditional": { "field": "authenticationType", "value": "ClientCertificate" } },
-      "pfxPassword": { "type": "web-secret", "label": "Password", "placeholder": "Select Azure Key Vault secret", "conditional": { "field": "authenticationType", "value": "ClientCertificate" } },
-      "servicePrincipalAuthMethod": { "type": "radio", "label": "Authentication reference method", "options": ["Inline", "Credential"], "default": "Inline", "conditional": { "field": "authenticationType", "value": "ServicePrincipal" } },
-      "tenant": { "type": "text", "label": "Tenant", "required": true, "placeholder": "Enter tenant ID", "conditional": { "field": "authenticationType", "value": "ServicePrincipal" }, "nestedConditional": { "field": "servicePrincipalAuthMethod", "value": "Inline" } },
-      "servicePrincipalId": { "type": "text", "label": "Service principal ID", "required": true, "placeholder": "Enter service principal ID", "conditional": { "field": "authenticationType", "value": "ServicePrincipal" }, "nestedConditional": { "field": "servicePrincipalAuthMethod", "value": "Inline" } },
-      "servicePrincipalCredentialType": { "type": "radio", "label": "Service principal credential type", "options": ["Service Principal Key", "Service Principal Certificate"], "default": "Service Principal Key", "conditional": { "field": "authenticationType", "value": "ServicePrincipal" }, "nestedConditional": { "field": "servicePrincipalAuthMethod", "value": "Inline" } },
-      "servicePrincipalKey": { "type": "web-secret", "label": "Service principal key", "required": true, "placeholder": "Select Azure Key Vault secret", "conditional": { "field": "authenticationType", "value": "ServicePrincipal" }, "nestedConditional": { "field": "servicePrincipalCredentialType", "value": "Service Principal Key" } },
-      "servicePrincipalCert": { "type": "web-secret", "label": "Service principal certificate", "placeholder": "Select Azure Key Vault secret", "conditional": { "field": "authenticationType", "value": "ServicePrincipal" }, "nestedConditional": { "field": "servicePrincipalCredentialType", "value": "Service Principal Certificate" } },
-      "servicePrincipalResource": { "type": "text", "label": "Resource", "required": true, "placeholder": "Enter resource", "conditional": { "field": "authenticationType", "value": "ServicePrincipal" }, "nestedConditional": { "field": "servicePrincipalAuthMethod", "value": "Inline" } },
-      "credential": { "type": "text", "label": "Credentials", "required": true, "placeholder": "Select credential", "conditional": { "field": "authenticationType", "value": "ServicePrincipal" }, "nestedConditional": { "field": "servicePrincipalAuthMethod", "value": "Credential" } },
-      "credentialResource": { "type": "text", "label": "Resource", "required": true, "placeholder": "Enter resource", "conditional": { "field": "authenticationType", "value": "ServicePrincipal" }, "nestedConditional": { "field": "servicePrincipalAuthMethod", "value": "Credential" } },
-      "credentialUserAssigned": { "type": "text", "label": "Credentials", "required": true, "placeholder": "Select credential", "conditional": { "field": "authenticationType", "value": "UserAssignedManagedIdentity" } },
-      "headers": { "type": "web-headers", "label": "Headers" }
+      "url": {
+        "type": "text",
+        "label": "URL",
+        "required": true,
+        "placeholder": "Enter URL",
+        "jsonPath": "typeProperties.url"
+      },
+      "method": {
+        "type": "select",
+        "label": "Method",
+        "required": true,
+        "options": [
+          "GET",
+          "POST",
+          "PUT",
+          "DELETE",
+          "PATCH"
+        ],
+        "placeholder": "Select method...",
+        "jsonPath": "typeProperties.method"
+      },
+      "body": {
+        "type": "string",
+        "label": "Body",
+        "multiline": true,
+        "placeholder": "Enter request body...",
+        "conditional": {
+          "field": "method",
+          "value": [
+            "POST",
+            "PUT",
+            "DELETE",
+            "PATCH"
+          ]
+        },
+        "jsonPath": "typeProperties.body"
+      },
+      "authenticationType": {
+        "type": "select",
+        "label": "Authentication",
+        "options": [
+          "None",
+          "Basic",
+          "MSI",
+          "ClientCertificate",
+          "ServicePrincipal",
+          "UserAssignedManagedIdentity"
+        ],
+        "optionLabels": {
+          "MSI": "System-assigned managed identity",
+          "ClientCertificate": "Client Certificate",
+          "ServicePrincipal": "Service Principal",
+          "UserAssignedManagedIdentity": "User-assigned managed identity"
+        },
+        "default": "None",
+        "jsonPath": "typeProperties.authentication.type",
+        "serializeAs": "webAuthentication"
+      },
+      "username": {
+        "type": "text",
+        "label": "Username",
+        "placeholder": "Enter username",
+        "conditional": {
+          "field": "authenticationType",
+          "value": "Basic"
+        },
+        "jsonPath": "typeProperties.authentication.username",
+        "serializeAs": "webAuthentication"
+      },
+      "password": {
+        "type": "web-secret",
+        "label": "Password",
+        "placeholder": "Enter password or Azure Key Vault secret",
+        "conditional": {
+          "field": "authenticationType",
+          "value": "Basic"
+        },
+        "jsonPath": "typeProperties.authentication.password",
+        "serializeAs": "webAuthentication"
+      },
+      "resource": {
+        "type": "text",
+        "label": "Resource",
+        "placeholder": "Enter resource",
+        "conditional": {
+          "field": "authenticationType",
+          "value": [
+            "MSI",
+            "UserAssignedManagedIdentity"
+          ]
+        },
+        "jsonPath": "typeProperties.authentication.resource",
+        "serializeAs": "webAuthentication"
+      },
+      "pfx": {
+        "type": "web-secret",
+        "label": "Pfx",
+        "placeholder": "Select Azure Key Vault secret",
+        "conditional": {
+          "field": "authenticationType",
+          "value": "ClientCertificate"
+        },
+        "jsonPath": "typeProperties.authentication.pfx",
+        "serializeAs": "webAuthentication"
+      },
+      "pfxPassword": {
+        "type": "web-secret",
+        "label": "Password",
+        "placeholder": "Select Azure Key Vault secret",
+        "conditional": {
+          "field": "authenticationType",
+          "value": "ClientCertificate"
+        },
+        "jsonPath": "typeProperties.authentication.password",
+        "serializeAs": "webAuthentication"
+      },
+      "servicePrincipalAuthMethod": {
+        "type": "radio",
+        "label": "Authentication reference method",
+        "options": [
+          "Inline",
+          "Credential"
+        ],
+        "default": "Inline",
+        "conditional": {
+          "field": "authenticationType",
+          "value": "ServicePrincipal"
+        },
+        "jsonPath": null,
+        "uiOnly": true
+      },
+      "tenant": {
+        "type": "text",
+        "label": "Tenant",
+        "required": true,
+        "placeholder": "Enter tenant ID",
+        "conditional": {
+          "field": "authenticationType",
+          "value": "ServicePrincipal"
+        },
+        "nestedConditional": {
+          "field": "servicePrincipalAuthMethod",
+          "value": "Inline"
+        },
+        "jsonPath": "typeProperties.authentication.tenant",
+        "serializeAs": "webAuthentication"
+      },
+      "servicePrincipalId": {
+        "type": "text",
+        "label": "Service principal ID",
+        "required": true,
+        "placeholder": "Enter service principal ID",
+        "conditional": {
+          "field": "authenticationType",
+          "value": "ServicePrincipal"
+        },
+        "nestedConditional": {
+          "field": "servicePrincipalAuthMethod",
+          "value": "Inline"
+        },
+        "jsonPath": "typeProperties.authentication.servicePrincipalId",
+        "serializeAs": "webAuthentication"
+      },
+      "servicePrincipalCredentialType": {
+        "type": "radio",
+        "label": "Service principal credential type",
+        "options": [
+          "Service Principal Key",
+          "Service Principal Certificate"
+        ],
+        "default": "Service Principal Key",
+        "conditional": {
+          "field": "authenticationType",
+          "value": "ServicePrincipal"
+        },
+        "nestedConditional": {
+          "field": "servicePrincipalAuthMethod",
+          "value": "Inline"
+        },
+        "jsonPath": null,
+        "uiOnly": true
+      },
+      "servicePrincipalKey": {
+        "type": "web-secret",
+        "label": "Service principal key",
+        "required": true,
+        "placeholder": "Select Azure Key Vault secret",
+        "conditional": {
+          "field": "authenticationType",
+          "value": "ServicePrincipal"
+        },
+        "nestedConditional": {
+          "field": "servicePrincipalCredentialType",
+          "value": "Service Principal Key"
+        },
+        "jsonPath": "typeProperties.authentication.servicePrincipalKey",
+        "serializeAs": "webAuthentication"
+      },
+      "servicePrincipalCert": {
+        "type": "web-secret",
+        "label": "Service principal certificate",
+        "placeholder": "Select Azure Key Vault secret",
+        "conditional": {
+          "field": "authenticationType",
+          "value": "ServicePrincipal"
+        },
+        "nestedConditional": {
+          "field": "servicePrincipalCredentialType",
+          "value": "Service Principal Certificate"
+        },
+        "jsonPath": "typeProperties.authentication.servicePrincipalCert",
+        "serializeAs": "webAuthentication"
+      },
+      "servicePrincipalResource": {
+        "type": "text",
+        "label": "Resource",
+        "required": true,
+        "placeholder": "Enter resource",
+        "conditional": {
+          "field": "authenticationType",
+          "value": "ServicePrincipal"
+        },
+        "nestedConditional": {
+          "field": "servicePrincipalAuthMethod",
+          "value": "Inline"
+        },
+        "jsonPath": "typeProperties.authentication.resource",
+        "serializeAs": "webAuthentication"
+      },
+      "credential": {
+        "type": "text",
+        "label": "Credentials",
+        "required": true,
+        "placeholder": "Select credential",
+        "conditional": {
+          "field": "authenticationType",
+          "value": "ServicePrincipal"
+        },
+        "nestedConditional": {
+          "field": "servicePrincipalAuthMethod",
+          "value": "Credential"
+        },
+        "jsonPath": "typeProperties.authentication.credential",
+        "serializeAs": "webAuthentication"
+      },
+      "credentialResource": {
+        "type": "text",
+        "label": "Resource",
+        "required": true,
+        "placeholder": "Enter resource",
+        "conditional": {
+          "field": "authenticationType",
+          "value": "ServicePrincipal"
+        },
+        "nestedConditional": {
+          "field": "servicePrincipalAuthMethod",
+          "value": "Credential"
+        },
+        "jsonPath": "typeProperties.authentication.resource",
+        "serializeAs": "webAuthentication"
+      },
+      "credentialUserAssigned": {
+        "type": "text",
+        "label": "Credentials",
+        "required": true,
+        "placeholder": "Select credential",
+        "conditional": {
+          "field": "authenticationType",
+          "value": "UserAssignedManagedIdentity"
+        },
+        "jsonPath": "typeProperties.authentication.credential",
+        "serializeAs": "webAuthentication"
+      },
+      "headers": {
+        "type": "web-headers",
+        "label": "Headers",
+        "jsonPath": "typeProperties.headers"
+      }
     },
     "advancedProperties": {
-      "httpRequestTimeout": { "type": "text", "label": "HTTP request timeout (HH:MM:SS)", "placeholder": "00:05:00" },
-      "disableAsyncPattern": { "type": "boolean", "label": "Disable async pattern", "default": false },
-      "disableCertValidation": { "type": "boolean", "label": "Disable certificate validation", "default": false },
-      "datasets": { "type": "web-dataset-list", "label": "Datasets" },
-      "linkedServices": { "type": "web-linkedservice-list", "label": "Linked services" }
+      "httpRequestTimeout": {
+        "type": "text",
+        "label": "HTTP request timeout (HH:MM:SS)",
+        "placeholder": "00:05:00",
+        "jsonPath": "typeProperties.httpRequestTimeout"
+      },
+      "disableAsyncPattern": {
+        "type": "boolean",
+        "label": "Disable async pattern",
+        "default": false,
+        "jsonPath": "typeProperties.disableAsyncPattern"
+      },
+      "disableCertValidation": {
+        "type": "boolean",
+        "label": "Disable certificate validation",
+        "default": false,
+        "jsonPath": "typeProperties.disableCertValidation"
+      },
+      "datasets": {
+        "type": "web-dataset-list",
+        "label": "Datasets",
+        "jsonPath": "typeProperties.datasets"
+      },
+      "linkedServices": {
+        "type": "web-linkedservice-list",
+        "label": "Linked services",
+        "jsonPath": "typeProperties.linkedServices"
+      }
     }
   },
   "WebHook": {
     "name": "WebHook",
-    "tabs": ["General", "Settings", "User Properties"],
+    "tabs": [
+      "General",
+      "Settings",
+      "User Properties"
+    ],
     "commonProperties": {
-      "name": { "type": "string", "label": "Name", "required": true },
-      "description": { "type": "string", "label": "Description", "multiline": true },
-      "state": { "type": "radio", "label": "Activity state", "options": ["Activated", "Deactivated"], "default": "Activated" },
-      "secureOutput": { "type": "boolean", "label": "Secure output", "default": false, "section": "policy" },
-      "secureInput": { "type": "boolean", "label": "Secure input", "default": false, "section": "policy" }
+      "name": {
+        "type": "string",
+        "label": "Name",
+        "required": true,
+        "jsonPath": "@name"
+      },
+      "description": {
+        "type": "string",
+        "label": "Description",
+        "multiline": true,
+        "jsonPath": "@description"
+      },
+      "state": {
+        "type": "radio",
+        "label": "Activity state",
+        "options": [
+          "Activated",
+          "Deactivated"
+        ],
+        "default": "Activated",
+        "jsonPath": "@state"
+      },
+      "secureOutput": {
+        "type": "boolean",
+        "label": "Secure output",
+        "default": false,
+        "section": "policy",
+        "jsonPath": "policy.secureOutput"
+      },
+      "secureInput": {
+        "type": "boolean",
+        "label": "Secure input",
+        "default": false,
+        "section": "policy",
+        "jsonPath": "policy.secureInput"
+      }
     },
     "typeProperties": {
-      "url": { "type": "text", "label": "URL", "required": true, "placeholder": "Enter URL" },
-      "method": { "type": "select", "label": "Method", "required": true, "options": ["POST"], "default": "POST", "placeholder": "POST" },
-      "headers": { "type": "web-headers", "label": "Headers" },
-      "body": { "type": "string", "label": "Body", "multiline": true, "placeholder": "Enter request body..." },
-      "timeout": { "type": "text", "label": "Timeout", "default": "00:10:00", "placeholder": "00:10:00" },
-      "disableCertValidation": { "type": "boolean", "label": "Disable certificate validation", "default": false },
-      "reportStatusOnCallBack": { "type": "boolean", "label": "Report status on callback", "default": false },
-      "authenticationType": { "type": "select", "label": "Authentication", "options": ["None", "Basic", "MSI", "ClientCertificate", "ServicePrincipal", "UserAssignedManagedIdentity"], "optionLabels": { "MSI": "System-assigned managed identity", "ClientCertificate": "Client Certificate", "ServicePrincipal": "Service Principal", "UserAssignedManagedIdentity": "User-assigned managed identity" }, "default": "None" },
-      "username": { "type": "text", "label": "Username", "placeholder": "Enter username", "conditional": { "field": "authenticationType", "value": "Basic" } },
-      "password": { "type": "web-secret", "label": "Password", "placeholder": "Enter password or Azure Key Vault secret", "conditional": { "field": "authenticationType", "value": "Basic" } },
-      "resource": { "type": "text", "label": "Resource", "placeholder": "Enter resource", "conditional": { "field": "authenticationType", "value": ["MSI", "UserAssignedManagedIdentity"] } },
-      "pfx": { "type": "web-secret", "label": "Pfx", "placeholder": "Select Azure Key Vault secret", "conditional": { "field": "authenticationType", "value": "ClientCertificate" } },
-      "pfxPassword": { "type": "web-secret", "label": "Password", "placeholder": "Select Azure Key Vault secret", "conditional": { "field": "authenticationType", "value": "ClientCertificate" } },
-      "servicePrincipalAuthMethod": { "type": "radio", "label": "Authentication reference method", "options": ["Inline", "Credential"], "default": "Inline", "conditional": { "field": "authenticationType", "value": "ServicePrincipal" } },
-      "tenant": { "type": "text", "label": "Tenant", "required": true, "placeholder": "Enter tenant ID", "conditional": { "field": "authenticationType", "value": "ServicePrincipal" }, "nestedConditional": { "field": "servicePrincipalAuthMethod", "value": "Inline" } },
-      "servicePrincipalId": { "type": "text", "label": "Service principal ID", "required": true, "placeholder": "Enter service principal ID", "conditional": { "field": "authenticationType", "value": "ServicePrincipal" }, "nestedConditional": { "field": "servicePrincipalAuthMethod", "value": "Inline" } },
-      "servicePrincipalCredentialType": { "type": "radio", "label": "Service principal credential type", "options": ["Service Principal Key", "Service Principal Certificate"], "default": "Service Principal Key", "conditional": { "field": "authenticationType", "value": "ServicePrincipal" }, "nestedConditional": { "field": "servicePrincipalAuthMethod", "value": "Inline" } },
-      "servicePrincipalKey": { "type": "web-secret", "label": "Service principal key", "required": true, "placeholder": "Select Azure Key Vault secret", "conditional": { "field": "authenticationType", "value": "ServicePrincipal" }, "nestedConditional": { "field": "servicePrincipalCredentialType", "value": "Service Principal Key" } },
-      "servicePrincipalCert": { "type": "web-secret", "label": "Service principal certificate", "placeholder": "Select Azure Key Vault secret", "conditional": { "field": "authenticationType", "value": "ServicePrincipal" }, "nestedConditional": { "field": "servicePrincipalCredentialType", "value": "Service Principal Certificate" } },
-      "servicePrincipalResource": { "type": "text", "label": "Resource", "required": true, "placeholder": "Enter resource", "conditional": { "field": "authenticationType", "value": "ServicePrincipal" }, "nestedConditional": { "field": "servicePrincipalAuthMethod", "value": "Inline" } },
-      "credential": { "type": "text", "label": "Credentials", "required": true, "placeholder": "Select credential", "conditional": { "field": "authenticationType", "value": "ServicePrincipal" }, "nestedConditional": { "field": "servicePrincipalAuthMethod", "value": "Credential" } },
-      "credentialResource": { "type": "text", "label": "Resource", "required": true, "placeholder": "Enter resource", "conditional": { "field": "authenticationType", "value": "ServicePrincipal" }, "nestedConditional": { "field": "servicePrincipalAuthMethod", "value": "Credential" } },
-      "credentialUserAssigned": { "type": "text", "label": "Credentials", "required": true, "placeholder": "Select credential", "conditional": { "field": "authenticationType", "value": "UserAssignedManagedIdentity" } }
+      "url": {
+        "type": "text",
+        "label": "URL",
+        "required": true,
+        "placeholder": "Enter URL",
+        "jsonPath": "typeProperties.url"
+      },
+      "method": {
+        "type": "select",
+        "label": "Method",
+        "required": true,
+        "options": [
+          "POST"
+        ],
+        "default": "POST",
+        "placeholder": "POST",
+        "jsonPath": "typeProperties.method"
+      },
+      "headers": {
+        "type": "web-headers",
+        "label": "Headers",
+        "jsonPath": "typeProperties.headers"
+      },
+      "body": {
+        "type": "string",
+        "label": "Body",
+        "multiline": true,
+        "placeholder": "Enter request body...",
+        "jsonPath": "typeProperties.body"
+      },
+      "timeout": {
+        "type": "text",
+        "label": "Timeout",
+        "default": "00:10:00",
+        "placeholder": "00:10:00",
+        "jsonPath": "typeProperties.timeout"
+      },
+      "disableCertValidation": {
+        "type": "boolean",
+        "label": "Disable certificate validation",
+        "default": false,
+        "jsonPath": "typeProperties.disableCertValidation"
+      },
+      "reportStatusOnCallBack": {
+        "type": "boolean",
+        "label": "Report status on callback",
+        "default": false,
+        "jsonPath": "typeProperties.reportStatusOnCallBack"
+      },
+      "authenticationType": {
+        "type": "select",
+        "label": "Authentication",
+        "options": [
+          "None",
+          "Basic",
+          "MSI",
+          "ClientCertificate",
+          "ServicePrincipal",
+          "UserAssignedManagedIdentity"
+        ],
+        "optionLabels": {
+          "MSI": "System-assigned managed identity",
+          "ClientCertificate": "Client Certificate",
+          "ServicePrincipal": "Service Principal",
+          "UserAssignedManagedIdentity": "User-assigned managed identity"
+        },
+        "default": "None",
+        "jsonPath": "typeProperties.authentication.type",
+        "serializeAs": "webAuthentication"
+      },
+      "username": {
+        "type": "text",
+        "label": "Username",
+        "placeholder": "Enter username",
+        "conditional": {
+          "field": "authenticationType",
+          "value": "Basic"
+        },
+        "jsonPath": "typeProperties.authentication.username",
+        "serializeAs": "webAuthentication"
+      },
+      "password": {
+        "type": "web-secret",
+        "label": "Password",
+        "placeholder": "Enter password or Azure Key Vault secret",
+        "conditional": {
+          "field": "authenticationType",
+          "value": "Basic"
+        },
+        "jsonPath": "typeProperties.authentication.password",
+        "serializeAs": "webAuthentication"
+      },
+      "resource": {
+        "type": "text",
+        "label": "Resource",
+        "placeholder": "Enter resource",
+        "conditional": {
+          "field": "authenticationType",
+          "value": [
+            "MSI",
+            "UserAssignedManagedIdentity"
+          ]
+        },
+        "jsonPath": "typeProperties.authentication.resource",
+        "serializeAs": "webAuthentication"
+      },
+      "pfx": {
+        "type": "web-secret",
+        "label": "Pfx",
+        "placeholder": "Select Azure Key Vault secret",
+        "conditional": {
+          "field": "authenticationType",
+          "value": "ClientCertificate"
+        },
+        "jsonPath": "typeProperties.authentication.pfx",
+        "serializeAs": "webAuthentication"
+      },
+      "pfxPassword": {
+        "type": "web-secret",
+        "label": "Password",
+        "placeholder": "Select Azure Key Vault secret",
+        "conditional": {
+          "field": "authenticationType",
+          "value": "ClientCertificate"
+        },
+        "jsonPath": "typeProperties.authentication.password",
+        "serializeAs": "webAuthentication"
+      },
+      "servicePrincipalAuthMethod": {
+        "type": "radio",
+        "label": "Authentication reference method",
+        "options": [
+          "Inline",
+          "Credential"
+        ],
+        "default": "Inline",
+        "conditional": {
+          "field": "authenticationType",
+          "value": "ServicePrincipal"
+        },
+        "jsonPath": null,
+        "uiOnly": true
+      },
+      "tenant": {
+        "type": "text",
+        "label": "Tenant",
+        "required": true,
+        "placeholder": "Enter tenant ID",
+        "conditional": {
+          "field": "authenticationType",
+          "value": "ServicePrincipal"
+        },
+        "nestedConditional": {
+          "field": "servicePrincipalAuthMethod",
+          "value": "Inline"
+        },
+        "jsonPath": "typeProperties.authentication.tenant",
+        "serializeAs": "webAuthentication"
+      },
+      "servicePrincipalId": {
+        "type": "text",
+        "label": "Service principal ID",
+        "required": true,
+        "placeholder": "Enter service principal ID",
+        "conditional": {
+          "field": "authenticationType",
+          "value": "ServicePrincipal"
+        },
+        "nestedConditional": {
+          "field": "servicePrincipalAuthMethod",
+          "value": "Inline"
+        },
+        "jsonPath": "typeProperties.authentication.servicePrincipalId",
+        "serializeAs": "webAuthentication"
+      },
+      "servicePrincipalCredentialType": {
+        "type": "radio",
+        "label": "Service principal credential type",
+        "options": [
+          "Service Principal Key",
+          "Service Principal Certificate"
+        ],
+        "default": "Service Principal Key",
+        "conditional": {
+          "field": "authenticationType",
+          "value": "ServicePrincipal"
+        },
+        "nestedConditional": {
+          "field": "servicePrincipalAuthMethod",
+          "value": "Inline"
+        },
+        "jsonPath": null,
+        "uiOnly": true
+      },
+      "servicePrincipalKey": {
+        "type": "web-secret",
+        "label": "Service principal key",
+        "required": true,
+        "placeholder": "Select Azure Key Vault secret",
+        "conditional": {
+          "field": "authenticationType",
+          "value": "ServicePrincipal"
+        },
+        "nestedConditional": {
+          "field": "servicePrincipalCredentialType",
+          "value": "Service Principal Key"
+        },
+        "jsonPath": "typeProperties.authentication.servicePrincipalKey",
+        "serializeAs": "webAuthentication"
+      },
+      "servicePrincipalCert": {
+        "type": "web-secret",
+        "label": "Service principal certificate",
+        "placeholder": "Select Azure Key Vault secret",
+        "conditional": {
+          "field": "authenticationType",
+          "value": "ServicePrincipal"
+        },
+        "nestedConditional": {
+          "field": "servicePrincipalCredentialType",
+          "value": "Service Principal Certificate"
+        },
+        "jsonPath": "typeProperties.authentication.servicePrincipalCert",
+        "serializeAs": "webAuthentication"
+      },
+      "servicePrincipalResource": {
+        "type": "text",
+        "label": "Resource",
+        "required": true,
+        "placeholder": "Enter resource",
+        "conditional": {
+          "field": "authenticationType",
+          "value": "ServicePrincipal"
+        },
+        "nestedConditional": {
+          "field": "servicePrincipalAuthMethod",
+          "value": "Inline"
+        },
+        "jsonPath": "typeProperties.authentication.resource",
+        "serializeAs": "webAuthentication"
+      },
+      "credential": {
+        "type": "text",
+        "label": "Credentials",
+        "required": true,
+        "placeholder": "Select credential",
+        "conditional": {
+          "field": "authenticationType",
+          "value": "ServicePrincipal"
+        },
+        "nestedConditional": {
+          "field": "servicePrincipalAuthMethod",
+          "value": "Credential"
+        },
+        "jsonPath": "typeProperties.authentication.credential",
+        "serializeAs": "webAuthentication"
+      },
+      "credentialResource": {
+        "type": "text",
+        "label": "Resource",
+        "required": true,
+        "placeholder": "Enter resource",
+        "conditional": {
+          "field": "authenticationType",
+          "value": "ServicePrincipal"
+        },
+        "nestedConditional": {
+          "field": "servicePrincipalAuthMethod",
+          "value": "Credential"
+        },
+        "jsonPath": "typeProperties.authentication.resource",
+        "serializeAs": "webAuthentication"
+      },
+      "credentialUserAssigned": {
+        "type": "text",
+        "label": "Credentials",
+        "required": true,
+        "placeholder": "Select credential",
+        "conditional": {
+          "field": "authenticationType",
+          "value": "UserAssignedManagedIdentity"
+        },
+        "jsonPath": "typeProperties.authentication.credential",
+        "serializeAs": "webAuthentication"
+      }
     }
   }
 }

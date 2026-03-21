@@ -1,0 +1,532 @@
+'use strict';
+// engine.js — schema-driven serialize / deserialize / validate for the V2 pipeline editor.
+//
+// Design principle: NO if/else chains per activity type.
+// All behaviour is driven by activity-schemas-v2.json.
+//
+// Three operations mirror each other through the same schema:
+//   deserializeActivity  raw ADF JSON → flat canvas object
+//   serializeActivity    flat canvas object → ADF JSON ready to write to file
+//   validateActivity     flat canvas object → array of error strings
+//
+// Complex field mappings (5 transformers) handle the few places where
+// the field layout on disk differs from the flat canvas representation.
+
+const allSchemas = require('../activity-schemas-v2.json');
+
+// ─── Public API ───────────────────────────────────────────────────────────────
+module.exports = {
+	isActivityTypeSupported,
+	deserializeActivity,
+	deserializeActivityList,
+	serializeActivity,
+	serializeActivityList,
+	serializePipeline,
+	validateActivity,
+	validateActivityList,
+};
+
+// ─── Supported types ──────────────────────────────────────────────────────────
+// All types with complete jsonPath coverage except Copy, which piggybacks on
+// copy-activity-config.json and will be wired in a later step.
+const SUPPORTED_TYPES = new Set([
+	'Wait', 'Fail',
+	'AppendVariable', 'SetVariable',
+	'Filter', 'ExecutePipeline',
+	'ForEach', 'Until', 'IfCondition', 'Switch',
+	'Lookup', 'Delete', 'Validation', 'GetMetadata',
+	'SynapseNotebook', 'SparkJob',
+	'Script', 'SqlServerStoredProcedure',
+	'WebActivity', 'WebHook',
+	// 'Copy' — added in a later step
+]);
+
+function isActivityTypeSupported(type) {
+	return SUPPORTED_TYPES.has(type);
+}
+
+// ─── Path utilities ───────────────────────────────────────────────────────────
+// Supported path formats in jsonPath fields:
+//   "@field"                               → obj[field]           (activity root)
+//   "policy.field"                         → obj.policy.field
+//   "typeProperties.field"                 → obj.typeProperties.field
+//   "typeProperties.conf[spark.key.name]"  → obj.typeProperties.conf['spark.key.name']
+
+function parsePath(path) {
+	const result = [];
+	let i = 0, current = '';
+	while (i < path.length) {
+		const c = path[i];
+		if (c === '[') {
+			if (current) { result.push(current); current = ''; }
+			const end = path.indexOf(']', i);
+			if (end === -1) break;
+			result.push(path.slice(i + 1, end));
+			i = end + 1;
+			if (path[i] === '.') i++;
+		} else if (c === '.') {
+			if (current) { result.push(current); current = ''; }
+			i++;
+		} else {
+			current += c; i++;
+		}
+	}
+	if (current) result.push(current);
+	return result;
+}
+
+function getByPath(obj, path) {
+	if (!path || obj == null) return undefined;
+	if (path.startsWith('@')) return obj[path.slice(1)];
+	let cur = obj;
+	for (const seg of parsePath(path)) {
+		if (cur == null) return undefined;
+		cur = cur[seg];
+	}
+	return cur;
+}
+
+function setByPath(obj, path, value) {
+	if (!path || value === undefined) return;
+	if (path.startsWith('@')) { obj[path.slice(1)] = value; return; }
+	const segs = parsePath(path);
+	let cur = obj;
+	for (let i = 0; i < segs.length - 1; i++) {
+		if (cur[segs[i]] == null) cur[segs[i]] = {};
+		cur = cur[segs[i]];
+	}
+	cur[segs[segs.length - 1]] = value;
+}
+
+// ─── Deserialize ──────────────────────────────────────────────────────────────
+// Takes one raw ADF JSON activity object, returns a flat canvas-friendly object.
+// Container nested activities are preserved as raw arrays (editing them is a later step).
+
+function deserializeActivity(raw) {
+	const schema = allSchemas[raw.type];
+	const flat = { id: Date.now() + Math.random(), type: raw.type };
+
+	if (!schema) {
+		// Unknown type — best-effort flatten for display
+		flat.name = raw.name || '';
+		flat.description = raw.description || '';
+		if (raw.typeProperties) Object.assign(flat, raw.typeProperties);
+		flat.dependsOn = raw.dependsOn || [];
+		flat.userProperties = raw.userProperties || [];
+		return flat;
+	}
+
+	const FIELD_GROUPS = ['commonProperties', 'typeProperties', 'sourceProperties', 'sinkProperties', 'advancedProperties'];
+
+	// Read each schema field from its jsonPath in the raw object
+	for (const group of FIELD_GROUPS) {
+		const fields = schema[group];
+		if (!fields) continue;
+		for (const [key, def] of Object.entries(fields)) {
+			// uiOnly fields have no JSON source
+			if (def.uiOnly || !def.jsonPath) continue;
+			// Container arrays are handled separately below
+			if (def.type === 'containerActivities' || def.type === 'switchCases') continue;
+			// Fields with serializeAs transformers are read via deserialize transformer, not direct path
+			// EXCEPTION: the jsonPath on these fields IS the correct read location, so we still read here.
+			// The deserialize transformer then overwrites/adjusts only where needed.
+			const value = getByPath(raw, def.jsonPath);
+			if (value !== undefined) flat[key] = value;
+		}
+	}
+
+	// Run deserialize transformers for fields needing adjustment after direct path reads
+	runDeserializeTransformers(raw, schema, flat);
+
+	// Container children — preserved as raw JSON arrays until per-container editing is implemented
+	for (const group of ['typeProperties']) {
+		const fields = schema[group];
+		if (!fields) continue;
+		for (const [key, def] of Object.entries(fields)) {
+			if (def.type === 'containerActivities') {
+				flat[key] = getByPath(raw, def.jsonPath) || [];
+			} else if (def.type === 'switchCases') {
+				flat[key] = getByPath(raw, def.jsonPath) || [];
+				flat.defaultActivities = getByPath(raw, 'typeProperties.defaultActivities') || [];
+			}
+		}
+	}
+
+	flat.dependsOn = raw.dependsOn || [];
+	flat.userProperties = raw.userProperties || [];
+	return flat;
+}
+
+function deserializeActivityList(arr) {
+	return (arr || []).map(raw => deserializeActivity(raw));
+}
+
+// ─── Serialize ────────────────────────────────────────────────────────────────
+// Takes a flat canvas activity object, returns a complete ADF JSON activity object.
+
+function serializeActivity(flat) {
+	const schema = allSchemas[flat.type];
+	if (!schema) return null; // unsupported type — cannot serialize
+
+	const output = { name: flat.name, type: flat.type };
+
+	if (flat.description)       output.description      = flat.description;
+	if (flat.state)             output.state            = flat.state;
+	if (flat.onInactiveMarkAs)  output.onInactiveMarkAs = flat.onInactiveMarkAs;
+	if (flat.dependsOn?.length) output.dependsOn        = flat.dependsOn;
+	if (flat.userProperties?.length) output.userProperties = flat.userProperties;
+
+	const FIELD_GROUPS = ['commonProperties', 'typeProperties', 'sourceProperties', 'sinkProperties', 'advancedProperties'];
+
+	for (const group of FIELD_GROUPS) {
+		const fields = schema[group];
+		if (!fields) continue;
+		for (const [key, def] of Object.entries(fields)) {
+			if (def.uiOnly || !def.jsonPath) continue;
+			// Transformer fields: skip here, transformer writes the correct structure
+			if (def.serializeAs) continue;
+			// Container arrays: handled below
+			if (def.type === 'containerActivities' || def.type === 'switchCases') continue;
+
+			const value = flat[key];
+			if (value !== undefined && value !== null && value !== '') {
+				setByPath(output, def.jsonPath, value);
+			}
+		}
+	}
+
+	// Container children — write back as raw arrays (preserved from deserialize)
+	for (const group of ['typeProperties']) {
+		const fields = schema[group];
+		if (!fields) continue;
+		for (const [key, def] of Object.entries(fields)) {
+			if (def.type === 'containerActivities') {
+				// Preserve raw array as-is (nested editing is a future step)
+				setByPath(output, def.jsonPath, flat[key] || []);
+			} else if (def.type === 'switchCases') {
+				setByPath(output, def.jsonPath, flat[key] || []);
+				if (flat.defaultActivities?.length) {
+					setByPath(output, 'typeProperties.defaultActivities', flat.defaultActivities);
+				}
+			}
+		}
+	}
+
+	// Run serialize transformers last — they overwrite specific fields as needed
+	runSerializeTransformers(flat, schema, output);
+
+	// Trim empty wrapper objects produced by setByPath
+	if (output.policy      && Object.keys(output.policy).length      === 0) delete output.policy;
+	if (output.typeProperties && Object.keys(output.typeProperties).length === 0) delete output.typeProperties;
+
+	return output;
+}
+
+function serializeActivityList(activities) {
+	return (activities || []).map(a => serializeActivity(a)).filter(Boolean);
+}
+
+// ─── Pipeline-level serialize ─────────────────────────────────────────────────
+// Builds the complete { name, properties: { activities, parameters, ... } } ADF JSON.
+// connections: array of { from, to, condition } canvas connection objects.
+
+function serializePipeline(pipelineData, activities, connections) {
+	const withDeps = attachDependsOn(activities, connections);
+	return {
+		name: pipelineData.name || 'pipeline1',
+		properties: {
+			activities: serializeActivityList(withDeps),
+			...(hasKeys(pipelineData.parameters) ? { parameters: pipelineData.parameters } : {}),
+			...(hasKeys(pipelineData.variables)  ? { variables:  pipelineData.variables  } : {}),
+			...(pipelineData.description         ? { description: pipelineData.description } : {}),
+			...(pipelineData.concurrency && pipelineData.concurrency !== 1
+				? { concurrency: parseInt(pipelineData.concurrency) } : {}),
+			annotations: Array.isArray(pipelineData.annotations) ? pipelineData.annotations : [],
+			lastPublishTime: new Date().toISOString(),
+		}
+	};
+}
+
+function attachDependsOn(activities, connections) {
+	return activities.map(a => ({
+		...a,
+		dependsOn: (connections || [])
+			.filter(c => (c.to?.name ?? c.toName) === a.name)
+			.map(c => ({
+				activity: c.from?.name ?? c.fromName,
+				dependencyConditions: [c.condition || 'Succeeded'],
+			})),
+	}));
+}
+
+function hasKeys(obj) {
+	return obj && typeof obj === 'object' && Object.keys(obj).length > 0;
+}
+
+// ─── Validate ─────────────────────────────────────────────────────────────────
+// Returns an array of human-readable error strings. Empty = valid.
+
+function validateActivity(flat) {
+	const schema = allSchemas[flat.type];
+	if (!schema) {
+		return [`Activity type "${flat.type}" is not yet supported in V2 editor`];
+	}
+
+	const errors = [];
+	const FIELD_GROUPS = ['commonProperties', 'typeProperties', 'sourceProperties', 'sinkProperties', 'advancedProperties'];
+
+	for (const group of FIELD_GROUPS) {
+		const fields = schema[group];
+		if (!fields) continue;
+		for (const [key, def] of Object.entries(fields)) {
+			if (!def.required) continue;
+			if (def.conditional && !isConditionMet(def.conditional, flat)) continue;
+			const value = flat[key];
+			if (value === undefined || value === null || value === '') {
+				errors.push(`"${def.label || key}" is required`);
+			}
+		}
+	}
+	return errors;
+}
+
+// Returns { activityName: [errors] } for all activities that have errors.
+function validateActivityList(activities) {
+	const allErrors = {};
+	for (const a of (activities || [])) {
+		const errs = validateActivity(a);
+		if (errs.length) allErrors[a.name || String(a.id)] = errs;
+		// Recurse into container children (raw arrays — validate as best we can)
+		for (const key of ['activities', 'ifTrueActivities', 'ifFalseActivities', 'defaultActivities']) {
+			if (Array.isArray(a[key]) && a[key].length > 0 && a[key][0].type) {
+				Object.assign(allErrors, validateActivityList(a[key]));
+			}
+		}
+		for (const c of (a.cases || [])) {
+			if (Array.isArray(c.activities)) Object.assign(allErrors, validateActivityList(c.activities));
+		}
+	}
+	return allErrors;
+}
+
+function isConditionMet(conditional, flat) {
+	const val = flat[conditional.field];
+	return Array.isArray(conditional.value)
+		? conditional.value.includes(val)
+		: val === conditional.value;
+}
+
+// ─── Transformer registry ─────────────────────────────────────────────────────
+// Each transformer is a pair: { serialize(flat, output), deserialize(raw, flat) }
+// serialize: called after the main field loop — writes complex structures
+// deserialize: called after the main field reads — adjusts values for the canvas
+
+function getUsedTransformerNames(schema) {
+	const used = new Set();
+	const FIELD_GROUPS = ['commonProperties', 'typeProperties', 'sourceProperties', 'sinkProperties', 'advancedProperties'];
+	for (const group of FIELD_GROUPS) {
+		const fields = schema[group];
+		if (!fields) continue;
+		for (const def of Object.values(fields)) {
+			if (def.serializeAs) used.add(def.serializeAs);
+		}
+	}
+	return used;
+}
+
+function runSerializeTransformers(flat, schema, output) {
+	for (const name of getUsedTransformerNames(schema)) {
+		TRANSFORMERS[name]?.serialize(flat, output);
+	}
+}
+
+function runDeserializeTransformers(raw, schema, flat) {
+	for (const name of getUsedTransformerNames(schema)) {
+		TRANSFORMERS[name]?.deserialize(raw, flat);
+	}
+}
+
+// ─── Transformers ─────────────────────────────────────────────────────────────
+const TRANSFORMERS = {
+
+	// ── 1. SynapseNotebook conf object ────────────────────────────────────────
+	// Fields: dynamicAllocation, minExecutors, maxExecutors, numExecutors
+	// Disk: typeProperties.conf['spark.dynamicAllocation.*']
+	synapseNotebookConf: {
+		serialize(flat, output) {
+			if (!output.typeProperties) output.typeProperties = {};
+			output.typeProperties.snapshot = true;
+			if (flat.dynamicAllocation === undefined) {
+				// Activity loaded via V1 path — conf is already the raw ADF object on flat; preserve it
+				if (flat.conf && typeof flat.conf === 'object') {
+					output.typeProperties.conf = flat.conf;
+				}
+				return;
+			}
+
+			const enabled = flat.dynamicAllocation === 'Enabled';
+			output.typeProperties.conf = output.typeProperties.conf || {};
+			output.typeProperties.conf['spark.dynamicAllocation.enabled'] = enabled;
+
+			if (enabled) {
+				if (flat.minExecutors != null && flat.minExecutors !== '')
+					output.typeProperties.conf['spark.dynamicAllocation.minExecutors'] = parseInt(flat.minExecutors);
+				if (flat.maxExecutors != null && flat.maxExecutors !== '')
+					output.typeProperties.conf['spark.dynamicAllocation.maxExecutors'] = parseInt(flat.maxExecutors);
+			} else {
+				if (flat.numExecutors != null && flat.numExecutors !== '') {
+					const n = parseInt(flat.numExecutors);
+					output.typeProperties.conf['spark.dynamicAllocation.minExecutors'] = n;
+					output.typeProperties.conf['spark.dynamicAllocation.maxExecutors'] = n;
+					output.typeProperties.numExecutors = n;
+				}
+			}
+		},
+		deserialize(raw, flat) {
+			const conf = raw.typeProperties?.conf;
+			if (!conf) return;
+			const enabled = conf['spark.dynamicAllocation.enabled'];
+			if (enabled !== undefined) flat.dynamicAllocation = enabled ? 'Enabled' : 'Disabled';
+			if (conf['spark.dynamicAllocation.minExecutors'] !== undefined)
+				flat.minExecutors = conf['spark.dynamicAllocation.minExecutors'];
+			if (conf['spark.dynamicAllocation.maxExecutors'] !== undefined)
+				flat.maxExecutors = conf['spark.dynamicAllocation.maxExecutors'];
+		},
+	},
+
+	// ── 2. SetVariable pipeline return value ──────────────────────────────────
+	// Disk format when returnValue: variableName="pipelineReturnValue", setSystemVariable=true, value=[{key,value:{type,content}}]
+	setVariableReturnValues: {
+		serialize(flat, output) {
+			if (flat.variableType !== 'Pipeline return value') return;
+			if (!output.typeProperties) output.typeProperties = {};
+			delete output.typeProperties.variableName;
+			delete output.typeProperties.value;
+			output.typeProperties.variableName = 'pipelineReturnValue';
+			output.typeProperties.setSystemVariable = true;
+			const arr = [];
+			for (const [k, item] of Object.entries(flat.returnValues || {})) {
+				const v = { key: k, value: { type: item.type } };
+				if (item.type !== 'Null') {
+					if (item.type === 'Int' || item.type === 'Float') {
+						v.value.content = parseFloat(item.value) || 0;
+					} else if (item.type === 'Boolean') {
+						v.value.content = item.value === 'true' || item.value === true;
+					} else {
+						v.value.content = item.value || '';
+					}
+				}
+				arr.push(v);
+			}
+			output.typeProperties.value = arr;
+		},
+		deserialize(raw, flat) {
+			const tp = raw.typeProperties;
+			if (!tp) return;
+			if (tp.setSystemVariable && tp.variableName === 'pipelineReturnValue') {
+				flat.variableType = 'Pipeline return value';
+				flat.variableName = undefined;
+				const rv = {};
+				for (const item of (tp.value || [])) {
+					rv[item.key] = { type: item.value?.type, value: item.value?.content };
+				}
+				flat.returnValues = rv;
+			} else {
+				flat.variableType = 'Pipeline variable';
+			}
+		},
+	},
+
+	// ── 3. Web auth (WebActivity + WebHook) ───────────────────────────────────
+	// Disk: typeProperties.authentication.{type, username, password, ...}
+	webAuthentication: {
+		serialize(flat, output) {
+			if (!flat.authenticationType) {
+				// Activity loaded via V1 path — authentication is already the raw ADF object on flat; preserve it
+				if (flat.authentication && typeof flat.authentication === 'object') {
+					if (!output.typeProperties) output.typeProperties = {};
+					output.typeProperties.authentication = flat.authentication;
+				}
+				return;
+			}
+			if (flat.authenticationType === 'None') return;
+			if (!output.typeProperties) output.typeProperties = {};
+			const auth = { type: flat.authenticationType };
+			switch (flat.authenticationType) {
+				case 'Basic':
+					if (flat.username) auth.username = flat.username;
+					if (flat.password) auth.password = flat.password;
+					break;
+				case 'MSI':
+					if (flat.resource) auth.resource = flat.resource;
+					break;
+				case 'UserAssignedManagedIdentity':
+					if (flat.resource) auth.resource = flat.resource;
+					if (flat.credentialUserAssigned) auth.credential = flat.credentialUserAssigned;
+					break;
+				case 'ClientCertificate':
+					if (flat.pfx)         auth.pfx      = flat.pfx;
+					if (flat.pfxPassword) auth.password = flat.pfxPassword;
+					break;
+				case 'ServicePrincipal':
+					if (flat.servicePrincipalAuthMethod === 'Credential') {
+						if (flat.credential)         auth.credential = flat.credential;
+						if (flat.credentialResource) auth.resource   = flat.credentialResource;
+					} else {
+						if (flat.tenant)             auth.tenant             = flat.tenant;
+						if (flat.servicePrincipalId) auth.servicePrincipalId = flat.servicePrincipalId;
+						const useKey = flat.servicePrincipalCredentialType !== 'Service Principal Certificate';
+						if (useKey && flat.servicePrincipalKey)  auth.servicePrincipalKey  = flat.servicePrincipalKey;
+						if (!useKey && flat.servicePrincipalCert) auth.servicePrincipalCert = flat.servicePrincipalCert;
+						if (flat.servicePrincipalResource) auth.resource = flat.servicePrincipalResource;
+					}
+					break;
+			}
+			output.typeProperties.authentication = auth;
+		},
+		deserialize(raw, flat) {
+			const auth = raw.typeProperties?.authentication;
+			if (!auth) { flat.authenticationType = 'None'; return; }
+			flat.authenticationType = auth.type || 'None';
+			if (auth.username)            flat.username            = auth.username;
+			if (auth.password)            flat.password            = auth.password;
+			if (auth.resource)            flat.resource            = auth.resource;
+			if (auth.pfx)                 flat.pfx                 = auth.pfx;
+			if (auth.tenant)              flat.tenant              = auth.tenant;
+			if (auth.servicePrincipalId)  flat.servicePrincipalId  = auth.servicePrincipalId;
+			if (auth.servicePrincipalKey) flat.servicePrincipalKey = auth.servicePrincipalKey;
+			if (auth.credential)          flat.credential          = auth.credential;
+		},
+	},
+
+	// ── 4. Validation childItems ──────────────────────────────────────────────
+	// "ignore" (UI default) → omit from JSON; string "true"/"false" → boolean
+	validationChildItems: {
+		serialize(flat, output) {
+			if (!output.typeProperties) output.typeProperties = {};
+			if (flat.childItems === undefined || flat.childItems === 'ignore') {
+				delete output.typeProperties.childItems;
+			} else {
+				output.typeProperties.childItems = flat.childItems === 'true' || flat.childItems === true;
+			}
+		},
+		deserialize(raw, flat) {
+			const v = raw.typeProperties?.childItems;
+			flat.childItems = v === undefined ? 'ignore' : String(v);
+		},
+	},
+
+	// ── 5. Copy dataset references ────────────────────────────────────────────
+	// sourceDataset → activity.inputs[0].referenceName
+	// sinkDataset   → activity.outputs[0].referenceName
+	copyDatasetRef: {
+		serialize(flat, output) {
+			if (flat.sourceDataset) output.inputs  = [{ referenceName: flat.sourceDataset, type: 'DatasetReference' }];
+			if (flat.sinkDataset)   output.outputs = [{ referenceName: flat.sinkDataset,   type: 'DatasetReference' }];
+		},
+		deserialize(raw, flat) {
+			if (raw.inputs?.[0]?.referenceName)  flat.sourceDataset = raw.inputs[0].referenceName;
+			if (raw.outputs?.[0]?.referenceName) flat.sinkDataset   = raw.outputs[0].referenceName;
+		},
+	},
+};

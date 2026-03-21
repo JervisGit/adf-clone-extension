@@ -1,5 +1,24 @@
 ﻿# Pipeline Editor Refactoring Plan
 
+## Progress
+
+| Step | Status | Description |
+|------|--------|-------------|
+| Step 1 | ✅ Done | V2 scaffolding — `pipelineEditorV2.js`, `media/pipelineEditorV2.html/css/js`, extension commands, context menu, canvas/drag-drop/pan/zoom, read-only properties panel |
+| Step 2 | ✅ Done | Added `jsonPath` (and `serializeAs`, `uiOnly`, container `type`) to every field in `activity-schemas-v2.json`. Transformers needed in Step 3: `synapseNotebookConf`, `setVariableReturnValues`, `webAuthentication`, `validationChildItems`, `switchCases` |
+| Step 3 | 🔲 Next | Create `src/activityEngine/engine.js` — schema-driven serialize/deserialize/validate using jsonPaths. Start with Wait/Fail/SetVariable/AppendVariable. |
+| Step 4 | 🔲 | Enable editing + saving in V2 for simple activities (Wait, Fail, SetVariable, AppendVariable) |
+| Step 5 | 🔲 | ExecutePipeline, Filter |
+| Step 6 | 🔲 | Containers: ForEach, Until, IfCondition, Switch — validates recursive nesting fix |
+| Step 7 | 🔲 | Lookup, Delete, Validation, GetMetadata — dataset-referencing activities |
+| Step 8 | 🔲 | SynapseNotebook, SparkJob |
+| Step 9 | 🔲 | Script, SqlServerStoredProcedure |
+| Step 10 | 🔲 | WebActivity, WebHook — auth transformer |
+| Step 11 | 🔲 | Copy — last; uses copy-activity-config.json |
+| Step 12 | 🔲 | V2 becomes default, V1 removed |
+
+---
+
 ## Approach: Build a Parallel V2 Editor, Not a Refactor
 
 Instead of modifying the existing editor, build a second webview provider (`PipelineEditorV2`) that lives alongside V1. The existing editor stays untouched and continues to work. Activities are migrated to V2 one at a time. Once all activities are covered and verified, V2 becomes the default and V1 is removed.

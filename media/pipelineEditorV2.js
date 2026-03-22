@@ -2,8 +2,13 @@
 // Step 1: Canvas view, drag-and-drop, connections. Save is disabled.
 //         Activity properties panel shows read-only data.
 //         Schema-driven editing is added per-activity in subsequent steps.
+// Step 4: Schema-driven editable form for Wait, Fail, SetVariable, AppendVariable.
 
 'use strict';
+
+// Activity types with full editable form support in V2.
+// Expanded as later steps complete each group.
+const EDITABLE_TYPES = new Set(['Wait', 'Fail', 'SetVariable', 'AppendVariable']);
 
 const vscode = acquireVsCodeApi();
 
@@ -580,6 +585,9 @@ function setupCanvasEvents() {
         const pos = screenToWorld(e.clientX, e.clientY);
         const a = new Activity(type, pos.x - 90, pos.y - 28, worldEl);
         activities.push(a);
+        selectedActivity = a;
+        a._setSelected(true);
+        showProperties(a);
         markAsDirty();
         draw();
     });
@@ -663,10 +671,10 @@ function setupToolbarButtons() {
     saveBtn.addEventListener('click', () => {
         saveBtn.disabled = true;
         saveBtn.textContent = 'Saving…';
-        vscode.postMessage({
+        const saveData = activities.map(toSaveData);        vscode.postMessage({
             type: 'savePipeline',
             pipelineData,
-            activities: activities.map(toSaveData),
+            activities: saveData,
             connections: connections.map(c => ({
                 fromName: c.from.name,
                 toName:   c.to.name,
@@ -775,6 +783,14 @@ function showProperties(activity) {
             propsPanel.classList.remove('collapsed');
             document.body.classList.add('properties-visible');
         }
+        // Auto-expand config panel (where form fields live) for editable activities
+        if (EDITABLE_TYPES.has(activity.type)) {
+            const configPanel = document.querySelector('.config-panel');
+            if (configPanel?.classList.contains('minimized')) {
+                configPanel.classList.remove('minimized');
+                document.getElementById('configCollapseBtn').textContent = '»';
+            }
+        }
     }
 
     // Show pipeline tabs when nothing selected
@@ -801,26 +817,50 @@ function showProperties(activity) {
 
     titleEl.textContent = activity.name;
 
-    // Right panel: name, type, description
-    rightPanel.innerHTML = `
-        <div class="v2-migration-note">
-            ✦ V2 editor preview — full field editing for <strong>${escHtml(Activity.labelForType(activity.type))}</strong> is being migrated. Data shown is read-only.
-        </div>
-        ${_propRow('Name', activity.name)}
-        ${_propRow('Type', Activity.labelForType(activity.type))}
-        ${activity.description ? _propRow('Description', activity.description) : ''}`;
+    const editable = EDITABLE_TYPES.has(activity.type);
+    const schema = activitySchemas[activity.type];
 
-    // Bottom panel: General + Settings stubs
-    tabsContainer.innerHTML = `
-        <button class="config-tab active" data-tab="v2-general" style="border-bottom:2px solid var(--vscode-focusBorder);color:var(--vscode-tab-activeForeground);">General</button>
-        <button class="config-tab" data-tab="v2-settings">Settings (read-only)</button>`;
-    panesContainer.innerHTML = `
-        <div class="config-tab-pane active" id="tab-v2-general" style="display:block;">
-            ${_buildGeneralPane(activity)}
-        </div>
-        <div class="config-tab-pane" id="tab-v2-settings" style="display:none;">
-            ${_buildSettingsPane(activity)}
-        </div>`;
+    // Right panel: always show name + type header
+    rightPanel.innerHTML = `
+        <div style="font-size:11px;color:var(--vscode-descriptionForeground);margin-bottom:2px;">${escHtml(Activity.labelForType(activity.type))}</div>
+        ${!editable ? `<div class="v2-migration-note" style="margin-top:8px;">✦ Editing for <strong>${escHtml(Activity.labelForType(activity.type))}</strong> is coming soon.</div>` : ''}`;
+
+    if (editable && schema) {
+        // Apply schema defaults to the activity model before rendering the form.
+        // This ensures freshly-dropped activities have correct defaults even if
+        // the user never touches a field.
+        _applySchemaDefaults(activity, schema);
+
+        // Build tabs from schema.tabs
+        const tabs = schema.tabs || ['General', 'Settings'];
+        tabsContainer.innerHTML = tabs.map((t, i) =>
+            `<button class="config-tab${i === 0 ? ' active' : ''}" data-tab="v2-tab-${i}"${
+                i === 0 ? ' style="border-bottom:2px solid var(--vscode-focusBorder);color:var(--vscode-tab-activeForeground);"' : ''
+            }>${escHtml(t)}</button>`
+        ).join('');
+        panesContainer.innerHTML = tabs.map((t, i) => {
+            const html = t === 'General'
+                ? _buildFormPane(activity, schema.commonProperties || {}, 'general')
+                : t === 'Settings'
+                    ? _buildFormPane(activity, schema.typeProperties || {}, 'settings')
+                    : `<div class="empty-state">Not yet implemented.</div>`;
+            return `<div class="config-tab-pane${i === 0 ? ' active' : ''}" id="tab-v2-tab-${i}" style="display:${i === 0 ? 'block' : 'none'}">${html}</div>`;
+        }).join('');
+        // Wire all inputs to write back to the activity and mark dirty
+        _wireFormInputs(panesContainer, activity);
+    } else {
+        // Fallback read-only for not-yet-editable types
+        tabsContainer.innerHTML = `
+            <button class="config-tab active" data-tab="v2-general" style="border-bottom:2px solid var(--vscode-focusBorder);color:var(--vscode-tab-activeForeground);">General</button>
+            <button class="config-tab" data-tab="v2-settings">Settings</button>`;
+        panesContainer.innerHTML = `
+            <div class="config-tab-pane active" id="tab-v2-general" style="display:block;">
+                ${_buildReadOnlyGeneral(activity, schema)}
+            </div>
+            <div class="config-tab-pane" id="tab-v2-settings" style="display:none;">
+                ${_buildReadOnlySettings(activity, schema)}
+            </div>`;
+    }
 
     tabsContainer.querySelectorAll('.config-tab').forEach(tab => {
         tab.addEventListener('click', () => {
@@ -843,8 +883,114 @@ function _propRow(key, val) {
     return `<div class="v2-prop-row"><span class="v2-prop-key">${escHtml(key)}</span><span class="v2-prop-val">${escHtml(String(val ?? '—'))}</span></div>`;
 }
 
-function _buildGeneralPane(a) {
-    const schema = activitySchemas[a.type];
+// ─── Schema-driven form renderer ───────────────────────────────────────────────
+// Renders editable HTML form fields for one group of schema fields.
+// Fields hidden by `conditional` are rendered but show/hide via JS.
+function _buildFormPane(activity, fields, paneId) {
+    let html = '';
+    for (const [key, def] of Object.entries(fields)) {
+        if (def.type === 'containerActivities' || def.type === 'switchCases') continue;
+        const val = activity[key] ?? def.default ?? '';
+        const cond = def.conditional ? `data-cond-field="${escHtml(def.conditional.field)}" data-cond-value="${escHtml(Array.isArray(def.conditional.value) ? def.conditional.value.join(',') : def.conditional.value)}"` : '';
+        html += `<div class="form-field" data-field-key="${escHtml(key)}" ${cond}>`;
+        html += `<label class="form-label">${escHtml(def.label || key)}${def.required ? ' <span style="color:var(--vscode-errorForeground)">*</span>' : ''}</label>`;
+        switch (def.type) {
+            case 'boolean':
+                html += `<input type="checkbox" class="form-checkbox" data-key="${escHtml(key)}" ${val ? 'checked' : ''} />`;
+                break;
+            case 'radio':
+                html += `<div class="form-radio-group">${(def.options || []).map(opt =>
+                    `<label class="form-radio-label"><input type="radio" name="${escHtml(paneId + '-' + key)}" value="${escHtml(opt)}" ${String(val) === String(opt) ? 'checked' : ''} data-key="${escHtml(key)}" />${escHtml(opt)}</label>`
+                ).join('')}</div>`;
+                break;
+            case 'select':
+                html += `<select class="form-select" data-key="${escHtml(key)}">` +
+                    (def.options || []).map(opt =>
+                        `<option value="${escHtml(opt)}" ${String(val) === String(opt) ? 'selected' : ''}>${escHtml(def.optionLabels?.[opt] || opt)}</option>`
+                    ).join('') + `</select>`;
+                break;
+            case 'number':
+                html += `<input type="number" class="form-input" data-key="${escHtml(key)}" value="${escHtml(String(val))}"${def.min != null ? ` min="${def.min}"` : ''}${def.max != null ? ` max="${def.max}"` : ''} placeholder="${escHtml(def.placeholder || '')}" />`;
+                break;
+            case 'text':
+            case 'string':
+            case 'expression':
+            default:
+                if (def.multiline) {
+                    html += `<textarea class="form-textarea" data-key="${escHtml(key)}" rows="3" placeholder="${escHtml(def.placeholder || '')}">${escHtml(String(val))}</textarea>`;
+                } else {
+                    html += `<input type="text" class="form-input" data-key="${escHtml(key)}" value="${escHtml(String(val))}" placeholder="${escHtml(def.placeholder || '')}" />`;
+                }
+                break;
+        }
+        if (def.helpText) html += `<div class="form-help">${escHtml(def.helpText)}</div>`;
+        html += `</div>`;
+    }
+    return html || '<div class="empty-state">No fields.</div>';
+}
+
+// Apply schema defaults to the activity model for any undefined fields.
+function _applySchemaDefaults(activity, schema) {
+    const FIELD_GROUPS = ['commonProperties', 'typeProperties', 'advancedProperties'];
+    for (const group of FIELD_GROUPS) {
+        const fields = schema[group];
+        if (!fields) continue;
+        for (const [key, def] of Object.entries(fields)) {
+            if (def.type === 'containerActivities' || def.type === 'switchCases') continue;
+            if (activity[key] === undefined && def.default !== undefined) {
+                activity[key] = def.default;
+            }
+        }
+    }
+}
+
+// Wire form inputs in a container to write back to the activity object.
+// Also handles conditional visibility.
+function _wireFormInputs(container, activity) {
+    // Set initial conditional visibility
+    _applyConditionals(container, activity);
+
+    container.querySelectorAll('input[data-key], select[data-key], textarea[data-key]').forEach(el => {
+        const key = el.dataset.key;
+        if (!key) return;
+        const tag = el.tagName.toLowerCase();
+        const eventName = (tag === 'input' && el.type === 'checkbox') ? 'change'
+            : (tag === 'input' && el.type === 'radio') ? 'change'
+            : (tag === 'select') ? 'change'
+            : 'input';
+        el.addEventListener(eventName, () => {
+            let value;
+            if (tag === 'input' && el.type === 'checkbox') {
+                value = el.checked;
+            } else if (tag === 'input' && el.type === 'number') {
+                value = el.value === '' ? '' : Number(el.value);
+            } else {
+                value = el.value;
+            }
+            activity[key] = value;
+            // Update canvas name label if name field changed
+            if (key === 'name') {
+                activity.refreshNameLabel();
+                document.getElementById('propertiesPanelTitle').textContent = value;
+            }
+            markAsDirty();
+            _applyConditionals(container, activity);
+        });
+    });
+}
+
+// Show/hide form fields based on their conditional dependencies.
+function _applyConditionals(container, activity) {
+    container.querySelectorAll('.form-field[data-cond-field]').forEach(el => {
+        const field = el.dataset.condField;
+        const allowed = el.dataset.condValue.split(',');
+        const current = String(activity[field] ?? '');
+        el.style.display = allowed.includes(current) ? '' : 'none';
+    });
+}
+
+// Read-only fallbacks for not-yet-editable types
+function _buildReadOnlyGeneral(a, schema) {
     const common = schema?.commonProperties || {};
     let rows = _propRow('Name', a.name) + _propRow('Description', a.description || '—');
     if (common.state)   rows += _propRow('State', a.state || 'Activated');
@@ -853,27 +999,15 @@ function _buildGeneralPane(a) {
     return rows || '<div class="empty-state">No general properties.</div>';
 }
 
-function _buildSettingsPane(a) {
-    const schema = activitySchemas[a.type];
+function _buildReadOnlySettings(a, schema) {
     const tp = schema?.typeProperties || {};
     let rows = '';
-    // Show each typeProperty field whose key exists on the activity
     for (const [key, def] of Object.entries(tp)) {
+        if (def.type === 'containerActivities' || def.type === 'switchCases') continue;
         const val = a[key];
         if (val === undefined || val === null) continue;
         const display = typeof val === 'object' ? JSON.stringify(val) : String(val);
         rows += _propRow(def.label || key, display);
-    }
-    if (!rows) {
-        // Fallback: dump raw typeProperties-like keys
-        const skipKeys = new Set(['id','type','x','y','width','height','color','container','element','isContainer']);
-        for (const [k, v] of Object.entries(a)) {
-            if (skipKeys.has(k) || typeof v === 'function') continue;
-            if (k.startsWith('if') && Array.isArray(v)) continue; // skip branch arrays
-            if (['activities','cases','defaultActivities'].includes(k)) continue;
-            const display = typeof v === 'object' ? JSON.stringify(v) : String(v);
-            rows += _propRow(k, display);
-        }
     }
     return rows || '<div class="empty-state">No settings to display.</div>';
 }

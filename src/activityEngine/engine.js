@@ -379,29 +379,65 @@ const TRANSFORMERS = {
 	synapseNotebookConf: {
 		serialize(flat, output) {
 			if (!output.typeProperties) output.typeProperties = {};
-			output.typeProperties.snapshot = true;
+			const tp = output.typeProperties;
+			tp.snapshot = true;
+
+			// Mirror driverSize from executorSize
+			if (flat.executorSize) tp.driverSize = flat.executorSize;
+
+			// Wrap notebook name string into reference object
+			if (flat.notebook != null && flat.notebook !== '') {
+				tp.notebook = { referenceName: flat.notebook, type: 'NotebookReference' };
+			}
+
+			// Wrap sparkPool name string into reference object
+			if (flat.sparkPool != null && flat.sparkPool !== '') {
+				tp.sparkPool = { referenceName: flat.sparkPool, type: 'BigDataPoolReference' };
+			}
+
+			// Build dynamicAllocation conf block
 			if (flat.dynamicAllocation === undefined) return;
 
 			const enabled = flat.dynamicAllocation === 'Enabled';
-			output.typeProperties.conf = output.typeProperties.conf || {};
-			output.typeProperties.conf['spark.dynamicAllocation.enabled'] = enabled;
+			tp.conf = tp.conf || {};
+			tp.conf['spark.dynamicAllocation.enabled'] = enabled;
 
 			if (enabled) {
 				if (flat.minExecutors != null && flat.minExecutors !== '')
-					output.typeProperties.conf['spark.dynamicAllocation.minExecutors'] = parseInt(flat.minExecutors);
+					tp.conf['spark.dynamicAllocation.minExecutors'] = parseInt(flat.minExecutors);
 				if (flat.maxExecutors != null && flat.maxExecutors !== '')
-					output.typeProperties.conf['spark.dynamicAllocation.maxExecutors'] = parseInt(flat.maxExecutors);
+					tp.conf['spark.dynamicAllocation.maxExecutors'] = parseInt(flat.maxExecutors);
 			} else {
 				if (flat.numExecutors != null && flat.numExecutors !== '') {
 					const n = parseInt(flat.numExecutors);
-					output.typeProperties.conf['spark.dynamicAllocation.minExecutors'] = n;
-					output.typeProperties.conf['spark.dynamicAllocation.maxExecutors'] = n;
-					output.typeProperties.numExecutors = n;
+					tp.conf['spark.dynamicAllocation.minExecutors'] = n;
+					tp.conf['spark.dynamicAllocation.maxExecutors'] = n;
+					tp.numExecutors = n;
 				}
 			}
 		},
 		deserialize(raw, flat) {
-			const conf = raw.typeProperties?.conf;
+			const tp = raw.typeProperties;
+			if (!tp) return;
+
+			// Unwrap notebook reference object → plain string
+			if (tp.notebook && typeof tp.notebook === 'object') {
+				const ref = tp.notebook.referenceName;
+				flat.notebook = (ref && typeof ref === 'object' && ref.value)
+					? ref.value
+					: (typeof ref === 'string' ? ref : '');
+			}
+
+			// Unwrap sparkPool reference object → plain string
+			if (tp.sparkPool && typeof tp.sparkPool === 'object') {
+				const ref = tp.sparkPool.referenceName;
+				flat.sparkPool = (ref && typeof ref === 'object' && ref.value)
+					? ref.value
+					: (typeof ref === 'string' ? ref : '');
+			}
+
+			// Unpack conf block → dynamicAllocation fields
+			const conf = tp.conf;
 			if (!conf) return;
 			const enabled = conf['spark.dynamicAllocation.enabled'];
 			if (enabled !== undefined) flat.dynamicAllocation = enabled ? 'Enabled' : 'Disabled';
@@ -409,6 +445,37 @@ const TRANSFORMERS = {
 				flat.minExecutors = conf['spark.dynamicAllocation.minExecutors'];
 			if (conf['spark.dynamicAllocation.maxExecutors'] !== undefined)
 				flat.maxExecutors = conf['spark.dynamicAllocation.maxExecutors'];
+		},
+	},
+
+	// ── 1b. SparkJob reference objects ────────────────────────────────────────
+	// Fields: sparkJob, sparkPool
+	// Disk: typeProperties.sparkJob = { referenceName, type: "SparkJobDefinitionReference" }
+	//       typeProperties.sparkPool = { referenceName, type: "BigDataPoolReference" }
+	sparkJobRef: {
+		serialize(flat, output) {
+			if (!output.typeProperties) output.typeProperties = {};
+			const tp = output.typeProperties;
+
+			if (flat.sparkJob != null && flat.sparkJob !== '') {
+				tp.sparkJob = { referenceName: flat.sparkJob, type: 'SparkJobDefinitionReference' };
+			}
+			if (flat.sparkPool != null && flat.sparkPool !== '') {
+				tp.sparkPool = { referenceName: flat.sparkPool, type: 'BigDataPoolReference' };
+			}
+		},
+		deserialize(raw, flat) {
+			const tp = raw.typeProperties;
+			if (!tp) return;
+
+			if (tp.sparkJob && typeof tp.sparkJob === 'object') {
+				const ref = tp.sparkJob.referenceName;
+				flat.sparkJob = typeof ref === 'string' ? ref : (ref?.value || '');
+			}
+			if (tp.sparkPool && typeof tp.sparkPool === 'object') {
+				const ref = tp.sparkPool.referenceName;
+				flat.sparkPool = typeof ref === 'string' ? ref : (ref?.value || '');
+			}
 		},
 	},
 
@@ -526,7 +593,87 @@ const TRANSFORMERS = {
 		},
 	},
 
-	// ── 5. Delete storeSettings type ─────────────────────────────────────────
+	// ── 5. Lookup source block ────────────────────────────────────────────────
+	// Builds typeProperties.source from flat fields based on dataset category.
+	// SQL:     source.type, source.sqlReaderQuery / sqlReaderStoredProcedureName, queryTimeout
+	// Storage: source.type, source.storeSettings (type + path fields), source.formatSettings
+	// The direct jsonPath writes on the schema fields already put individual values into
+	// source.storeSettings / source.formatSettings — this transformer adds the required
+	// type discriminators and cleans up cross-category leftovers.
+	lookupSource: {
+		serialize(flat, output) {
+			if (!output.typeProperties) output.typeProperties = {};
+			const tp = output.typeProperties;
+			const meta = allSchemas.__meta || {};
+			const dsTypeToFormat = meta.datasetTypeToFormatSettings || {};
+			const locTypeToStore = meta.locationTypeToStoreSettings || {};
+
+			const cat = flat._datasetCategory || '';
+			const dsType = flat._datasetType || '';
+			const storeType = flat._storeSettingsType || '';
+			const formatType = dsTypeToFormat[dsType] || '';
+
+			if (cat === 'sql') {
+				// SQL source: ensure source.type and remove any storage leftovers
+				if (!tp.source) tp.source = {};
+				tp.source.type = dsType === 'AzureSqlDWTable' ? 'SqlDWSource' : 'AzureSqlSource';
+				delete tp.source.storeSettings;
+				delete tp.source.formatSettings;
+			} else if (cat === 'storage') {
+				// Storage source: ensure source.type and inject storeSettings.type / formatSettings.type
+				if (!tp.source) tp.source = {};
+				tp.source.type = dsType ? dsType + 'Source' : tp.source.type;
+			// Remove SQL-only fields that should never appear on a storage source
+			delete tp.source.sqlReaderQuery;
+			delete tp.source.sqlReaderStoredProcedureName;
+			delete tp.source.queryTimeout;
+			delete tp.source.isolationLevel;
+			delete tp.source.partitionOption;
+			delete tp.source.partitionSettings;
+			delete tp.source.storedProcedureParameters;
+			if (storeType) {
+				const epd = flat.enablePartitionDiscovery === true;
+				tp.source.storeSettings = { type: storeType, enablePartitionDiscovery: epd, ...(tp.source.storeSettings || {}) };
+				if (!epd) delete tp.source.storeSettings.partitionRootPath;
+				}
+				if (formatType) {
+					tp.source.formatSettings = { type: formatType, ...(tp.source.formatSettings || {}) };
+				} else {
+					delete tp.source.formatSettings;
+				}
+			}
+		},
+		deserialize(raw, flat) {
+			const tp = raw.typeProperties;
+			if (!tp?.source) return;
+			const src = tp.source;
+			// Infer _datasetCategory (and _datasetType for storage) from source.type
+			const sqlSourceTypes = new Set(['AzureSqlSource', 'SqlDWSource', 'SqlServerSource', 'AzureSqlMISource']);
+			if (sqlSourceTypes.has(src.type)) {
+				if (!flat._datasetCategory) flat._datasetCategory = 'sql';
+			} else if (src.storeSettings) {
+				if (!flat._datasetCategory) flat._datasetCategory = 'storage';
+				if (!flat._datasetType && src.type?.endsWith('Source')) {
+					flat._datasetType = src.type.slice(0, -6);
+				}
+			}
+			// Infer storeSettings/formatSettings types
+			if (src.storeSettings?.type) flat._storeSettingsType = src.storeSettings.type;
+			if (src.formatSettings?.type) flat._formatSettingsType = src.formatSettings.type;
+			// Infer filePathType from whichever path field is populated
+			const ss = src.storeSettings || {};
+			if (ss.prefix !== undefined)                flat.filePathType = 'prefix';
+			else if (ss.wildcardFileName !== undefined) flat.filePathType = 'wildcardFilePath';
+			else if (ss.fileListPath !== undefined)     flat.filePathType = 'listOfFiles';
+			else                                        flat.filePathType = 'filePathInDataset';
+			// Infer useQuery for SQL sources
+			if (src.sqlReaderStoredProcedureName)       flat.useQuery = 'StoredProcedure';
+			else if (src.sqlReaderQuery !== undefined)  flat.useQuery = 'Query';
+			else                                        flat.useQuery = 'Table';
+		},
+	},
+
+	// ── 6. Delete storeSettings type ─────────────────────────────────────────
 	// Writes storeSettings.type and enablePartitionDiscovery from _storeSettingsType.
 	// Does NOT touch formatSettings (Delete has no format layer).
 	deleteStoreSettings: {

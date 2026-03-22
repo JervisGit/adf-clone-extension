@@ -766,6 +766,667 @@ describe('Delete', () => {
     });
 });
 
+// ─── Lookup ───────────────────────────────────────────────────────────────────
+
+describe('Lookup', () => {
+    const rawStorageAdls = {
+        name: 'LU1',
+        type: 'Lookup',
+        dependsOn: [],
+        userProperties: [],
+        policy: { timeout: '0.12:00:00', retry: 0, retryIntervalInSeconds: 30, secureOutput: false, secureInput: false },
+        typeProperties: {
+            dataset: { referenceName: 'ADLS1', type: 'DatasetReference' },
+            firstRowOnly: true,
+            source: {
+                type: 'DelimitedTextSource',
+                storeSettings: { type: 'AzureBlobFSReadSettings', enablePartitionDiscovery: false, recursive: true },
+                formatSettings: { type: 'DelimitedTextReadSettings', skipLineCount: 2 },
+            },
+        },
+    };
+
+    const rawStorageBlob = {
+        name: 'LU2',
+        type: 'Lookup',
+        dependsOn: [],
+        userProperties: [],
+        policy: { timeout: '0.12:00:00', retry: 0, retryIntervalInSeconds: 30, secureOutput: false, secureInput: false },
+        typeProperties: {
+            dataset: { referenceName: 'Blob1', type: 'DatasetReference' },
+            firstRowOnly: false,
+            source: {
+                type: 'DelimitedTextSource',
+                storeSettings: { type: 'AzureBlobStorageReadSettings', prefix: 'logs/', enablePartitionDiscovery: false },
+                formatSettings: { type: 'DelimitedTextReadSettings' },
+            },
+        },
+    };
+
+    const rawSql = {
+        name: 'LU3',
+        type: 'Lookup',
+        dependsOn: [],
+        userProperties: [],
+        policy: { timeout: '0.12:00:00', retry: 0, retryIntervalInSeconds: 30, secureOutput: false, secureInput: false },
+        typeProperties: {
+            dataset: { referenceName: 'SQL1', type: 'DatasetReference' },
+            firstRowOnly: true,
+            source: {
+                type: 'AzureSqlSource',
+                sqlReaderQuery: { value: 'SELECT 1', type: 'Expression' },
+                queryTimeout: '02:00:00',
+            },
+        },
+    };
+
+    const rawSqlStoredProc = {
+        name: 'LU4',
+        type: 'Lookup',
+        dependsOn: [],
+        userProperties: [],
+        policy: { timeout: '0.12:00:00', retry: 0, retryIntervalInSeconds: 30, secureOutput: false, secureInput: false },
+        typeProperties: {
+            dataset: { referenceName: 'SQL1', type: 'DatasetReference' },
+            firstRowOnly: false,
+            source: {
+                type: 'AzureSqlSource',
+                sqlReaderStoredProcedureName: 'dbo.MyProc',
+                queryTimeout: '02:00:00',
+            },
+        },
+    };
+
+    // ── Storage (ADLS) ──────────────────────────────────────────────────────
+
+    test('deserialize storage: reads dataset and firstRowOnly', () => {
+        const flat = engine.deserializeActivity(rawStorageAdls);
+        expect(flat.dataset).toEqual({ referenceName: 'ADLS1', type: 'DatasetReference' });
+        expect(flat.firstRowOnly).toBe(true);
+    });
+
+    test('deserialize storage: reads _storeSettingsType and _formatSettingsType', () => {
+        const flat = engine.deserializeActivity(rawStorageAdls);
+        expect(flat._storeSettingsType).toBe('AzureBlobFSReadSettings');
+        expect(flat._formatSettingsType).toBe('DelimitedTextReadSettings');
+    });
+
+    test('deserialize storage: infers filePathType = filePathInDataset', () => {
+        const flat = engine.deserializeActivity(rawStorageAdls);
+        expect(flat.filePathType).toBe('filePathInDataset');
+    });
+
+    test('deserialize storage blob: infers filePathType = prefix', () => {
+        const flat = engine.deserializeActivity(rawStorageBlob);
+        expect(flat.filePathType).toBe('prefix');
+        expect(flat.prefix).toBe('logs/');
+    });
+
+    test('deserialize storage: reads skipLineCount', () => {
+        const flat = engine.deserializeActivity(rawStorageAdls);
+        expect(flat.skipLineCount).toBe(2);
+    });
+
+    test('serialize storage: writes source.type', () => {
+        const flat = engine.deserializeActivity(rawStorageAdls);
+        flat._datasetCategory = 'storage';
+        flat._datasetType = 'DelimitedText';
+        flat._storeSettingsType = 'AzureBlobFSReadSettings';
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.source.type).toBe('DelimitedTextSource');
+    });
+
+    test('serialize storage: writes storeSettings.type and enablePartitionDiscovery', () => {
+        const flat = engine.deserializeActivity(rawStorageAdls);
+        flat._datasetCategory = 'storage';
+        flat._datasetType = 'DelimitedText';
+        flat._storeSettingsType = 'AzureBlobFSReadSettings';
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.source.storeSettings.type).toBe('AzureBlobFSReadSettings');
+        expect(out.typeProperties.source.storeSettings.enablePartitionDiscovery).toBe(false);
+    });
+
+    test('serialize storage: writes formatSettings.type and skipLineCount', () => {
+        const flat = engine.deserializeActivity(rawStorageAdls);
+        flat._datasetCategory = 'storage';
+        flat._datasetType = 'DelimitedText';
+        flat._storeSettingsType = 'AzureBlobFSReadSettings';
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.source.formatSettings.type).toBe('DelimitedTextReadSettings');
+        expect(out.typeProperties.source.formatSettings.skipLineCount).toBe(2);
+    });
+
+    test('serialize storage blob prefix: writes prefix inside storeSettings', () => {
+        const flat = engine.deserializeActivity(rawStorageBlob);
+        flat._datasetCategory = 'storage';
+        flat._datasetType = 'DelimitedText';
+        flat._storeSettingsType = 'AzureBlobStorageReadSettings';
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.source.storeSettings.prefix).toBe('logs/');
+    });
+
+    test('round-trip stable (ADLS storage)', () => {
+        expect(stableFlat(roundTrip(rawStorageAdls))).toEqual(stableFlat(engine.deserializeActivity(rawStorageAdls)));
+    });
+
+    // ── SQL ─────────────────────────────────────────────────────────────────
+
+    test('deserialize SQL: infers useQuery = Query', () => {
+        const flat = engine.deserializeActivity(rawSql);
+        expect(flat.useQuery).toBe('Query');
+    });
+
+    test('deserialize SQL: reads sqlReaderQuery expression', () => {
+        const flat = engine.deserializeActivity(rawSql);
+        expect(flat.sqlReaderQuery).toEqual({ value: 'SELECT 1', type: 'Expression' });
+    });
+
+    test('deserialize SQL: infers useQuery = StoredProcedure', () => {
+        const flat = engine.deserializeActivity(rawSqlStoredProc);
+        expect(flat.useQuery).toBe('StoredProcedure');
+        expect(flat.sqlReaderStoredProcedureName).toBe('dbo.MyProc');
+    });
+
+    test('serialize SQL: writes source.type AzureSqlSource', () => {
+        const flat = engine.deserializeActivity(rawSql);
+        flat._datasetCategory = 'sql';
+        flat._datasetType = 'AzureSqlTable';
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.source.type).toBe('AzureSqlSource');
+    });
+
+    test('serialize SQL: writes sqlReaderQuery and queryTimeout', () => {
+        const flat = engine.deserializeActivity(rawSql);
+        flat._datasetCategory = 'sql';
+        flat._datasetType = 'AzureSqlTable';
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.source.sqlReaderQuery).toEqual({ value: 'SELECT 1', type: 'Expression' });
+        expect(out.typeProperties.source.queryTimeout).toBe('02:00:00');
+    });
+
+    test('serialize SQL: does NOT write storeSettings or formatSettings', () => {
+        const flat = engine.deserializeActivity(rawSql);
+        flat._datasetCategory = 'sql';
+        flat._datasetType = 'AzureSqlTable';
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.source.storeSettings).toBeUndefined();
+        expect(out.typeProperties.source.formatSettings).toBeUndefined();
+    });
+
+    test('serialize SQL stored proc: writes sqlReaderStoredProcedureName', () => {
+        const flat = engine.deserializeActivity(rawSqlStoredProc);
+        flat._datasetCategory = 'sql';
+        flat._datasetType = 'AzureSqlTable';
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.source.sqlReaderStoredProcedureName).toBe('dbo.MyProc');
+    });
+
+    test('round-trip stable (SQL query)', () => {
+        expect(stableFlat(roundTrip(rawSql))).toEqual(stableFlat(engine.deserializeActivity(rawSql)));
+    });
+
+    test('round-trip stable (SQL stored proc)', () => {
+        expect(stableFlat(roundTrip(rawSqlStoredProc))).toEqual(stableFlat(engine.deserializeActivity(rawSqlStoredProc)));
+    });
+
+    // ── Validation ──────────────────────────────────────────────────────────
+
+    test('validation: missing dataset is an error', () => {
+        const flat = engine.deserializeActivity({ ...rawStorageAdls, typeProperties: { firstRowOnly: true } });
+        expect(engine.validateActivity(flat).some(e => e.includes('dataset') || e.includes('Dataset'))).toBe(true);
+    });
+
+    test('validation: valid storage activity passes', () => {
+        const flat = engine.deserializeActivity(rawStorageAdls);
+        expect(engine.validateActivity(flat)).toHaveLength(0);
+    });
+
+    test('validation: valid SQL activity passes', () => {
+        const flat = engine.deserializeActivity(rawSql);
+        expect(engine.validateActivity(flat)).toHaveLength(0);
+    });
+
+    // ── New fields: storage partition discovery ──────────────────────────────
+
+    const rawStoragePartitioned = {
+        name: 'LU_EPD',
+        type: 'Lookup',
+        dependsOn: [],
+        userProperties: [],
+        policy: { timeout: '0.12:00:00', retry: 0, retryIntervalInSeconds: 30, secureOutput: false, secureInput: false },
+        typeProperties: {
+            dataset: { referenceName: 'ADLS1', type: 'DatasetReference' },
+            firstRowOnly: false,
+            source: {
+                type: 'DelimitedTextSource',
+                storeSettings: {
+                    type: 'AzureBlobFSReadSettings',
+                    enablePartitionDiscovery: true,
+                    partitionRootPath: 'container/root',
+                    recursive: false,
+                    maxConcurrentConnections: 4,
+                },
+                formatSettings: { type: 'DelimitedTextReadSettings' },
+            },
+        },
+    };
+
+    test('deserialize storage: reads recursive and enablePartitionDiscovery', () => {
+        const flat = engine.deserializeActivity(rawStoragePartitioned);
+        expect(flat.recursive).toBe(false);
+        expect(flat.enablePartitionDiscovery).toBe(true);
+    });
+
+    test('deserialize storage: reads partitionRootPath when enablePartitionDiscovery=true', () => {
+        const flat = engine.deserializeActivity(rawStoragePartitioned);
+        expect(flat.partitionRootPath).toBe('container/root');
+    });
+
+    test('deserialize storage: reads maxConcurrentConnections', () => {
+        const flat = engine.deserializeActivity(rawStoragePartitioned);
+        expect(flat.maxConcurrentConnections).toBe(4);
+    });
+
+    test('serialize storage: writes enablePartitionDiscovery=true (not hardcoded false)', () => {
+        const flat = engine.deserializeActivity(rawStoragePartitioned);
+        flat._datasetCategory = 'storage';
+        flat._datasetType = 'DelimitedText';
+        flat._storeSettingsType = 'AzureBlobFSReadSettings';
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.source.storeSettings.enablePartitionDiscovery).toBe(true);
+    });
+
+    test('serialize storage: writes partitionRootPath when enabled', () => {
+        const flat = engine.deserializeActivity(rawStoragePartitioned);
+        flat._datasetCategory = 'storage';
+        flat._datasetType = 'DelimitedText';
+        flat._storeSettingsType = 'AzureBlobFSReadSettings';
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.source.storeSettings.partitionRootPath).toBe('container/root');
+    });
+
+    test('serialize storage: omits partitionRootPath when enablePartitionDiscovery=false', () => {
+        const flat = engine.deserializeActivity(rawStorageAdls); // EPD = false
+        flat._datasetCategory = 'storage';
+        flat._datasetType = 'DelimitedText';
+        flat._storeSettingsType = 'AzureBlobFSReadSettings';
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.source.storeSettings.enablePartitionDiscovery).toBe(false);
+        expect(out.typeProperties.source.storeSettings.partitionRootPath).toBeUndefined();
+    });
+
+    test('serialize storage: writes maxConcurrentConnections', () => {
+        const flat = engine.deserializeActivity(rawStoragePartitioned);
+        flat._datasetCategory = 'storage';
+        flat._datasetType = 'DelimitedText';
+        flat._storeSettingsType = 'AzureBlobFSReadSettings';
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.source.storeSettings.maxConcurrentConnections).toBe(4);
+    });
+
+    test('round-trip stable (storage with partition discovery)', () => {
+        expect(stableFlat(roundTrip(rawStoragePartitioned))).toEqual(stableFlat(engine.deserializeActivity(rawStoragePartitioned)));
+    });
+
+    // ── New fields: SQL isolation level and partition settings ───────────────
+
+    const rawSqlPartitioned = {
+        name: 'LU_SQLPart',
+        type: 'Lookup',
+        dependsOn: [],
+        userProperties: [],
+        policy: { timeout: '0.12:00:00', retry: 0, retryIntervalInSeconds: 30, secureOutput: false, secureInput: false },
+        typeProperties: {
+            dataset: { referenceName: 'SQL1', type: 'DatasetReference' },
+            firstRowOnly: true,
+            source: {
+                type: 'AzureSqlSource',
+                queryTimeout: '02:00:00',
+                isolationLevel: 'ReadCommitted',
+                partitionOption: 'DynamicRange',
+                partitionSettings: {
+                    partitionColumnName: 'id',
+                    partitionUpperBound: '100',
+                    partitionLowerBound: '0',
+                },
+            },
+        },
+    };
+
+    const rawSqlStoredProcParams = {
+        name: 'LU_SP',
+        type: 'Lookup',
+        dependsOn: [],
+        userProperties: [],
+        policy: { timeout: '0.12:00:00', retry: 0, retryIntervalInSeconds: 30, secureOutput: false, secureInput: false },
+        typeProperties: {
+            dataset: { referenceName: 'SQL1', type: 'DatasetReference' },
+            firstRowOnly: false,
+            source: {
+                type: 'AzureSqlSource',
+                sqlReaderStoredProcedureName: 'dbo.GetData',
+                queryTimeout: '02:00:00',
+                storedProcedureParameters: {
+                    startDate: { value: '2024-01-01', type: 'string' },
+                    endDate: { value: '2024-12-31', type: 'string' },
+                },
+            },
+        },
+    };
+
+    test('deserialize SQL: reads isolationLevel', () => {
+        const flat = engine.deserializeActivity(rawSqlPartitioned);
+        expect(flat.isolationLevel).toBe('ReadCommitted');
+    });
+
+    test('deserialize SQL: reads partitionOption', () => {
+        const flat = engine.deserializeActivity(rawSqlPartitioned);
+        expect(flat.partitionOption).toBe('DynamicRange');
+    });
+
+    test('deserialize SQL: reads partition bounds', () => {
+        const flat = engine.deserializeActivity(rawSqlPartitioned);
+        expect(flat.partitionColumnName).toBe('id');
+        expect(flat.partitionUpperBound).toBe('100');
+        expect(flat.partitionLowerBound).toBe('0');
+    });
+
+    test('serialize SQL: writes isolationLevel', () => {
+        const flat = engine.deserializeActivity(rawSqlPartitioned);
+        flat._datasetCategory = 'sql';
+        flat._datasetType = 'AzureSqlTable';
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.source.isolationLevel).toBe('ReadCommitted');
+    });
+
+    test('serialize SQL: writes partitionOption and partitionSettings', () => {
+        const flat = engine.deserializeActivity(rawSqlPartitioned);
+        flat._datasetCategory = 'sql';
+        flat._datasetType = 'AzureSqlTable';
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.source.partitionOption).toBe('DynamicRange');
+        expect(out.typeProperties.source.partitionSettings.partitionColumnName).toBe('id');
+        expect(out.typeProperties.source.partitionSettings.partitionUpperBound).toBe('100');
+        expect(out.typeProperties.source.partitionSettings.partitionLowerBound).toBe('0');
+    });
+
+    test('serialize SQL: does NOT write storeSettings alongside partitionSettings', () => {
+        const flat = engine.deserializeActivity(rawSqlPartitioned);
+        flat._datasetCategory = 'sql';
+        flat._datasetType = 'AzureSqlTable';
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.source.storeSettings).toBeUndefined();
+    });
+
+    test('round-trip stable (SQL with partition settings)', () => {
+        expect(stableFlat(roundTrip(rawSqlPartitioned))).toEqual(stableFlat(engine.deserializeActivity(rawSqlPartitioned)));
+    });
+
+    test('deserialize SQL: reads storedProcedureParameters', () => {
+        const flat = engine.deserializeActivity(rawSqlStoredProcParams);
+        expect(flat.storedProcedureParameters).toEqual({
+            startDate: { value: '2024-01-01', type: 'string' },
+            endDate: { value: '2024-12-31', type: 'string' },
+        });
+    });
+
+    test('serialize SQL: writes storedProcedureParameters for StoredProcedure mode', () => {
+        const flat = engine.deserializeActivity(rawSqlStoredProcParams);
+        flat._datasetCategory = 'sql';
+        flat._datasetType = 'AzureSqlTable';
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.source.storedProcedureParameters).toEqual({
+            startDate: { value: '2024-01-01', type: 'string' },
+            endDate: { value: '2024-12-31', type: 'string' },
+        });
+    });
+
+    test('round-trip stable (SQL stored proc with parameters)', () => {
+        expect(stableFlat(roundTrip(rawSqlStoredProcParams))).toEqual(stableFlat(engine.deserializeActivity(rawSqlStoredProcParams)));
+    });
+});
+
+// ─── SynapseNotebook ─────────────────────────────────────────────────────────
+
+describe('SynapseNotebook', () => {
+    const rawBasic = {
+        name: 'NB1',
+        type: 'SynapseNotebook',
+        dependsOn: [],
+        userProperties: [],
+        typeProperties: {
+            notebook: { referenceName: 'My_Notebook', type: 'NotebookReference' },
+            sparkPool: { referenceName: 'mypool', type: 'BigDataPoolReference' },
+            executorSize: 'Small',
+            driverSize: 'Small',
+            snapshot: true,
+            numExecutors: 2,
+            conf: {
+                'spark.dynamicAllocation.enabled': false,
+                'spark.dynamicAllocation.minExecutors': 2,
+                'spark.dynamicAllocation.maxExecutors': 2,
+            },
+        },
+    };
+
+    const rawDynamic = {
+        name: 'NB2',
+        type: 'SynapseNotebook',
+        dependsOn: [],
+        userProperties: [],
+        typeProperties: {
+            notebook: { referenceName: 'Other_Notebook', type: 'NotebookReference' },
+            executorSize: 'Medium',
+            driverSize: 'Medium',
+            snapshot: true,
+            conf: {
+                'spark.dynamicAllocation.enabled': true,
+                'spark.dynamicAllocation.minExecutors': 1,
+                'spark.dynamicAllocation.maxExecutors': 4,
+            },
+        },
+    };
+
+    const rawNoConf = {
+        name: 'NB3',
+        type: 'SynapseNotebook',
+        dependsOn: [],
+        userProperties: [],
+        typeProperties: {
+            notebook: { referenceName: 'Plain_Notebook', type: 'NotebookReference' },
+            snapshot: true,
+        },
+    };
+
+    // ── Deserialize ─────────────────────────────────────────────────────────
+
+    test('deserialize: unwraps notebook reference → string', () => {
+        const flat = engine.deserializeActivity(rawBasic);
+        expect(flat.notebook).toBe('My_Notebook');
+    });
+
+    test('deserialize: unwraps sparkPool reference → string', () => {
+        const flat = engine.deserializeActivity(rawBasic);
+        expect(flat.sparkPool).toBe('mypool');
+    });
+
+    test('deserialize: conf disabled → dynamicAllocation Disabled', () => {
+        const flat = engine.deserializeActivity(rawBasic);
+        expect(flat.dynamicAllocation).toBe('Disabled');
+    });
+
+    test('deserialize: reads minExecutors and maxExecutors from conf', () => {
+        const flat = engine.deserializeActivity(rawBasic);
+        expect(flat.minExecutors).toBe(2);
+        expect(flat.maxExecutors).toBe(2);
+    });
+
+    test('deserialize: conf enabled → dynamicAllocation Enabled', () => {
+        const flat = engine.deserializeActivity(rawDynamic);
+        expect(flat.dynamicAllocation).toBe('Enabled');
+        expect(flat.minExecutors).toBe(1);
+        expect(flat.maxExecutors).toBe(4);
+    });
+
+    test('deserialize: no conf → dynamicAllocation undefined', () => {
+        const flat = engine.deserializeActivity(rawNoConf);
+        expect(flat.dynamicAllocation).toBeUndefined();
+    });
+
+    // ── Serialize ───────────────────────────────────────────────────────────
+
+    test('serialize: wraps notebook string → reference object', () => {
+        const flat = engine.deserializeActivity(rawBasic);
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.notebook).toEqual({ referenceName: 'My_Notebook', type: 'NotebookReference' });
+    });
+
+    test('serialize: wraps sparkPool string → reference object', () => {
+        const flat = engine.deserializeActivity(rawBasic);
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.sparkPool).toEqual({ referenceName: 'mypool', type: 'BigDataPoolReference' });
+    });
+
+    test('serialize: always writes snapshot = true', () => {
+        const flat = engine.deserializeActivity(rawNoConf);
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.snapshot).toBe(true);
+    });
+
+    test('serialize: mirrors driverSize from executorSize', () => {
+        const flat = engine.deserializeActivity(rawBasic);
+        flat.executorSize = 'Large';
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.driverSize).toBe('Large');
+    });
+
+    test('serialize: disabled conf writes min=max=numExecutors', () => {
+        const flat = engine.deserializeActivity(rawBasic);
+        flat.dynamicAllocation = 'Disabled';
+        flat.numExecutors = 3;
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.conf['spark.dynamicAllocation.enabled']).toBe(false);
+        expect(out.typeProperties.conf['spark.dynamicAllocation.minExecutors']).toBe(3);
+        expect(out.typeProperties.conf['spark.dynamicAllocation.maxExecutors']).toBe(3);
+        expect(out.typeProperties.numExecutors).toBe(3);
+    });
+
+    test('serialize: enabled conf writes min and max executors separately', () => {
+        const flat = engine.deserializeActivity(rawDynamic);
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.conf['spark.dynamicAllocation.enabled']).toBe(true);
+        expect(out.typeProperties.conf['spark.dynamicAllocation.minExecutors']).toBe(1);
+        expect(out.typeProperties.conf['spark.dynamicAllocation.maxExecutors']).toBe(4);
+    });
+
+    test('round-trip stable (basic with conf)', () => {
+        expect(stableFlat(roundTrip(rawBasic))).toEqual(stableFlat(engine.deserializeActivity(rawBasic)));
+    });
+
+    test('round-trip stable (dynamic allocation)', () => {
+        expect(stableFlat(roundTrip(rawDynamic))).toEqual(stableFlat(engine.deserializeActivity(rawDynamic)));
+    });
+
+    // ── Validation ──────────────────────────────────────────────────────────
+
+    test('validation: missing notebook is an error', () => {
+        const flat = engine.deserializeActivity({ ...rawBasic, typeProperties: { snapshot: true } });
+        expect(engine.validateActivity(flat).some(e => e.toLowerCase().includes('notebook'))).toBe(true);
+    });
+
+    test('validation: valid activity passes', () => {
+        const flat = engine.deserializeActivity(rawBasic);
+        expect(engine.validateActivity(flat)).toHaveLength(0);
+    });
+});
+
+// ─── SparkJob ─────────────────────────────────────────────────────────────────
+
+describe('SparkJob', () => {
+    const rawSparkJob = {
+        name: 'SJ1',
+        type: 'SparkJob',
+        dependsOn: [],
+        userProperties: [],
+        typeProperties: {
+            sparkJob: { referenceName: 'MySparkJobDef', type: 'SparkJobDefinitionReference' },
+            sparkPool: { referenceName: 'sparkpool1', type: 'BigDataPoolReference' },
+            executorSize: 'Small',
+            driverSize: 'Small',
+            numExecutors: 2,
+        },
+    };
+
+    const rawSparkJobNoPool = {
+        name: 'SJ2',
+        type: 'SparkJob',
+        dependsOn: [],
+        userProperties: [],
+        typeProperties: {
+            sparkJob: { referenceName: 'AnotherJob', type: 'SparkJobDefinitionReference' },
+            executorSize: 'Medium',
+            driverSize: 'Medium',
+            numExecutors: 4,
+        },
+    };
+
+    test('deserialize: unwraps sparkJob reference → string', () => {
+        const flat = engine.deserializeActivity(rawSparkJob);
+        expect(flat.sparkJob).toBe('MySparkJobDef');
+    });
+
+    test('deserialize: unwraps sparkPool reference → string', () => {
+        const flat = engine.deserializeActivity(rawSparkJob);
+        expect(flat.sparkPool).toBe('sparkpool1');
+    });
+
+    test('deserialize: reads executorSize and numExecutors', () => {
+        const flat = engine.deserializeActivity(rawSparkJob);
+        expect(flat.executorSize).toBe('Small');
+        expect(flat.numExecutors).toBe(2);
+    });
+
+    test('serialize: wraps sparkJob string → SparkJobDefinitionReference', () => {
+        const flat = engine.deserializeActivity(rawSparkJob);
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.sparkJob).toEqual({ referenceName: 'MySparkJobDef', type: 'SparkJobDefinitionReference' });
+    });
+
+    test('serialize: wraps sparkPool string → BigDataPoolReference', () => {
+        const flat = engine.deserializeActivity(rawSparkJob);
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.sparkPool).toEqual({ referenceName: 'sparkpool1', type: 'BigDataPoolReference' });
+    });
+
+    test('serialize: no sparkPool → omits sparkPool', () => {
+        const flat = engine.deserializeActivity(rawSparkJobNoPool);
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.sparkPool).toBeUndefined();
+    });
+
+    test('serialize: writes executorSize, driverSize, numExecutors', () => {
+        const flat = engine.deserializeActivity(rawSparkJob);
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.executorSize).toBe('Small');
+        expect(out.typeProperties.driverSize).toBe('Small');
+        expect(out.typeProperties.numExecutors).toBe(2);
+    });
+
+    test('round-trip stable', () => {
+        expect(stableFlat(roundTrip(rawSparkJob))).toEqual(stableFlat(engine.deserializeActivity(rawSparkJob)));
+    });
+
+    test('validation: missing sparkJob is an error', () => {
+        const flat = engine.deserializeActivity({ ...rawSparkJobNoPool, typeProperties: {} });
+        expect(engine.validateActivity(flat).some(e => e.toLowerCase().includes('spark job'))).toBe(true);
+    });
+
+    test('validation: valid activity passes', () => {
+        const flat = engine.deserializeActivity(rawSparkJob);
+        expect(engine.validateActivity(flat)).toHaveLength(0);
+    });
+});
+
 // ─── validateActivityList ─────────────────────────────────────────────────────
 
 describe('validateActivityList', () => {

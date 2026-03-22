@@ -97,7 +97,8 @@
         "label": "Notebook",
         "required": true,
         "placeholder": "Enter notebook name",
-        "jsonPath": "typeProperties.notebook"
+        "jsonPath": "typeProperties.notebook",
+        "serializeAs": "synapseNotebookConf"
       },
       "parameters": {
         "type": "keyvalue",
@@ -114,7 +115,8 @@
         "type": "text",
         "label": "Spark pool",
         "placeholder": "Enter Spark pool name",
-        "jsonPath": "typeProperties.sparkPool"
+        "jsonPath": "typeProperties.sparkPool",
+        "serializeAs": "synapseNotebookConf"
       },
       "executorSize": {
         "type": "select",
@@ -359,14 +361,16 @@
         "type": "text",
         "label": "Spark job definition",
         "required": true,
-        "jsonPath": "typeProperties.sparkJob"
+        "jsonPath": "typeProperties.sparkJob",
+        "serializeAs": "sparkJobRef"
       },
       "sparkPool": {
         "type": "text",
         "label": "Spark pool",
         "default": "defaultSparkPool",
         "readonly": true,
-        "jsonPath": "typeProperties.sparkPool"
+        "jsonPath": "typeProperties.sparkPool",
+        "serializeAs": "sparkJobRef"
       },
       "executorSize": {
         "type": "select",
@@ -1144,6 +1148,193 @@
         "label": "First row only",
         "default": true,
         "jsonPath": "typeProperties.firstRowOnly"
+      },
+      "useQuery": {
+        "type": "radio",
+        "label": "Use query",
+        "options": ["Table", "Query", "Stored procedure"],
+        "optionValues": ["Table", "Query", "StoredProcedure"],
+        "default": "Table",
+        "conditional": { "field": "_datasetCategory", "value": "sql" },
+        "jsonPath": null
+      },
+      "sqlReaderQuery": {
+        "type": "expression",
+        "label": "Query",
+        "multiline": true,
+        "placeholder": "SELECT * FROM table",
+        "conditional": { "field": "useQuery", "value": "Query" },
+        "jsonPath": "typeProperties.source.sqlReaderQuery"
+      },
+      "sqlReaderStoredProcedureName": {
+        "type": "string",
+        "label": "Stored procedure name",
+        "conditional": { "field": "useQuery", "value": "StoredProcedure" },
+        "jsonPath": "typeProperties.source.sqlReaderStoredProcedureName"
+      },
+      "queryTimeout": {
+        "type": "string",
+        "label": "Query timeout",
+        "default": "02:00:00",
+        "placeholder": "HH:MM:SS",
+        "conditional": { "field": "_datasetCategory", "value": "sql" },
+        "jsonPath": "typeProperties.source.queryTimeout"
+      },
+      "filePathType": {
+        "type": "radio",
+        "label": "File path type",
+        "options": ["File path in dataset", "Prefix", "Wildcard file path", "List of files"],
+        "optionValues": ["filePathInDataset", "prefix", "wildcardFilePath", "listOfFiles"],
+        "optionConditions": {
+          "prefix": { "field": "_storeSettingsType", "value": "AzureBlobStorageReadSettings" }
+        },
+        "default": "filePathInDataset",
+        "conditional": { "field": "_datasetCategory", "value": "storage" },
+        "jsonPath": null
+      },
+      "prefix": {
+        "type": "text",
+        "label": "Prefix",
+        "placeholder": "Enter prefix",
+        "conditional": { "field": "filePathType", "value": "prefix" },
+        "jsonPath": "typeProperties.source.storeSettings.prefix"
+      },
+      "wildcardFolderPath": {
+        "type": "text",
+        "label": "Wildcard folder path",
+        "placeholder": "Enter wildcard folder path",
+        "conditional": { "field": "filePathType", "value": "wildcardFilePath" },
+        "jsonPath": "typeProperties.source.storeSettings.wildcardFolderPath"
+      },
+      "wildcardFileName": {
+        "type": "text",
+        "label": "Wildcard file name",
+        "placeholder": "Enter wildcard file name",
+        "conditional": { "field": "filePathType", "value": "wildcardFilePath" },
+        "jsonPath": "typeProperties.source.storeSettings.wildcardFileName"
+      },
+      "fileListPath": {
+        "type": "text",
+        "label": "Path to file list",
+        "placeholder": "Enter path to file list",
+        "conditional": { "field": "filePathType", "value": "listOfFiles" },
+        "jsonPath": "typeProperties.source.storeSettings.fileListPath"
+      },
+      "modifiedDatetimeStart": {
+        "type": "datetime",
+        "label": "Start time (UTC)",
+        "conditional": { "field": "_datasetCategory", "value": "storage" },
+        "jsonPath": "typeProperties.source.storeSettings.modifiedDatetimeStart"
+      },
+      "modifiedDatetimeEnd": {
+        "type": "datetime",
+        "label": "End time (UTC)",
+        "conditional": { "field": "_datasetCategory", "value": "storage" },
+        "jsonPath": "typeProperties.source.storeSettings.modifiedDatetimeEnd"
+      },
+      "skipLineCount": {
+        "type": "number",
+        "label": "Skip line count",
+        "min": 0,
+        "conditional": { "field": "_datasetType", "value": "DelimitedText" },
+        "jsonPath": "typeProperties.source.formatSettings.skipLineCount"
+      },
+      "validationMode": {
+        "type": "select",
+        "label": "Validation mode",
+        "options": ["None", "xsd", "dtd"],
+        "conditional": { "field": "_datasetType", "value": "Xml" },
+        "jsonPath": "typeProperties.source.formatSettings.validationMode"
+      },
+      "detectDataType": {
+        "type": "boolean",
+        "label": "Detect data type",
+        "default": false,
+        "conditional": { "field": "_datasetType", "value": "Xml" },
+        "jsonPath": "typeProperties.source.formatSettings.detectDataType"
+      },
+      "namespaces": {
+        "type": "boolean",
+        "label": "Namespaces",
+        "default": false,
+        "conditional": { "field": "_datasetType", "value": "Xml" },
+        "jsonPath": "typeProperties.source.formatSettings.namespaces"
+      },
+      "namespacePrefixes": {
+        "type": "keyvalue",
+        "label": "Namespace prefix pairs",
+        "conditional": { "field": "_datasetType", "value": "Xml" },
+        "jsonPath": "typeProperties.source.formatSettings.namespacePrefixes"
+      },
+      "recursive": {
+        "type": "boolean",
+        "label": "Recursive",
+        "default": true,
+        "conditional": { "field": "_datasetCategory", "value": "storage" },
+        "jsonPath": "typeProperties.source.storeSettings.recursive"
+      },
+      "enablePartitionDiscovery": {
+        "type": "boolean",
+        "label": "Enable partition discovery",
+        "default": false,
+        "conditional": { "field": "_datasetCategory", "value": "storage" },
+        "jsonPath": "typeProperties.source.storeSettings.enablePartitionDiscovery"
+      },
+      "partitionRootPath": {
+        "type": "text",
+        "label": "Partition root path",
+        "conditional": { "field": "enablePartitionDiscovery", "value": true },
+        "jsonPath": "typeProperties.source.storeSettings.partitionRootPath"
+      },
+      "maxConcurrentConnections": {
+        "type": "number",
+        "label": "Max concurrent connections",
+        "min": 1,
+        "conditional": { "field": "_datasetCategory", "value": "storage" },
+        "jsonPath": "typeProperties.source.storeSettings.maxConcurrentConnections"
+      },
+      "isolationLevel": {
+        "type": "select",
+        "label": "Isolation level",
+        "options": ["None", "ReadCommitted", "ReadUncommitted", "RepeatableRead", "Serializable", "Snapshot"],
+        "conditional": { "field": "_datasetCategory", "value": "sql" },
+        "jsonPath": "typeProperties.source.isolationLevel"
+      },
+      "partitionOption": {
+        "type": "select",
+        "label": "Partition option",
+        "options": ["None", "PhysicalPartitionsOfTable", "DynamicRange"],
+        "default": "None",
+        "conditional": { "field": "_datasetCategory", "value": "sql" },
+        "jsonPath": "typeProperties.source.partitionOption"
+      },
+      "partitionColumnName": {
+        "type": "text",
+        "label": "Partition column name",
+        "conditional": { "field": "partitionOption", "value": "DynamicRange" },
+        "jsonPath": "typeProperties.source.partitionSettings.partitionColumnName"
+      },
+      "partitionUpperBound": {
+        "type": "text",
+        "label": "Partition upper bound",
+        "conditional": { "field": "partitionOption", "value": "DynamicRange" },
+        "jsonPath": "typeProperties.source.partitionSettings.partitionUpperBound"
+      },
+      "partitionLowerBound": {
+        "type": "text",
+        "label": "Partition lower bound",
+        "conditional": { "field": "partitionOption", "value": "DynamicRange" },
+        "jsonPath": "typeProperties.source.partitionSettings.partitionLowerBound"
+      },
+      "storedProcedureParameters": {
+        "type": "keyvalue",
+        "label": "Stored procedure parameters",
+        "conditional": { "field": "useQuery", "value": "StoredProcedure" },
+        "jsonPath": "typeProperties.source.storedProcedureParameters"
+      },
+      "_lookupSourceMeta": {
+        "uiOnly": true,
+        "serializeAs": "lookupSource"
       }
     }
   },

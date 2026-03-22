@@ -626,3 +626,44 @@ body.properties-visible .expand-properties-btn { display: none; }
     color: var(--vscode-descriptionForeground);
     margin-top: 3px;
 }
+
+/* ─── Key-value table (SetVariable pipeline return value) ───────────────────── */
+.form-kv-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin-bottom: 6px;
+}
+
+.form-kv-table th {
+    text-align: left;
+    padding: 3px 4px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--vscode-descriptionForeground);
+    border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.form-kv-table td {
+    padding: 2px 2px;
+    vertical-align: middle;
+}
+
+.form-kv-cell {
+    width: 100%;
+    min-width: 0;
+}
+
+.form-kv-add-btn {
+    font-size: 11px;
+    padding: 3px 8px;
+    background: var(--vscode-button-secondaryBackground, transparent);
+    color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 2px;
+    cursor: pointer;
+}
+
+.form-kv-add-btn:hover {
+    background: var(--vscode-button-secondaryHoverBackground, var(--vscode-list-hoverBackground));
+}

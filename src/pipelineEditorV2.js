@@ -103,20 +103,15 @@ class PipelineEditorV2Provider {
 								break;
 							}
 
-							// Validate — warn but let the user choose to save anyway
-							const errors = engine.validateActivityList(message.activities || []);
-							if (Object.keys(errors).length > 0) {
-								const summary = Object.entries(errors)
-									.map(([name, errs]) => `${name}: ${errs.join(', ')}`)
-									.join('; ');
-								const choice = await vscode.window.showWarningMessage(
-									`Validation warnings — ${summary}. Save anyway?`,
-									'Save', 'Cancel'
-								);
-								if (choice !== 'Save') {
-									panel.webview.postMessage({ type: 'saveResult', success: false });
-									break;
-								}
+// Validate — block save on any errors
+						const errors = engine.validateActivityList(message.activities || []);
+						if (Object.keys(errors).length > 0) {
+							const summary = Object.entries(errors)
+								.map(([name, errs]) => `${name}: ${errs.join(', ')}`)
+								.join('; ');
+							vscode.window.showErrorMessage(`Cannot save — validation errors: ${summary}`);
+							panel.webview.postMessage({ type: 'saveResult', success: false });
+							break;
 							}
 
 							// Serialize and write

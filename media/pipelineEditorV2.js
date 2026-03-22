@@ -776,22 +776,7 @@ function showProperties(activity) {
     const tabsContainer = document.getElementById('activityTabsContainer');
     const panesContainer = document.getElementById('activityPanesContainer');
 
-    // Auto-expand properties panel when something is selected
-    if (activity) {
-        const propsPanel = document.getElementById('propertiesPanel');
-        if (propsPanel.classList.contains('collapsed')) {
-            propsPanel.classList.remove('collapsed');
-            document.body.classList.add('properties-visible');
-        }
-        // Auto-expand config panel (where form fields live) for editable activities
-        if (EDITABLE_TYPES.has(activity.type)) {
-            const configPanel = document.querySelector('.config-panel');
-            if (configPanel?.classList.contains('minimized')) {
-                configPanel.classList.remove('minimized');
-                document.getElementById('configCollapseBtn').textContent = '»';
-            }
-        }
-    }
+    // Panels stay in whatever state the user left them — no auto-expand on activity click.
 
     // Show pipeline tabs when nothing selected
     document.querySelectorAll('.pipeline-tab').forEach(t => t.style.display = activity ? 'none' : '');
@@ -848,6 +833,7 @@ function showProperties(activity) {
         }).join('');
         // Wire all inputs to write back to the activity and mark dirty
         _wireFormInputs(panesContainer, activity);
+        _wireKvFields(panesContainer, activity);
     } else {
         // Fallback read-only for not-yet-editable types
         tabsContainer.innerHTML = `
@@ -911,6 +897,9 @@ function _buildFormPane(activity, fields, paneId) {
                 break;
             case 'number':
                 html += `<input type="number" class="form-input" data-key="${escHtml(key)}" value="${escHtml(String(val))}"${def.min != null ? ` min="${def.min}"` : ''}${def.max != null ? ` max="${def.max}"` : ''} placeholder="${escHtml(def.placeholder || '')}" />`;
+                break;
+            case 'keyvalue':
+                html += `<div class="form-kv-container" data-kv-field="${escHtml(key)}" data-kv-types="${escHtml((def.valueTypes || []).join(','))}"></div>`;
                 break;
             case 'text':
             case 'string':
@@ -986,6 +975,115 @@ function _applyConditionals(container, activity) {
         const allowed = el.dataset.condValue.split(',');
         const current = String(activity[field] ?? '');
         el.style.display = allowed.includes(current) ? '' : 'none';
+    });
+    // Also hide/show kv containers whose parent form-field is conditional
+    container.querySelectorAll('.form-kv-container').forEach(kvEl => {
+        const parent = kvEl.closest('.form-field[data-cond-field]');
+        if (parent) kvEl.style.display = parent.style.display;
+    });
+}
+
+// ─── Key-value field renderer ────────────────────────────────────────────────────
+// Used for SetVariable's "Pipeline return value" returnValues field.
+function _wireKvFields(container, activity) {
+    container.querySelectorAll('.form-kv-container').forEach(kvEl => {
+        const fieldKey = kvEl.dataset.kvField;
+        const valueTypes = (kvEl.dataset.kvTypes || '').split(',').filter(Boolean);
+        if (!activity[fieldKey] || typeof activity[fieldKey] !== 'object' || Array.isArray(activity[fieldKey])) {
+            activity[fieldKey] = {};
+        }
+        _renderKvField(kvEl, activity, fieldKey, valueTypes);
+    });
+}
+
+function _renderKvField(kvEl, activity, fieldKey, valueTypes) {
+    kvEl.innerHTML = '';
+    const data = activity[fieldKey] || {};
+
+    const table = document.createElement('table');
+    table.className = 'form-kv-table';
+    const thead = document.createElement('thead');
+    thead.innerHTML = '<tr><th>Key</th><th>Type</th><th>Value</th><th></th></tr>';
+    table.appendChild(thead);
+    const tbody = document.createElement('tbody');
+    table.appendChild(tbody);
+    kvEl.appendChild(table);
+
+    for (const [k, item] of Object.entries(data)) {
+        _addKvRow(tbody, activity, fieldKey, valueTypes, k, item.type || 'String', item.value);
+    }
+
+    const addBtn = document.createElement('button');
+    addBtn.className = 'form-kv-add-btn';
+    addBtn.textContent = '+ Add';
+    kvEl.appendChild(addBtn);
+    addBtn.addEventListener('click', () => {
+        const newKey = 'key' + (Object.keys(activity[fieldKey] || {}).length + 1);
+        if (!activity[fieldKey]) activity[fieldKey] = {};
+        activity[fieldKey][newKey] = { type: valueTypes[0] || 'String', value: '' };
+        markAsDirty();
+        _renderKvField(kvEl, activity, fieldKey, valueTypes);
+    });
+}
+
+function _addKvRow(tbody, activity, fieldKey, valueTypes, key, type, value) {
+    const tr = document.createElement('tr');
+    tr.dataset.currentKey = key;
+
+    // Key
+    const keyInput = document.createElement('input');
+    keyInput.type = 'text'; keyInput.className = 'form-input form-kv-cell'; keyInput.value = key;
+    const keyTd = document.createElement('td');
+    keyTd.appendChild(keyInput); tr.appendChild(keyTd);
+
+    // Type
+    const typeSelect = document.createElement('select');
+    typeSelect.className = 'form-select form-kv-cell';
+    for (const t of valueTypes) {
+        const opt = document.createElement('option');
+        opt.value = t; opt.textContent = t;
+        if (t === type) opt.selected = true;
+        typeSelect.appendChild(opt);
+    }
+    const typeTd = document.createElement('td');
+    typeTd.appendChild(typeSelect); tr.appendChild(typeTd);
+
+    // Value
+    const valInput = document.createElement('input');
+    valInput.type = 'text'; valInput.className = 'form-input form-kv-cell';
+    valInput.value = value ?? ''; valInput.disabled = (type === 'Null');
+    const valTd = document.createElement('td');
+    valTd.appendChild(valInput); tr.appendChild(valTd);
+
+    // Delete
+    const delBtn = document.createElement('button');
+    delBtn.className = 'action-icon-btn'; delBtn.textContent = '×';
+    const delTd = document.createElement('td');
+    delTd.appendChild(delBtn); tr.appendChild(delTd);
+
+    tbody.appendChild(tr);
+
+    const sync = () => {
+        const oldKey = tr.dataset.currentKey;
+        const newKey = keyInput.value.trim() || oldKey;
+        const newType = typeSelect.value;
+        const newVal = newType === 'Null' ? undefined : valInput.value;
+        const data = activity[fieldKey] || {};
+        if (oldKey !== newKey) delete data[oldKey];
+        data[newKey] = { type: newType, value: newVal };
+        activity[fieldKey] = data;
+        tr.dataset.currentKey = newKey;
+        valInput.disabled = (newType === 'Null');
+        markAsDirty();
+    };
+    keyInput.addEventListener('input', sync);
+    typeSelect.addEventListener('change', sync);
+    valInput.addEventListener('input', sync);
+    delBtn.addEventListener('click', () => {
+        const data = activity[fieldKey] || {};
+        delete data[tr.dataset.currentKey];
+        activity[fieldKey] = data;
+        markAsDirty(); tr.remove();
     });
 }
 

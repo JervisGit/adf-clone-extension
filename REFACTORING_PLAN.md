@@ -6,10 +6,10 @@
 |------|--------|-------------|
 | Step 1 | ✅ Done | V2 scaffolding — `pipelineEditorV2.js`, `media/pipelineEditorV2.html/css/js`, extension commands, context menu, canvas/drag-drop/pan/zoom, read-only properties panel |
 | Step 2 | ✅ Done | Added `jsonPath` (and `serializeAs`, `uiOnly`, container `type`) to every field in `activity-schemas-v2.json`. Transformers needed in Step 3: `synapseNotebookConf`, `setVariableReturnValues`, `webAuthentication`, `validationChildItems`, `switchCases` |
-| Step 3 | 🔲 Next | Create `src/activityEngine/engine.js` — schema-driven serialize/deserialize/validate using jsonPaths. Start with Wait/Fail/SetVariable/AppendVariable. |
-| Step 4 | 🔲 | Enable editing + saving in V2 for simple activities (Wait, Fail, SetVariable, AppendVariable) |
-| Step 5 | 🔲 | ExecutePipeline, Filter |
-| Step 6 | 🔲 | Containers: ForEach, Until, IfCondition, Switch — validates recursive nesting fix |
+| Step 3 | ✅ Done | Created `src/activityEngine/engine.js` — schema-driven serialize/deserialize/validate. Wired load/save path in extension host. |
+| Step 4 | ✅ Done | Editable + saving for Wait, Fail, SetVariable (incl. pipeline return value kv), AppendVariable. Blocking validation on save. |
+| Step 5 | ✅ Done | ExecutePipeline (pipeline-ref select), Filter (expression fields). Pipeline variable select for SetVariable/AppendVariable. |
+| Step 6 | ✅ Done | Containers: ForEach, Until, IfCondition, Switch — editable expression/settings fields, Activities tab shows nested activity list (inner canvas editing deferred). |
 | Step 7 | 🔲 | Lookup, Delete, Validation, GetMetadata — dataset-referencing activities |
 | Step 8 | 🔲 | SynapseNotebook, SparkJob |
 | Step 9 | 🔲 | Script, SqlServerStoredProcedure |

@@ -232,12 +232,26 @@ function serializeActivityList(activities) {
 
 function serializePipeline(pipelineData, activities, connections) {
 	const withDeps = attachDependsOn(activities, connections);
+
+	// Auto-populate pipeline variables from SetVariable / AppendVariable activities.
+	// Only adds entries that don't already exist — never removes or overwrites.
+	const pipelineVars = { ...(pipelineData.variables || {}) };
+	for (const a of withDeps) {
+		if (a.type === 'AppendVariable' && a.variableName && !(a.variableName in pipelineVars)) {
+			pipelineVars[a.variableName] = { type: 'Array' };
+		} else if (a.type === 'SetVariable' && a.variableName
+				&& a.variableType !== 'Pipeline return value'
+				&& !(a.variableName in pipelineVars)) {
+			pipelineVars[a.variableName] = { type: a.pipelineVariableType || 'String' };
+		}
+	}
+
 	return {
 		name: pipelineData.name || 'pipeline1',
 		properties: {
 			activities: serializeActivityList(withDeps),
 			...(hasKeys(pipelineData.parameters) ? { parameters: pipelineData.parameters } : {}),
-			...(hasKeys(pipelineData.variables)  ? { variables:  pipelineData.variables  } : {}),
+			...(hasKeys(pipelineVars)             ? { variables:  pipelineVars             } : {}),
 			...(pipelineData.description         ? { description: pipelineData.description } : {}),
 			...(pipelineData.concurrency && pipelineData.concurrency !== 1
 				? { concurrency: parseInt(pipelineData.concurrency) } : {}),

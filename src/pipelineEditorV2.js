@@ -262,13 +262,23 @@ class PipelineEditorV2Provider {
 		const scriptUri = webview.asWebviewUri(
 			vscode.Uri.joinPath(this.context.extensionUri, 'media', 'pipelineEditorV2.js')
 		);
+		// Cache-bust the media files using the file's last-modified time so stale
+		// versions are never served after an edit + reload.
+		const scriptMtime = (() => {
+			try { return fs.statSync(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'pipelineEditorV2.js').fsPath).mtimeMs | 0; }
+			catch { return Date.now(); }
+		})();
+		const cssMtime = (() => {
+			try { return fs.statSync(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'pipelineEditorV2.css').fsPath).mtimeMs | 0; }
+			catch { return Date.now(); }
+		})();
 		const htmlPath = vscode.Uri.joinPath(
 			this.context.extensionUri, 'media', 'pipelineEditorV2.html'
 		).fsPath;
 		let html = fs.readFileSync(htmlPath, 'utf8');
 		return html
-			.replace(/\{\{CSS_URI\}\}/g, cssUri.toString())
-			.replace(/\{\{SCRIPT_URI\}\}/g, scriptUri.toString())
+			.replace(/\{\{CSS_URI\}\}/g, cssUri.toString() + '?v=' + cssMtime)
+			.replace(/\{\{SCRIPT_URI\}\}/g, scriptUri.toString() + '?v=' + scriptMtime)
 			.replace(/\{\{CSP_SOURCE\}\}/g, webview.cspSource);
 	}
 }

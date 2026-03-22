@@ -8,7 +8,8 @@
 
 // Activity types with full editable form support in V2.
 // Expanded as later steps complete each group.
-const EDITABLE_TYPES = new Set(['Wait', 'Fail', 'SetVariable', 'AppendVariable']);
+const EDITABLE_TYPES = new Set(['Wait', 'Fail', 'SetVariable', 'AppendVariable', 'ExecutePipeline', 'Filter',
+    'ForEach', 'Until', 'IfCondition', 'Switch']);
 
 const vscode = acquireVsCodeApi();
 
@@ -828,7 +829,9 @@ function showProperties(activity) {
                 ? _buildFormPane(activity, schema.commonProperties || {}, 'general')
                 : t === 'Settings'
                     ? _buildFormPane(activity, schema.typeProperties || {}, 'settings')
-                    : `<div class="empty-state">Not yet implemented.</div>`;
+                    : t === 'Activities'
+                        ? _buildActivitiesTab(activity, schema)
+                        : `<div class="empty-state">Not yet implemented.</div>`;
             return `<div class="config-tab-pane${i === 0 ? ' active' : ''}" id="tab-v2-tab-${i}" style="display:${i === 0 ? 'block' : 'none'}">${html}</div>`;
         }).join('');
         // Wire all inputs to write back to the activity and mark dirty
@@ -873,10 +876,12 @@ function _propRow(key, val) {
 // Renders editable HTML form fields for one group of schema fields.
 // Fields hidden by `conditional` are rendered but show/hide via JS.
 function _buildFormPane(activity, fields, paneId) {
+    console.log(`[V2] _buildFormPane pane="${paneId}" activity="${activity.type}" fields:`, Object.fromEntries(Object.entries(fields).map(([k,d]) => [k, d.type])));
     let html = '';
     for (const [key, def] of Object.entries(fields)) {
         if (def.type === 'containerActivities' || def.type === 'switchCases') continue;
         const val = activity[key] ?? def.default ?? '';
+        console.log(`[V2]   field "${key}" type="${def.type}" val=`, val);
         const cond = def.conditional ? `data-cond-field="${escHtml(def.conditional.field)}" data-cond-value="${escHtml(Array.isArray(def.conditional.value) ? def.conditional.value.join(',') : def.conditional.value)}"` : '';
         html += `<div class="form-field" data-field-key="${escHtml(key)}" ${cond}>`;
         html += `<label class="form-label">${escHtml(def.label || key)}${def.required ? ' <span style="color:var(--vscode-errorForeground)">*</span>' : ''}</label>`;
@@ -901,9 +906,26 @@ function _buildFormPane(activity, fields, paneId) {
             case 'keyvalue':
                 html += `<div class="form-kv-container" data-kv-field="${escHtml(key)}" data-kv-types="${escHtml((def.valueTypes || []).join(','))}"></div>`;
                 break;
+            case 'pipeline': {
+                const currentName = val?.referenceName ?? '';
+                html += `<select class="form-select" data-key="${escHtml(key)}" data-field-type="pipeline">`
+                    + `<option value="">-- Select pipeline --</option>`
+                    + pipelineList.map(p => `<option value="${escHtml(p)}"${p === currentName ? ' selected' : ''}>${escHtml(p)}</option>`).join('')
+                    + `</select>`;
+                break;
+            }
+            case 'expression': {
+                // Expression values are stored as {value, type} objects on disk; extract the value string for editing
+                const exprStr = (val && typeof val === 'object' && 'value' in val) ? String(val.value) : String(val);
+                if (def.multiline) {
+                    html += `<textarea class="form-textarea" data-key="${escHtml(key)}" data-field-type="expression" rows="3" placeholder="${escHtml(def.placeholder || '')}">${escHtml(exprStr)}</textarea>`;
+                } else {
+                    html += `<input type="text" class="form-input" data-key="${escHtml(key)}" data-field-type="expression" value="${escHtml(exprStr)}" placeholder="${escHtml(def.placeholder || '')}" />`;
+                }
+                break;
+            }
             case 'text':
             case 'string':
-            case 'expression':
             default:
                 if (def.multiline) {
                     html += `<textarea class="form-textarea" data-key="${escHtml(key)}" rows="3" placeholder="${escHtml(def.placeholder || '')}">${escHtml(String(val))}</textarea>`;
@@ -916,6 +938,47 @@ function _buildFormPane(activity, fields, paneId) {
         html += `</div>`;
     }
     return html || '<div class="empty-state">No fields.</div>';
+}
+
+// Render the Activities tab for container types — shows a read-only list of nested activity names.
+function _buildActivitiesTab(activity, schema) {
+    const containerFields = Object.entries(schema.typeProperties || {})
+        .filter(([, def]) => def.type === 'containerActivities' || def.type === 'switchCases');
+
+    if (containerFields.length === 0) return '<div class="empty-state">No nested activities.</div>';
+
+    let html = '';
+    for (const [key, def] of containerFields) {
+        const items = activity[key] || [];
+        html += `<div style="font-weight:600;margin:8px 0 4px;font-size:12px;">${escHtml(def.label || key)}</div>`;
+        if (def.type === 'switchCases') {
+            // Switch cases: each item has {value, activities[]}
+            if (items.length === 0 && !activity.defaultActivities?.length) {
+                html += '<div class="empty-state" style="margin-bottom:8px;">No cases defined.</div>';
+            } else {
+                html += '<div class="container-activity-list">';
+                for (const c of items) {
+                    html += `<div class="container-activity-item"><span class="container-activity-badge">Case: ${escHtml(String(c.value ?? ''))}</span> — ${c.activities?.length ?? 0} activit${(c.activities?.length ?? 0) === 1 ? 'y' : 'ies'}</div>`;
+                }
+                if (activity.defaultActivities?.length) {
+                    html += `<div class="container-activity-item"><span class="container-activity-badge">Default</span> — ${activity.defaultActivities.length} activit${activity.defaultActivities.length === 1 ? 'y' : 'ies'}</div>`;
+                }
+                html += '</div>';
+            }
+        } else {
+            if (items.length === 0) {
+                html += '<div class="empty-state" style="margin-bottom:8px;">No activities.</div>';
+            } else {
+                html += '<div class="container-activity-list">';
+                for (const a of items) {
+                    html += `<div class="container-activity-item"><span class="container-activity-badge">${escHtml(a.type || '?')}</span> ${escHtml(a.name || '(unnamed)')}</div>`;
+                }
+                html += '</div>';
+            }
+        }
+    }
+    html += `<div class="form-help" style="margin-top:8px;">Inner canvas editing coming in a future step.</div>`;
+    return html;
 }
 
 // Apply schema defaults to the activity model for any undefined fields.
@@ -953,6 +1016,12 @@ function _wireFormInputs(container, activity) {
                 value = el.checked;
             } else if (tag === 'input' && el.type === 'number') {
                 value = el.value === '' ? '' : Number(el.value);
+            } else if (el.dataset.fieldType === 'expression') {
+                // Re-wrap into ADF Expression object
+                value = { value: el.value, type: 'Expression' };
+            } else if (el.dataset.fieldType === 'pipeline') {
+                // Re-wrap into ADF PipelineReference object
+                value = el.value ? { referenceName: el.value, type: 'PipelineReference' } : null;
             } else {
                 value = el.value;
             }
@@ -1026,6 +1095,72 @@ function _renderKvField(kvEl, activity, fieldKey, valueTypes) {
     });
 }
 
+// Build the right value control for a kv row based on its type.
+// Calls onChange(newValue) whenever the value changes.
+function _makeKvValueWidget(type, value, onChange) {
+    if (type === 'Null') {
+        const el = document.createElement('input');
+        el.type = 'text'; el.className = 'form-input form-kv-cell'; el.disabled = true; el.value = '';
+        return el;
+    }
+    if (type === 'Boolean') {
+        const sel = document.createElement('select');
+        sel.className = 'form-select form-kv-cell';
+        for (const v of ['true', 'false']) {
+            const opt = document.createElement('option');
+            opt.value = v; opt.textContent = v;
+            if (String(value) === v) opt.selected = true;
+            sel.appendChild(opt);
+        }
+        sel.addEventListener('change', () => onChange(sel.value === 'true'));
+        return sel;
+    }
+    if (type === 'Array') {
+        const items = Array.isArray(value) ? value.map(i => ({ ...i })) : [];
+        const wrap = document.createElement('div');
+        wrap.className = 'form-kv-array-wrap';
+        const renderItems = () => {
+            wrap.innerHTML = '';
+            items.forEach((item, i) => {
+                const row = document.createElement('div');
+                row.className = 'form-kv-array-row';
+                const inp = document.createElement('input');
+                inp.type = 'text'; inp.className = 'form-input form-kv-cell';
+                inp.value = item.content ?? '';
+                inp.addEventListener('input', () => {
+                    items[i] = { type: 'String', content: inp.value };
+                    onChange([...items]);
+                });
+                const del = document.createElement('button');
+                del.className = 'action-icon-btn'; del.textContent = '×';
+                del.addEventListener('click', () => {
+                    items.splice(i, 1);
+                    onChange([...items]);
+                    renderItems();
+                });
+                row.appendChild(inp); row.appendChild(del);
+                wrap.appendChild(row);
+            });
+            const addBtn = document.createElement('button');
+            addBtn.className = 'form-kv-add-btn form-kv-array-add'; addBtn.textContent = '+ Add item';
+            addBtn.addEventListener('click', () => {
+                items.push({ type: 'String', content: '' });
+                onChange([...items]);
+                renderItems();
+            });
+            wrap.appendChild(addBtn);
+        };
+        renderItems();
+        return wrap;
+    }
+    // Default: plain text input
+    const el = document.createElement('input');
+    el.type = 'text'; el.className = 'form-input form-kv-cell';
+    el.value = value ?? '';
+    el.addEventListener('input', () => onChange(el.value));
+    return el;
+}
+
 function _addKvRow(tbody, activity, fieldKey, valueTypes, key, type, value) {
     const tr = document.createElement('tr');
     tr.dataset.currentKey = key;
@@ -1048,12 +1183,26 @@ function _addKvRow(tbody, activity, fieldKey, valueTypes, key, type, value) {
     const typeTd = document.createElement('td');
     typeTd.appendChild(typeSelect); tr.appendChild(typeTd);
 
-    // Value
-    const valInput = document.createElement('input');
-    valInput.type = 'text'; valInput.className = 'form-input form-kv-cell';
-    valInput.value = value ?? ''; valInput.disabled = (type === 'Null');
+    // Value — rebuilt when type changes
     const valTd = document.createElement('td');
-    valTd.appendChild(valInput); tr.appendChild(valTd);
+    tr.appendChild(valTd);
+    let currentValue = value;
+    const syncData = () => {
+        const oldKey = tr.dataset.currentKey;
+        const newKey = keyInput.value.trim() || oldKey;
+        const newType = typeSelect.value;
+        const data = activity[fieldKey] || {};
+        if (oldKey !== newKey) delete data[oldKey];
+        data[newKey] = { type: newType, value: newType === 'Null' ? undefined : currentValue };
+        activity[fieldKey] = data;
+        tr.dataset.currentKey = newKey;
+        markAsDirty();
+    };
+    const rebuildValueCell = (newType, newValue) => {
+        valTd.innerHTML = '';
+        valTd.appendChild(_makeKvValueWidget(newType, newValue, (v) => { currentValue = v; syncData(); }));
+    };
+    rebuildValueCell(type, value);
 
     // Delete
     const delBtn = document.createElement('button');
@@ -1063,22 +1212,13 @@ function _addKvRow(tbody, activity, fieldKey, valueTypes, key, type, value) {
 
     tbody.appendChild(tr);
 
-    const sync = () => {
-        const oldKey = tr.dataset.currentKey;
-        const newKey = keyInput.value.trim() || oldKey;
+    keyInput.addEventListener('input', syncData);
+    typeSelect.addEventListener('change', () => {
         const newType = typeSelect.value;
-        const newVal = newType === 'Null' ? undefined : valInput.value;
-        const data = activity[fieldKey] || {};
-        if (oldKey !== newKey) delete data[oldKey];
-        data[newKey] = { type: newType, value: newVal };
-        activity[fieldKey] = data;
-        tr.dataset.currentKey = newKey;
-        valInput.disabled = (newType === 'Null');
-        markAsDirty();
-    };
-    keyInput.addEventListener('input', sync);
-    typeSelect.addEventListener('change', sync);
-    valInput.addEventListener('input', sync);
+        currentValue = newType === 'Boolean' ? true : newType === 'Array' ? [] : '';
+        rebuildValueCell(newType, currentValue);
+        syncData();
+    });
     delBtn.addEventListener('click', () => {
         const data = activity[fieldKey] || {};
         delete data[tr.dataset.currentKey];

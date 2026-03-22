@@ -405,7 +405,7 @@
     "typeProperties": {
       "variableName": {
         "type": "text",
-        "label": "Name",
+        "label": "Variable name",
         "required": true,
         "placeholder": "Enter variable name",
         "jsonPath": "typeProperties.variableName"
@@ -477,7 +477,7 @@
       },
       "variableName": {
         "type": "text",
-        "label": "Name",
+        "label": "Variable name",
         "required": true,
         "placeholder": "Enter variable name",
         "conditional": {
@@ -780,6 +780,7 @@
     "isContainer": true,
     "tabs": [
       "General",
+      "Settings",
       "Activities",
       "User Properties"
     ],
@@ -870,6 +871,7 @@
     "isContainer": true,
     "tabs": [
       "General",
+      "Settings",
       "Activities",
       "User Properties"
     ],
@@ -958,6 +960,7 @@
     "isContainer": true,
     "tabs": [
       "General",
+      "Settings",
       "Activities",
       "User Properties"
     ],

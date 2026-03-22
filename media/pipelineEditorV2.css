@@ -667,3 +667,52 @@ body.properties-visible .expand-properties-btn { display: none; }
 .form-kv-add-btn:hover {
     background: var(--vscode-button-secondaryHoverBackground, var(--vscode-list-hoverBackground));
 }
+
+.form-kv-array-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 140px;
+}
+
+.form-kv-array-row {
+    display: flex;
+    gap: 3px;
+    align-items: center;
+}
+
+.form-kv-array-row .form-input {
+    flex: 1;
+    min-width: 0;
+}
+
+.form-kv-array-add {
+    align-self: flex-start;
+    margin-top: 2px;
+}
+
+.container-activity-list {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin-bottom: 8px;
+}
+
+.container-activity-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    padding: 3px 6px;
+    background: var(--vscode-list-hoverBackground);
+    border-radius: 3px;
+}
+
+.container-activity-badge {
+    font-size: 10px;
+    padding: 1px 5px;
+    background: var(--vscode-badge-background);
+    color: var(--vscode-badge-foreground);
+    border-radius: 10px;
+    white-space: nowrap;
+}

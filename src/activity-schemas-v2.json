@@ -1235,9 +1235,11 @@
           "wildcardFilePath",
           "listOfFiles"
         ],
+        "optionConditions": {
+          "prefix": { "field": "_storeSettingsType", "value": "AzureBlobStorageReadSettings" }
+        },
         "default": "filePathInDataset",
-        "jsonPath": null,
-        "uiOnly": true
+        "jsonPath": null
       },
       "prefix": {
         "type": "text",
@@ -1300,7 +1302,7 @@
       "recursive": {
         "type": "boolean",
         "label": "Delete file recursively",
-        "default": false,
+        "default": true,
         "conditional": {
           "field": "filePathType",
           "value": [
@@ -1315,7 +1317,11 @@
         "type": "number",
         "label": "Max concurrent connections",
         "min": 1,
-        "jsonPath": "typeProperties.maxConcurrentConnections"
+        "jsonPath": "typeProperties.storeSettings.maxConcurrentConnections"
+      },
+      "_deleteStoreSettingsMeta": {
+        "uiOnly": true,
+        "serializeAs": "deleteStoreSettings"
       }
     }
   },

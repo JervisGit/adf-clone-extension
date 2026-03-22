@@ -557,7 +557,7 @@ body.properties-visible .expand-properties-btn { display: none; }
     grid-template-columns: 130px 1fr;
     gap: 2px 8px;
     align-items: start;
-    margin-bottom: 8px;
+    margin-bottom: 12px;
 }
 
 .form-label {

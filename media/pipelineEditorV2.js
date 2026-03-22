@@ -910,7 +910,9 @@ function _buildFormPane(activity, fields, paneId) {
             case 'radio':
                 html += `<div class="form-radio-group">${(def.options || []).map((label, i) => {
                     const v = def.optionValues ? def.optionValues[i] : label;
-                    return `<label class="form-radio-label"><input type="radio" name="${escHtml(paneId + '-' + key)}" value="${escHtml(String(v))}" ${String(val) === String(v) ? 'checked' : ''} data-key="${escHtml(key)}" />${escHtml(String(label))}</label>`;
+                    const optCond = def.optionConditions?.[String(v)];
+                    const condAttr = optCond ? ` data-cond-field="${escHtml(optCond.field)}" data-cond-value="${escHtml(Array.isArray(optCond.value) ? optCond.value.join(',') : optCond.value)}"` : '';
+                    return `<label class="form-radio-label"${condAttr}><input type="radio" name="${escHtml(paneId + '-' + key)}" value="${escHtml(String(v))}" ${String(val) === String(v) ? 'checked' : ''} data-key="${escHtml(key)}" />${escHtml(String(label))}</label>`;
                 }).join('')}</div>`;
                 break;
             case 'select':
@@ -938,9 +940,12 @@ function _buildFormPane(activity, fields, paneId) {
             case 'getmetadata-dataset':
             case 'dataset': {
                 const currentDs = val?.referenceName ?? '';
+                const filteredDs = def.datasetFilter === 'storageOnly'
+                    ? datasetList.filter(d => datasetTypeCategories[datasetContents[d]?.properties?.type ?? ''] === 'storage')
+                    : datasetList;
                 html += `<select class="form-select" data-key="${escHtml(key)}" data-field-type="dataset">`
                     + `<option value="">-- Select dataset --</option>`
-                    + datasetList.map(d => `<option value="${escHtml(d)}"${d === currentDs ? ' selected' : ''}>${escHtml(d)}</option>`).join('')
+                    + filteredDs.map(d => `<option value="${escHtml(d)}"${d === currentDs ? ' selected' : ''}>${escHtml(d)}</option>`).join('')
                     + `</select>`;
                 break;
             }
@@ -1138,6 +1143,13 @@ function _wireFormInputs(container, activity) {
 // Show/hide form fields based on their conditional dependencies.
 function _applyConditionals(container, activity) {
     container.querySelectorAll('.form-field[data-cond-field]').forEach(el => {
+        const field = el.dataset.condField;
+        const allowed = el.dataset.condValue.split(',');
+        const current = String(activity[field] ?? '');
+        el.style.display = allowed.includes(current) ? '' : 'none';
+    });
+    // Hide/show individual radio options that have per-option conditions (e.g. Prefix for Blob only)
+    container.querySelectorAll('.form-radio-label[data-cond-field]').forEach(el => {
         const field = el.dataset.condField;
         const allowed = el.dataset.condValue.split(',');
         const current = String(activity[field] ?? '');

@@ -521,7 +521,34 @@ const TRANSFORMERS = {
 		},
 	},
 
-	// ── 5. GetMetadata storeSettings / formatSettings types ─────────────────
+	// ── 5. Delete storeSettings type ─────────────────────────────────────────
+	// Writes storeSettings.type and enablePartitionDiscovery from _storeSettingsType.
+	// Does NOT touch formatSettings (Delete has no format layer).
+	deleteStoreSettings: {
+		serialize(flat, output) {
+			if (!output.typeProperties) output.typeProperties = {};
+			const tp = output.typeProperties;
+			const storeType = flat._storeSettingsType || '';
+			if (storeType) {
+				tp.storeSettings = { type: storeType, enablePartitionDiscovery: false, ...(tp.storeSettings || {}) };
+			}
+			// enableLogging is always written as false at the typeProperties level
+			tp.enableLogging = false;
+		},
+		deserialize(raw, flat) {
+			const tp = raw.typeProperties;
+			if (!tp) return;
+			if (tp.storeSettings?.type) flat._storeSettingsType = tp.storeSettings.type;
+			// Infer filePathType from whichever storeSettings field is populated
+			const ss = tp.storeSettings || {};
+			if (ss.prefix !== undefined)          flat.filePathType = 'prefix';
+			else if (ss.wildcardFileName !== undefined) flat.filePathType = 'wildcardFilePath';
+			else if (ss.fileListPath !== undefined)     flat.filePathType = 'listOfFiles';
+			else                                        flat.filePathType = 'filePathInDataset';
+		},
+	},
+
+	// ── 6. GetMetadata storeSettings / formatSettings types ─────────────────────
 	// Writes storeSettings.type (e.g. AzureBlobFSReadSettings) and enablePartitionDiscovery,
 	// and formatSettings.type (e.g. DelimitedTextReadSettings), from webview-computed hints
 	// _storeSettingsType and _formatSettingsType stored on the flat activity.

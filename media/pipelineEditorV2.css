@@ -553,17 +553,42 @@ body.properties-visible .expand-properties-btn { display: none; }
 
 /* ─── Schema-driven form fields ─────────────────────────────────────────────── */
 .form-field {
-    margin-bottom: 12px;
+    display: grid;
+    grid-template-columns: 130px 1fr;
+    gap: 2px 8px;
+    align-items: start;
+    margin-bottom: 8px;
 }
 
 .form-label {
     display: block;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
     color: var(--vscode-descriptionForeground);
-    margin-bottom: 4px;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+    text-align: left;
+    padding-top: 5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.form-field > .form-help {
+    grid-column: 2;
+}
+
+/* Block layout: label above, control full-width (for textarea, tables, fieldlists) */
+.form-field--block {
+    grid-template-columns: 1fr;
+}
+
+.form-field--block > .form-label {
+    text-align: left;
+    padding-top: 0;
+    margin-bottom: 2px;
+}
+
+.form-field--block > .form-help {
+    grid-column: 1;
 }
 
 .form-input,
@@ -626,6 +651,22 @@ body.properties-visible .expand-properties-btn { display: none; }
     font-size: 11px;
     color: var(--vscode-descriptionForeground);
     margin-top: 3px;
+}
+
+input[type="datetime-local"].form-input {
+    padding: 3px 6px;
+    cursor: pointer;
+}
+
+.form-checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: normal;
+    color: var(--vscode-foreground);
+    cursor: pointer;
+    padding-top: 2px;
 }
 
 /* ─── Key-value table (SetVariable pipeline return value) ───────────────────── */
@@ -718,18 +759,22 @@ body.properties-visible .expand-properties-btn { display: none; }
     white-space: nowrap;
 }
 
-.form-fieldlist {
+.form-fieldlist-dynamic {
     display: flex;
-    flex-wrap: wrap;
-    gap: 4px 16px;
-    padding: 4px 0;
+    flex-direction: column;
+    gap: 4px;
 }
 
-.form-fieldlist-item {
+.form-fieldlist-row {
     display: flex;
+    gap: 4px;
     align-items: center;
-    gap: 5px;
-    font-size: 12px;
-    cursor: pointer;
-    white-space: nowrap;
+}
+
+.form-fieldlist-row .form-fieldlist-select {
+    flex: 1;
+}
+
+.form-fieldlist-row .form-fieldlist-custom {
+    flex: 1;
 }

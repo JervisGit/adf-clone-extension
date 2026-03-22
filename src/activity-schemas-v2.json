@@ -1,4 +1,31 @@
 {
+  "__meta": {
+    "datasetTypeCategories": {
+      "DelimitedText": "storage",
+      "Parquet": "storage",
+      "Json": "storage",
+      "Orc": "storage",
+      "Avro": "storage",
+      "Excel": "storage",
+      "Xml": "storage",
+      "Binary": "storage",
+      "Iceberg": "storage",
+      "AzureSqlTable": "sql",
+      "AzureSqlDWTable": "sql",
+      "SqlServerTable": "sql"
+    },
+    "locationTypeToStoreSettings": {
+      "AzureBlobFSLocation": "AzureBlobFSReadSettings",
+      "AzureBlobStorageLocation": "AzureBlobStorageReadSettings"
+    },
+    "datasetTypeToFormatSettings": {
+      "DelimitedText": "DelimitedTextReadSettings",
+      "Json": "JsonReadSettings",
+      "Avro": "AvroReadSettings",
+      "Orc": "OrcReadSettings",
+      "Parquet": "ParquetReadSettings"
+    }
+  },
   "SynapseNotebook": {
     "name": "Synapse Notebook",
     "tabs": [
@@ -1492,6 +1519,22 @@
       "fieldList": {
         "type": "getmetadata-fieldlist",
         "label": "Field list",
+        "required": true,
+        "fieldListOptions": {
+          "storage": [
+            { "value": "childItems",   "label": "Child items" },
+            { "value": "exists",       "label": "Exists" },
+            { "value": "itemName",     "label": "Item name" },
+            { "value": "itemType",     "label": "Item type" },
+            { "value": "lastModified", "label": "Last modified" }
+          ],
+          "sql": [
+            { "value": "columnCount", "label": "Column count" },
+            { "value": "exists",      "label": "Exists" },
+            { "value": "structure",   "label": "Structure" }
+          ],
+          "default": []
+        },
         "jsonPath": "typeProperties.fieldList"
       },
       "modifiedDatetimeStart": {
@@ -1499,11 +1542,8 @@
         "label": "Start time (UTC)",
         "placeholder": "2/6/2026, 12:00:00 AM",
         "conditional": {
-          "field": "_datasetLocationType",
-          "value": [
-            "AzureBlobStorageLocation",
-            "AzureBlobFSLocation"
-          ]
+          "field": "_datasetCategory",
+          "value": "storage"
         },
         "jsonPath": "typeProperties.storeSettings.modifiedDatetimeStart"
       },
@@ -1512,11 +1552,8 @@
         "label": "End time (UTC)",
         "placeholder": "2/6/2026, 12:00:00 AM",
         "conditional": {
-          "field": "_datasetLocationType",
-          "value": [
-            "AzureBlobStorageLocation",
-            "AzureBlobFSLocation"
-          ]
+          "field": "_datasetCategory",
+          "value": "storage"
         },
         "jsonPath": "typeProperties.storeSettings.modifiedDatetimeEnd"
       },
@@ -1525,13 +1562,14 @@
         "label": "Skip line count",
         "min": 0,
         "conditional": {
-          "field": "_datasetLocationType",
-          "value": [
-            "AzureBlobStorageLocation",
-            "AzureBlobFSLocation"
-          ]
+          "field": "_datasetType",
+          "value": "DelimitedText"
         },
-        "jsonPath": "typeProperties.storeSettings.skipLineCount"
+        "jsonPath": "typeProperties.formatSettings.skipLineCount"
+      },
+      "_storeSettingsMeta": {
+        "uiOnly": true,
+        "serializeAs": "getMetadataStoreSettings"
       }
     }
   },

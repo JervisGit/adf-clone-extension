@@ -12,19 +12,6 @@ const EDITABLE_TYPES = new Set(['Wait', 'Fail', 'SetVariable', 'AppendVariable',
     'ForEach', 'Until', 'IfCondition', 'Switch',
     'Lookup', 'Delete', 'Validation', 'GetMetadata']);
 
-// Known field names for GetMetadata activity
-const GETMETADATA_FIELDS = [
-    { value: 'itemName',    label: 'Item name' },
-    { value: 'itemType',    label: 'Item type' },
-    { value: 'size',        label: 'Size' },
-    { value: 'exists',      label: 'Exists' },
-    { value: 'lastModified',label: 'Last modified' },
-    { value: 'childItems',  label: 'Child items' },
-    { value: 'contentMD5',  label: 'Content MD5' },
-    { value: 'structure',   label: 'Structure' },
-    { value: 'columnCount', label: 'Column count' },
-];
-
 const vscode = acquireVsCodeApi();
 
 // ─── Global state ──────────────────────────────────────────────────────────────
@@ -41,6 +28,9 @@ let copyActivityConfig = {};
 let datasetContents = {};
 let datasetList = [];
 let pipelineList = [];
+let datasetTypeCategories = {};
+let locationTypeToStoreSettings = {};
+let datasetTypeToFormatSettings = {};
 
 // Pipeline-level data
 let pipelineData = { name: '', description: '', annotations: [], parameters: {}, variables: {}, concurrency: 1 };
@@ -75,6 +65,8 @@ function markAsClean() {
 }
 
 // Strip canvas-only / non-serializable properties before sending to extension host for save
+// Note: _datasetCategory and _datasetType are intentionally NOT stripped — the engine needs them
+// to evaluate conditional field rules during serialization.
 const CANVAS_ONLY_KEYS = new Set(['element', 'container', 'color', 'isContainer', 'x', 'y', 'width', 'height', 'id']);
 function toSaveData(a) {
     const obj = {};
@@ -830,6 +822,7 @@ function showProperties(activity) {
         // This ensures freshly-dropped activities have correct defaults even if
         // the user never touches a field.
         _applySchemaDefaults(activity, schema);
+        _detectDatasetCategory(activity, schema);
 
         // Build tabs from schema.tabs
         const tabs = schema.tabs || ['General', 'Settings'];
@@ -898,15 +891,20 @@ function _buildFormPane(activity, fields, paneId) {
     console.log(`[V2] _buildFormPane pane="${paneId}" activity="${activity.type}" fields:`, Object.fromEntries(Object.entries(fields).map(([k,d]) => [k, d.type])));
     let html = '';
     for (const [key, def] of Object.entries(fields)) {
+        if (def.uiOnly) continue;
         if (def.type === 'containerActivities' || def.type === 'switchCases') continue;
         const val = activity[key] ?? def.default ?? '';
         console.log(`[V2]   field "${key}" type="${def.type}" val=`, val);
         const cond = def.conditional ? `data-cond-field="${escHtml(def.conditional.field)}" data-cond-value="${escHtml(Array.isArray(def.conditional.value) ? def.conditional.value.join(',') : def.conditional.value)}"` : '';
-        html += `<div class="form-field" data-field-key="${escHtml(key)}" ${cond}>`;
-        html += `<label class="form-label">${escHtml(def.label || key)}${def.required ? ' <span style="color:var(--vscode-errorForeground)">*</span>' : ''}</label>`;
+        const isBool = def.type === 'boolean';
+        const isBlock = isBool || def.multiline || def.type === 'keyvalue' || def.type === 'getmetadata-fieldlist';
+        html += `<div class="form-field${isBlock ? ' form-field--block' : ''}" data-field-key="${escHtml(key)}" ${cond}>`;
+        if (!isBool) {
+            html += `<label class="form-label">${escHtml(def.label || key)}${def.required ? ' <span style="color:var(--vscode-errorForeground)">*</span>' : ''}</label>`;
+        }
         switch (def.type) {
             case 'boolean':
-                html += `<input type="checkbox" class="form-checkbox" data-key="${escHtml(key)}" ${val ? 'checked' : ''} />`;
+                html += `<label class="form-checkbox-label">${escHtml(def.label || key)}<input type="checkbox" class="form-checkbox" data-key="${escHtml(key)}" ${val ? 'checked' : ''} /></label>`;
                 break;
             case 'radio-with-info':
             case 'radio':
@@ -947,11 +945,13 @@ function _buildFormPane(activity, fields, paneId) {
                 break;
             }
             case 'getmetadata-fieldlist': {
-                const selected = Array.isArray(val) ? val.map(item => typeof item === 'object' ? item.type : item) : [];
-                html += `<div class="form-fieldlist" data-fieldlist-key="${escHtml(key)}">` +
-                    GETMETADATA_FIELDS.map(f =>
-                        `<label class="form-fieldlist-item"><input type="checkbox" data-fieldlist-item="${escHtml(f.value)}" ${selected.includes(f.value) ? 'checked' : ''} />${escHtml(f.label)}</label>`
-                    ).join('') + `</div>`;
+                const selectedDs = activity.dataset?.referenceName ?? '';
+                const dsType = selectedDs ? (datasetContents[selectedDs]?.properties?.type ?? '') : '';
+                const dsCategory = dsType ? (datasetTypeCategories[dsType] ?? '') : '';
+                const allOptions = def.fieldListOptions ?? {};
+                const options = dsCategory ? (allOptions[dsCategory] ?? []) : [];
+                const placeholder = !selectedDs ? 'Select a dataset first to see available field options.' : (!dsCategory ? 'Unknown dataset type — enter field names manually.' : '');
+                html += `<div class="form-fieldlist-dynamic" data-fieldlist-key="${escHtml(key)}" data-fieldlist-options="${escHtml(JSON.stringify(options))}" data-fieldlist-all-options="${escHtml(JSON.stringify(allOptions))}" data-fieldlist-placeholder="${escHtml(placeholder)}"></div>`;
                 break;
             }
             case 'expression': {
@@ -964,12 +964,17 @@ function _buildFormPane(activity, fields, paneId) {
                 }
                 break;
             }
-            case 'datetime':
+            case 'datetime': {
+                let dtVal = '';
+                if (val) { dtVal = String(val).replace('Z', '').substring(0, 16); }
+                html += `<input type="datetime-local" class="form-input" data-key="${escHtml(key)}" data-field-type="datetime" value="${escHtml(dtVal)}" />`;
+                break;
+            }
             case 'text':
             case 'string':
             default:
                 if (def.multiline) {
-                    html += `<textarea class="form-textarea" data-key="${escHtml(key)}" rows="3" placeholder="${escHtml(def.placeholder || '')}">${escHtml(String(val))}</textarea>`;
+                    html += `<textarea class="form-textarea" data-key="${escHtml(key)}" rows="${def.rows ?? 2}" placeholder="${escHtml(def.placeholder || '')}">${escHtml(String(val))}</textarea>`;
                 } else {
                     html += `<input type="text" class="form-input" data-key="${escHtml(key)}" value="${escHtml(String(val))}" placeholder="${escHtml(def.placeholder || '')}" />`;
                 }
@@ -1037,6 +1042,31 @@ function _applySchemaDefaults(activity, schema) {
     }
 }
 
+// Detect the dataset's category (storage/sql/etc.) and set _datasetCategory on the activity.
+// This drives conditional visibility for fields like modifiedDatetimeStart in GetMetadata.
+function _detectDatasetCategory(activity, schema) {
+    const DATASET_TYPES = new Set(['dataset', 'dataset-lookup', 'validation-dataset', 'getmetadata-dataset']);
+    const groups = ['typeProperties', 'sourceProperties', 'sinkProperties', 'commonProperties'];
+    for (const group of groups) {
+        const fields = schema?.[group];
+        if (!fields) continue;
+        for (const [key, def] of Object.entries(fields)) {
+            if (DATASET_TYPES.has(def.type)) {
+                const dsName = activity[key]?.referenceName ?? '';
+                if (dsName) {
+                    const dsType = datasetContents[dsName]?.properties?.type ?? '';
+                    activity._datasetCategory = datasetTypeCategories[dsType] ?? '';
+                    activity._datasetType = dsType;
+                    const locType = datasetContents[dsName]?.properties?.typeProperties?.location?.type ?? '';
+                    activity._storeSettingsType = locationTypeToStoreSettings[locType] ?? '';
+                    activity._formatSettingsType = datasetTypeToFormatSettings[dsType] ?? '';
+                    return;
+                }
+            }
+        }
+    }
+}
+
 // Wire form inputs in a container to write back to the activity object.
 // Also handles conditional visibility.
 function _wireFormInputs(container, activity) {
@@ -1066,6 +1096,30 @@ function _wireFormInputs(container, activity) {
             } else if (el.dataset.fieldType === 'dataset') {
                 // Re-wrap into ADF DatasetReference object
                 value = el.value ? { referenceName: el.value, type: 'DatasetReference' } : null;
+                // Update _datasetCategory/_datasetType so conditional fields show/hide correctly
+                const dsType = el.value ? (datasetContents[el.value]?.properties?.type ?? '') : '';
+                activity._datasetCategory = datasetTypeCategories[dsType] ?? '';
+                activity._datasetType = dsType;
+                const locType = el.value ? (datasetContents[el.value]?.properties?.typeProperties?.location?.type ?? '') : '';
+                activity._storeSettingsType = locationTypeToStoreSettings[locType] ?? '';
+                activity._formatSettingsType = datasetTypeToFormatSettings[dsType] ?? '';
+                // Clear fieldlist values so old entries from previous dataset don't carry over
+                container.querySelectorAll('.form-fieldlist-dynamic').forEach(fl => {
+                    const fieldKey = fl.dataset.fieldlistKey;
+                    if (fieldKey) activity[fieldKey] = [];
+                });
+                // Rebuild any fieldlist options that depend on the selected dataset type
+                container.querySelectorAll('.form-fieldlist-dynamic').forEach(fl => {
+                    const allOpts = JSON.parse(fl.dataset.fieldlistAllOptions || '{}');
+                    const catOpts = activity._datasetCategory ? (allOpts[activity._datasetCategory] ?? []) : [];
+                    const ph = !el.value ? 'Select a dataset first to see available field options.'
+                             : (!activity._datasetCategory ? 'Unknown dataset type — enter field names manually.' : '');
+                    fl.dataset.fieldlistOptions = JSON.stringify(catOpts);
+                    fl.dataset.fieldlistPlaceholder = ph;
+                    _buildFieldlistUI(fl, activity);
+                });
+            } else if (el.dataset.fieldType === 'datetime') {
+                value = el.value ? el.value + ':00Z' : '';
             } else {
                 value = el.value;
             }
@@ -1097,24 +1151,100 @@ function _applyConditionals(container, activity) {
 }
 
 // ─── Field list renderer (GetMetadata fieldList) ──────────────────────────────
-function _wireFieldLists(container, activity) {
-    container.querySelectorAll('.form-fieldlist').forEach(el => {
-        const key = el.dataset.fieldlistKey;
-        if (!key) return;
-        const sync = () => {
-            const checked = [...el.querySelectorAll('input[type=checkbox][data-fieldlist-item]')]
-                .filter(cb => cb.checked)
-                .map(cb => ({ type: cb.dataset.fieldlistItem }));
-            activity[key] = checked;
-            markAsDirty();
-        };
-        el.querySelectorAll('input[type=checkbox]').forEach(cb => cb.addEventListener('change', sync));
-        // Set initial value from model (covers load-from-file path)
-        const current = Array.isArray(activity[key]) ? activity[key].map(i => typeof i === 'object' ? i.type : i) : [];
-        el.querySelectorAll('input[type=checkbox][data-fieldlist-item]').forEach(cb => {
-            cb.checked = current.includes(cb.dataset.fieldlistItem);
+function _buildFieldlistUI(el, activity) {
+    el.innerHTML = '';
+    const key = el.dataset.fieldlistKey;
+    if (!key) return;
+    let options = [];
+    try { options = JSON.parse(el.dataset.fieldlistOptions || '[]'); } catch { options = []; }
+    const currentItems = Array.isArray(activity[key])
+        ? activity[key].map(i => {
+            if (typeof i === 'string') return i;
+            if (i.type === 'Expression') return i.value ?? '';   // custom expression
+            return i.type ?? '';                                  // legacy {type: "columnCount"} format
+        })
+        : [];
+
+    const syncToModel = () => {
+        const result = [];
+        el.querySelectorAll('.form-fieldlist-row').forEach(row => {
+            const sel = row.querySelector('.form-fieldlist-select');
+            const custom = row.querySelector('.form-fieldlist-custom');
+            const isCustom = sel?.value === '__custom';
+            const value = isCustom ? (custom?.value?.trim() ?? '') : (sel?.value ?? '');
+            if (!value) return;
+            if (isCustom) {
+                result.push({ value: value, type: 'Expression' });
+            } else {
+                result.push(value);
+            }
         });
-    });
+        activity[key] = result;
+        markAsDirty();
+    };
+
+    const addRow = (currentValue) => {
+        const row = document.createElement('div');
+        row.className = 'form-fieldlist-row';
+        const sel = document.createElement('select');
+        sel.className = 'form-select form-fieldlist-select';
+        const blank = document.createElement('option');
+        blank.value = ''; blank.textContent = '-- Select field --';
+        sel.appendChild(blank);
+        for (const opt of options) {
+            const o = document.createElement('option');
+            o.value = opt.value ?? opt; o.textContent = opt.label ?? opt;
+            if ((opt.value ?? opt) === currentValue) o.selected = true;
+            sel.appendChild(o);
+        }
+        const customOpt = document.createElement('option');
+        customOpt.value = '__custom'; customOpt.textContent = 'Custom...';
+        const isCustom = !!currentValue && !options.find(o => (o.value ?? o) === currentValue);
+        if (isCustom) customOpt.selected = true;
+        sel.appendChild(customOpt);
+        const customInput = document.createElement('input');
+        customInput.type = 'text';
+        customInput.className = 'form-input form-fieldlist-custom';
+        customInput.placeholder = 'Custom field name';
+        customInput.value = isCustom ? currentValue : '';
+        customInput.style.display = isCustom ? '' : 'none';
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'action-icon-btn form-fieldlist-remove-btn';
+        removeBtn.type = 'button';
+        removeBtn.textContent = '×';
+        sel.addEventListener('change', () => {
+            customInput.style.display = sel.value === '__custom' ? '' : 'none';
+            syncToModel();
+        });
+        customInput.addEventListener('input', syncToModel);
+        removeBtn.addEventListener('click', () => { row.remove(); syncToModel(); });
+        row.appendChild(sel);
+        row.appendChild(customInput);
+        row.appendChild(removeBtn);
+        const addBtn = el.querySelector('.form-fieldlist-add-btn');
+        el.insertBefore(row, addBtn);
+    };
+
+    const placeholder = el.dataset.fieldlistPlaceholder || '';
+    if (placeholder && options.length === 0 && currentItems.length === 0) {
+        const msg = document.createElement('div');
+        msg.className = 'form-help';
+        msg.style.fontStyle = 'italic';
+        msg.textContent = placeholder;
+        el.appendChild(msg);
+        return;
+    }
+    const addBtn = document.createElement('button');
+    addBtn.className = 'form-kv-add-btn form-fieldlist-add-btn';
+    addBtn.type = 'button';
+    addBtn.textContent = '+ New';
+    el.appendChild(addBtn);
+    for (const item of currentItems) { addRow(item); }
+    addBtn.addEventListener('click', () => addRow(''));
+}
+
+function _wireFieldLists(container, activity) {
+    container.querySelectorAll('.form-fieldlist-dynamic').forEach(el => _buildFieldlistUI(el, activity));
 }
 
 // ─── Key-value field renderer ────────────────────────────────────────────────────
@@ -1400,6 +1530,9 @@ window.addEventListener('message', event => {
         datasetList       = msg.datasetList       || [];
         datasetContents   = msg.datasetContents   || {};
         pipelineList      = msg.pipelineList      || [];
+        datasetTypeCategories       = msg.activitySchemas?.__meta?.datasetTypeCategories       || {};
+        locationTypeToStoreSettings  = msg.activitySchemas?.__meta?.locationTypeToStoreSettings  || {};
+        datasetTypeToFormatSettings  = msg.activitySchemas?.__meta?.datasetTypeToFormatSettings  || {};
         window.linkedServicesList = msg.linkedServicesList || [];
         buildSidebar();
         log('Schemas loaded. Activities config categories: ' + activitiesConfig.categories.length);

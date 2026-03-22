@@ -187,6 +187,8 @@ function serializeActivity(flat) {
 			if (def.serializeAs) continue;
 			// Container arrays: handled below
 			if (def.type === 'containerActivities' || def.type === 'switchCases') continue;
+			// Skip fields whose conditional is not met (e.g. don't write ADLS-only fields for SQL datasets)
+			if (def.conditional && !isConditionMet(def.conditional, flat)) continue;
 
 			const value = flat[key];
 			if (value !== undefined && value !== null && value !== '') {
@@ -296,7 +298,9 @@ function validateActivity(flat) {
 			if (!def.required) continue;
 			if (def.conditional && !isConditionMet(def.conditional, flat)) continue;
 			const value = flat[key];
-			if (value === undefined || value === null || value === '') {
+			const isEmpty = value === undefined || value === null || value === ''
+				|| (Array.isArray(value) && value.length === 0);
+			if (isEmpty) {
 				errors.push(`"${def.label || key}" is required`);
 			}
 		}
@@ -517,7 +521,46 @@ const TRANSFORMERS = {
 		},
 	},
 
-	// ── 5. Copy dataset references ────────────────────────────────────────────
+	// ── 5. GetMetadata storeSettings / formatSettings types ─────────────────
+	// Writes storeSettings.type (e.g. AzureBlobFSReadSettings) and enablePartitionDiscovery,
+	// and formatSettings.type (e.g. DelimitedTextReadSettings), from webview-computed hints
+	// _storeSettingsType and _formatSettingsType stored on the flat activity.
+	getMetadataStoreSettings: {
+		serialize(flat, output) {
+			if (!output.typeProperties) output.typeProperties = {};
+			const tp = output.typeProperties;
+			const meta = allSchemas.__meta || {};
+			// Resolve types from config maps if not already set by webview
+			const locTypeToStore = meta.locationTypeToStoreSettings || {};
+			const dsTypeToFormat = meta.datasetTypeToFormatSettings || {};
+			const storeType = flat._storeSettingsType || '';
+			const formatType = flat._formatSettingsType || '';
+			if (storeType) {
+				tp.storeSettings = { type: storeType, enablePartitionDiscovery: false, ...(tp.storeSettings || {}) };
+			} else {
+				// No storage dataset selected — drop any leftover storeSettings
+				delete tp.storeSettings;
+			}
+			if (formatType) {
+				tp.formatSettings = { type: formatType, ...(tp.formatSettings || {}) };
+			} else {
+				// No format type — drop any leftover formatSettings
+				delete tp.formatSettings;
+			}
+		},
+		deserialize(raw, flat) {
+			const tp = raw.typeProperties;
+			if (!tp) return;
+			if (tp.storeSettings?.type) flat._storeSettingsType = tp.storeSettings.type;
+			if (tp.formatSettings?.type) flat._formatSettingsType = tp.formatSettings.type;
+			// Backward compat: migrate skipLineCount from storeSettings to flat (formatSettings path fixed)
+			if (tp.storeSettings?.skipLineCount !== undefined && tp.formatSettings?.skipLineCount === undefined) {
+				flat.skipLineCount = tp.storeSettings.skipLineCount;
+			}
+		},
+	},
+
+	// ── 6. Copy dataset references ────────────────────────────────────────────
 	// sourceDataset → activity.inputs[0].referenceName
 	// sinkDataset   → activity.outputs[0].referenceName
 	copyDatasetRef: {

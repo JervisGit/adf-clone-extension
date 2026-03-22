@@ -1410,13 +1410,6 @@
           "false"
         ],
         "default": "ignore",
-        "conditional": {
-          "field": "_datasetLocationType",
-          "value": [
-            "AzureBlobStorageLocation",
-            "AzureBlobFSLocation"
-          ]
-        },
         "jsonPath": "typeProperties.childItems",
         "serializeAs": "validationChildItems"
       }

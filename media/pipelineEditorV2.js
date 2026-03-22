@@ -9,7 +9,21 @@
 // Activity types with full editable form support in V2.
 // Expanded as later steps complete each group.
 const EDITABLE_TYPES = new Set(['Wait', 'Fail', 'SetVariable', 'AppendVariable', 'ExecutePipeline', 'Filter',
-    'ForEach', 'Until', 'IfCondition', 'Switch']);
+    'ForEach', 'Until', 'IfCondition', 'Switch',
+    'Lookup', 'Delete', 'Validation', 'GetMetadata']);
+
+// Known field names for GetMetadata activity
+const GETMETADATA_FIELDS = [
+    { value: 'itemName',    label: 'Item name' },
+    { value: 'itemType',    label: 'Item type' },
+    { value: 'size',        label: 'Size' },
+    { value: 'exists',      label: 'Exists' },
+    { value: 'lastModified',label: 'Last modified' },
+    { value: 'childItems',  label: 'Child items' },
+    { value: 'contentMD5',  label: 'Content MD5' },
+    { value: 'structure',   label: 'Structure' },
+    { value: 'columnCount', label: 'Column count' },
+];
 
 const vscode = acquireVsCodeApi();
 
@@ -829,14 +843,19 @@ function showProperties(activity) {
                 ? _buildFormPane(activity, schema.commonProperties || {}, 'general')
                 : t === 'Settings'
                     ? _buildFormPane(activity, schema.typeProperties || {}, 'settings')
-                    : t === 'Activities'
-                        ? _buildActivitiesTab(activity, schema)
-                        : `<div class="empty-state">Not yet implemented.</div>`;
+                    : t === 'Source'
+                        ? _buildFormPane(activity, schema.sourceProperties || {}, 'source')
+                        : t === 'Sink'
+                            ? _buildFormPane(activity, schema.sinkProperties || {}, 'sink')
+                            : t === 'Activities'
+                                ? _buildActivitiesTab(activity, schema)
+                                : `<div class="empty-state">Not yet implemented.</div>`;
             return `<div class="config-tab-pane${i === 0 ? ' active' : ''}" id="tab-v2-tab-${i}" style="display:${i === 0 ? 'block' : 'none'}">${html}</div>`;
         }).join('');
         // Wire all inputs to write back to the activity and mark dirty
         _wireFormInputs(panesContainer, activity);
         _wireKvFields(panesContainer, activity);
+        _wireFieldLists(panesContainer, activity);
     } else {
         // Fallback read-only for not-yet-editable types
         tabsContainer.innerHTML = `
@@ -889,10 +908,12 @@ function _buildFormPane(activity, fields, paneId) {
             case 'boolean':
                 html += `<input type="checkbox" class="form-checkbox" data-key="${escHtml(key)}" ${val ? 'checked' : ''} />`;
                 break;
+            case 'radio-with-info':
             case 'radio':
-                html += `<div class="form-radio-group">${(def.options || []).map(opt =>
-                    `<label class="form-radio-label"><input type="radio" name="${escHtml(paneId + '-' + key)}" value="${escHtml(opt)}" ${String(val) === String(opt) ? 'checked' : ''} data-key="${escHtml(key)}" />${escHtml(opt)}</label>`
-                ).join('')}</div>`;
+                html += `<div class="form-radio-group">${(def.options || []).map((label, i) => {
+                    const v = def.optionValues ? def.optionValues[i] : label;
+                    return `<label class="form-radio-label"><input type="radio" name="${escHtml(paneId + '-' + key)}" value="${escHtml(String(v))}" ${String(val) === String(v) ? 'checked' : ''} data-key="${escHtml(key)}" />${escHtml(String(label))}</label>`;
+                }).join('')}</div>`;
                 break;
             case 'select':
                 html += `<select class="form-select" data-key="${escHtml(key)}">` +
@@ -914,6 +935,25 @@ function _buildFormPane(activity, fields, paneId) {
                     + `</select>`;
                 break;
             }
+            case 'dataset-lookup':
+            case 'validation-dataset':
+            case 'getmetadata-dataset':
+            case 'dataset': {
+                const currentDs = val?.referenceName ?? '';
+                html += `<select class="form-select" data-key="${escHtml(key)}" data-field-type="dataset">`
+                    + `<option value="">-- Select dataset --</option>`
+                    + datasetList.map(d => `<option value="${escHtml(d)}"${d === currentDs ? ' selected' : ''}>${escHtml(d)}</option>`).join('')
+                    + `</select>`;
+                break;
+            }
+            case 'getmetadata-fieldlist': {
+                const selected = Array.isArray(val) ? val.map(item => typeof item === 'object' ? item.type : item) : [];
+                html += `<div class="form-fieldlist" data-fieldlist-key="${escHtml(key)}">` +
+                    GETMETADATA_FIELDS.map(f =>
+                        `<label class="form-fieldlist-item"><input type="checkbox" data-fieldlist-item="${escHtml(f.value)}" ${selected.includes(f.value) ? 'checked' : ''} />${escHtml(f.label)}</label>`
+                    ).join('') + `</div>`;
+                break;
+            }
             case 'expression': {
                 // Expression values are stored as {value, type} objects on disk; extract the value string for editing
                 const exprStr = (val && typeof val === 'object' && 'value' in val) ? String(val.value) : String(val);
@@ -924,6 +964,7 @@ function _buildFormPane(activity, fields, paneId) {
                 }
                 break;
             }
+            case 'datetime':
             case 'text':
             case 'string':
             default:
@@ -983,7 +1024,7 @@ function _buildActivitiesTab(activity, schema) {
 
 // Apply schema defaults to the activity model for any undefined fields.
 function _applySchemaDefaults(activity, schema) {
-    const FIELD_GROUPS = ['commonProperties', 'typeProperties', 'advancedProperties'];
+    const FIELD_GROUPS = ['commonProperties', 'typeProperties', 'advancedProperties', 'sourceProperties', 'sinkProperties'];
     for (const group of FIELD_GROUPS) {
         const fields = schema[group];
         if (!fields) continue;
@@ -1022,6 +1063,9 @@ function _wireFormInputs(container, activity) {
             } else if (el.dataset.fieldType === 'pipeline') {
                 // Re-wrap into ADF PipelineReference object
                 value = el.value ? { referenceName: el.value, type: 'PipelineReference' } : null;
+            } else if (el.dataset.fieldType === 'dataset') {
+                // Re-wrap into ADF DatasetReference object
+                value = el.value ? { referenceName: el.value, type: 'DatasetReference' } : null;
             } else {
                 value = el.value;
             }
@@ -1049,6 +1093,27 @@ function _applyConditionals(container, activity) {
     container.querySelectorAll('.form-kv-container').forEach(kvEl => {
         const parent = kvEl.closest('.form-field[data-cond-field]');
         if (parent) kvEl.style.display = parent.style.display;
+    });
+}
+
+// ─── Field list renderer (GetMetadata fieldList) ──────────────────────────────
+function _wireFieldLists(container, activity) {
+    container.querySelectorAll('.form-fieldlist').forEach(el => {
+        const key = el.dataset.fieldlistKey;
+        if (!key) return;
+        const sync = () => {
+            const checked = [...el.querySelectorAll('input[type=checkbox][data-fieldlist-item]')]
+                .filter(cb => cb.checked)
+                .map(cb => ({ type: cb.dataset.fieldlistItem }));
+            activity[key] = checked;
+            markAsDirty();
+        };
+        el.querySelectorAll('input[type=checkbox]').forEach(cb => cb.addEventListener('change', sync));
+        // Set initial value from model (covers load-from-file path)
+        const current = Array.isArray(activity[key]) ? activity[key].map(i => typeof i === 'object' ? i.type : i) : [];
+        el.querySelectorAll('input[type=checkbox][data-fieldlist-item]').forEach(cb => {
+            cb.checked = current.includes(cb.dataset.fieldlistItem);
+        });
     });
 }
 

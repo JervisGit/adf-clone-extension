@@ -604,8 +604,9 @@ body.properties-visible .expand-properties-btn { display: none; }
 
 .form-radio-group {
     display: flex;
-    flex-direction: column;
-    gap: 4px;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 4px 12px;
 }
 
 .form-radio-label {
@@ -714,5 +715,21 @@ body.properties-visible .expand-properties-btn { display: none; }
     background: var(--vscode-badge-background);
     color: var(--vscode-badge-foreground);
     border-radius: 10px;
+    white-space: nowrap;
+}
+
+.form-fieldlist {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+    padding: 4px 0;
+}
+
+.form-fieldlist-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    cursor: pointer;
     white-space: nowrap;
 }

@@ -466,6 +466,306 @@ describe('Switch', () => {
     });
 });
 
+// ─── Validation ───────────────────────────────────────────────────────────────
+
+describe('Validation', () => {
+    const raw = {
+        name: 'Val1',
+        type: 'Validation',
+        dependsOn: [],
+        userProperties: [],
+        typeProperties: {
+            dataset: { referenceName: 'DS1', type: 'DatasetReference' },
+            timeout: '7.00:00:00',
+            sleep: 10,
+            childItems: true,
+        },
+    };
+
+    test('deserialize reads dataset, timeout, sleep', () => {
+        const flat = engine.deserializeActivity(raw);
+        expect(flat.dataset).toEqual({ referenceName: 'DS1', type: 'DatasetReference' });
+        expect(flat.timeout).toBe('7.00:00:00');
+        expect(flat.sleep).toBe(10);
+    });
+
+    test('childItems transformer: true → "true"', () => {
+        const flat = engine.deserializeActivity(raw);
+        expect(flat.childItems).toBe('true');
+    });
+
+    test('childItems transformer: undefined → "ignore"', () => {
+        const rawNoCI = { ...raw, typeProperties: { ...raw.typeProperties, childItems: undefined } };
+        const flat = engine.deserializeActivity(rawNoCI);
+        expect(flat.childItems).toBe('ignore');
+    });
+
+    test('serialize: childItems "true" → boolean true', () => {
+        const flat = engine.deserializeActivity(raw);
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.childItems).toBe(true);
+    });
+
+    test('serialize: childItems "ignore" → omitted', () => {
+        const flat = engine.deserializeActivity({ ...raw, typeProperties: { ...raw.typeProperties, childItems: undefined } });
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.childItems).toBeUndefined();
+    });
+
+    test('serialize: childItems "false" → boolean false', () => {
+        const flat = engine.deserializeActivity({ ...raw, typeProperties: { ...raw.typeProperties, childItems: false } });
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.childItems).toBe(false);
+    });
+
+    test('round-trip is stable', () => {
+        expect(stableFlat(roundTrip(raw))).toEqual(stableFlat(engine.deserializeActivity(raw)));
+    });
+
+    test('validation: missing dataset is an error', () => {
+        const flat = engine.deserializeActivity({ ...raw, typeProperties: {} });
+        const errs = engine.validateActivity(flat);
+        expect(errs.some(e => e.includes('Dataset'))).toBe(true);
+    });
+});
+
+// ─── GetMetadata ───────────────────────────────────────────────────────────────
+
+describe('GetMetadata', () => {
+    const rawAdls = {
+        name: 'GM1',
+        type: 'GetMetadata',
+        dependsOn: [],
+        userProperties: [],
+        typeProperties: {
+            dataset: { referenceName: 'ADLS1', type: 'DatasetReference' },
+            fieldList: ['childItems', 'itemName', { value: 'MyCustom', type: 'Expression' }],
+            storeSettings: {
+                type: 'AzureBlobFSReadSettings',
+                modifiedDatetimeStart: '2026-01-01T00:00:00Z',
+                modifiedDatetimeEnd: '2026-01-31T00:00:00Z',
+            },
+            formatSettings: {
+                type: 'DelimitedTextReadSettings',
+                skipLineCount: 3,
+            },
+        },
+    };
+
+    const rawSql = {
+        name: 'GM2',
+        type: 'GetMetadata',
+        dependsOn: [],
+        userProperties: [],
+        typeProperties: {
+            dataset: { referenceName: 'SQL1', type: 'DatasetReference' },
+            fieldList: ['columnCount', 'structure'],
+        },
+    };
+
+    test('deserialize reads dataset and fieldList', () => {
+        const flat = engine.deserializeActivity(rawAdls);
+        expect(flat.dataset).toEqual({ referenceName: 'ADLS1', type: 'DatasetReference' });
+        expect(flat.fieldList).toEqual(['childItems', 'itemName', { value: 'MyCustom', type: 'Expression' }]);
+    });
+
+    test('deserialize reads _storeSettingsType and _formatSettingsType', () => {
+        const flat = engine.deserializeActivity(rawAdls);
+        expect(flat._storeSettingsType).toBe('AzureBlobFSReadSettings');
+        expect(flat._formatSettingsType).toBe('DelimitedTextReadSettings');
+    });
+
+    test('deserialize reads modifiedDatetimeStart/End and skipLineCount', () => {
+        const flat = engine.deserializeActivity(rawAdls);
+        expect(flat.modifiedDatetimeStart).toBe('2026-01-01T00:00:00Z');
+        expect(flat.modifiedDatetimeEnd).toBe('2026-01-31T00:00:00Z');
+        expect(flat.skipLineCount).toBe(3);
+    });
+
+    test('serialize writes storeSettings with type first', () => {
+        const flat = engine.deserializeActivity(rawAdls);
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.storeSettings.type).toBe('AzureBlobFSReadSettings');
+        expect(out.typeProperties.storeSettings.enablePartitionDiscovery).toBe(false);
+        expect(out.typeProperties.storeSettings.modifiedDatetimeStart).toBe('2026-01-01T00:00:00Z');
+    });
+
+    test('serialize writes formatSettings with type first and skipLineCount', () => {
+        const flat = engine.deserializeActivity(rawAdls);
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.formatSettings.type).toBe('DelimitedTextReadSettings');
+        expect(out.typeProperties.formatSettings.skipLineCount).toBe(3);
+    });
+
+    test('serialize does NOT write storeSettings or formatSettings for SQL dataset', () => {
+        const flat = engine.deserializeActivity(rawSql);
+        // simulate webview not setting store/format types (SQL has no location)
+        flat._storeSettingsType = '';
+        flat._formatSettingsType = '';
+        flat._datasetCategory = 'sql';
+        flat._datasetType = 'AzureSqlTable';
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.storeSettings).toBeUndefined();
+        expect(out.typeProperties.formatSettings).toBeUndefined();
+    });
+
+    test('round-trip is stable (ADLS)', () => {
+        expect(stableFlat(roundTrip(rawAdls))).toEqual(stableFlat(engine.deserializeActivity(rawAdls)));
+    });
+
+    test('validation: missing dataset is an error', () => {
+        const flat = engine.deserializeActivity({ ...rawAdls, typeProperties: { fieldList: ['itemName'] } });
+        const errs = engine.validateActivity(flat);
+        expect(errs.some(e => e.includes('Dataset'))).toBe(true);
+    });
+
+    test('validation: empty fieldList is an error', () => {
+        const flat = engine.deserializeActivity({ ...rawAdls, typeProperties: { ...rawAdls.typeProperties, fieldList: [] } });
+        const errs = engine.validateActivity(flat);
+        expect(errs.some(e => e.includes('Field list'))).toBe(true);
+    });
+
+    test('validation: valid ADLS activity passes', () => {
+        const flat = engine.deserializeActivity(rawAdls);
+        expect(engine.validateActivity(flat)).toHaveLength(0);
+    });
+});
+
+// ─── Delete ───────────────────────────────────────────────────────────────────
+
+describe('Delete', () => {
+    const rawFilePathInDataset = {
+        name: 'Del1',
+        type: 'Delete',
+        dependsOn: [],
+        userProperties: [],
+        policy: { timeout: '0.12:00:00', retry: 0, retryIntervalInSeconds: 30, secureOutput: false, secureInput: false },
+        typeProperties: {
+            dataset: { referenceName: 'ADLS1', type: 'DatasetReference' },
+            storeSettings: {
+                type: 'AzureBlobFSReadSettings',
+                recursive: true,
+                enablePartitionDiscovery: false,
+                maxConcurrentConnections: 5,
+            },
+            enableLogging: false,
+        },
+    };
+
+    const rawPrefix = {
+        name: 'Del2',
+        type: 'Delete',
+        dependsOn: [],
+        userProperties: [],
+        policy: { timeout: '0.12:00:00', retry: 0, retryIntervalInSeconds: 30, secureOutput: false, secureInput: false },
+        typeProperties: {
+            dataset: { referenceName: 'Blob1', type: 'DatasetReference' },
+            storeSettings: {
+                type: 'AzureBlobStorageReadSettings',
+                prefix: 'mycontainer/myprefix',
+                recursive: false,
+                enablePartitionDiscovery: false,
+            },
+            enableLogging: false,
+        },
+    };
+
+    const rawFileList = {
+        name: 'Del3',
+        type: 'Delete',
+        dependsOn: [],
+        userProperties: [],
+        policy: { timeout: '0.12:00:00', retry: 0, retryIntervalInSeconds: 30, secureOutput: false, secureInput: false },
+        typeProperties: {
+            dataset: { referenceName: 'ADLS1', type: 'DatasetReference' },
+            storeSettings: {
+                type: 'AzureBlobFSReadSettings',
+                fileListPath: 'folder/filelist.txt',
+                enablePartitionDiscovery: false,
+            },
+            enableLogging: false,
+        },
+    };
+
+    test('deserialize reads dataset and _storeSettingsType', () => {
+        const flat = engine.deserializeActivity(rawFilePathInDataset);
+        expect(flat.dataset).toEqual({ referenceName: 'ADLS1', type: 'DatasetReference' });
+        expect(flat._storeSettingsType).toBe('AzureBlobFSReadSettings');
+    });
+
+    test('deserialize infers filePathType = filePathInDataset when no path fields', () => {
+        const flat = engine.deserializeActivity(rawFilePathInDataset);
+        expect(flat.filePathType).toBe('filePathInDataset');
+    });
+
+    test('deserialize infers filePathType = prefix from storeSettings.prefix', () => {
+        const flat = engine.deserializeActivity(rawPrefix);
+        expect(flat.filePathType).toBe('prefix');
+        expect(flat.prefix).toBe('mycontainer/myprefix');
+    });
+
+    test('deserialize infers filePathType = listOfFiles from storeSettings.fileListPath', () => {
+        const flat = engine.deserializeActivity(rawFileList);
+        expect(flat.filePathType).toBe('listOfFiles');
+        expect(flat.fileListPath).toBe('folder/filelist.txt');
+    });
+
+    test('serialize writes storeSettings.type and enablePartitionDiscovery', () => {
+        const flat = engine.deserializeActivity(rawFilePathInDataset);
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.storeSettings.type).toBe('AzureBlobFSReadSettings');
+        expect(out.typeProperties.storeSettings.enablePartitionDiscovery).toBe(false);
+    });
+
+    test('serialize writes maxConcurrentConnections inside storeSettings', () => {
+        const flat = engine.deserializeActivity(rawFilePathInDataset);
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.storeSettings.maxConcurrentConnections).toBe(5);
+        expect(out.typeProperties.maxConcurrentConnections).toBeUndefined();
+    });
+
+    test('serialize always writes enableLogging: false at typeProperties level', () => {
+        const flat = engine.deserializeActivity(rawFilePathInDataset);
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.enableLogging).toBe(false);
+    });
+
+    test('serialize writes prefix inside storeSettings', () => {
+        const flat = engine.deserializeActivity(rawPrefix);
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.storeSettings.prefix).toBe('mycontainer/myprefix');
+    });
+
+    test('serialize writes fileListPath inside storeSettings', () => {
+        const flat = engine.deserializeActivity(rawFileList);
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.storeSettings.fileListPath).toBe('folder/filelist.txt');
+    });
+
+    test('round-trip is stable (filePathInDataset)', () => {
+        expect(stableFlat(roundTrip(rawFilePathInDataset))).toEqual(stableFlat(engine.deserializeActivity(rawFilePathInDataset)));
+    });
+
+    test('round-trip is stable (prefix)', () => {
+        expect(stableFlat(roundTrip(rawPrefix))).toEqual(stableFlat(engine.deserializeActivity(rawPrefix)));
+    });
+
+    test('round-trip is stable (listOfFiles)', () => {
+        expect(stableFlat(roundTrip(rawFileList))).toEqual(stableFlat(engine.deserializeActivity(rawFileList)));
+    });
+
+    test('validation: missing dataset is an error', () => {
+        const flat = engine.deserializeActivity({ ...rawFilePathInDataset, typeProperties: {} });
+        const errs = engine.validateActivity(flat);
+        expect(errs.some(e => e.includes('Dataset'))).toBe(true);
+    });
+
+    test('validation: valid activity passes', () => {
+        const flat = engine.deserializeActivity(rawFilePathInDataset);
+        expect(engine.validateActivity(flat)).toHaveLength(0);
+    });
+});
+
 // ─── validateActivityList ─────────────────────────────────────────────────────
 
 describe('validateActivityList', () => {

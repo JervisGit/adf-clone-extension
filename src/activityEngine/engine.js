@@ -187,8 +187,13 @@ function serializeActivity(flat) {
 			if (def.serializeAs) continue;
 			// Container arrays: handled below
 			if (def.type === 'containerActivities' || def.type === 'switchCases') continue;
-			// Skip fields whose conditional is not met (e.g. don't write ADLS-only fields for SQL datasets)
-			if (def.conditional && !isConditionMet(def.conditional, flat)) continue;
+			// Skip fields whose conditional is not met — but ONLY when the conditional field is
+			// explicitly set on the flat object. If it's undefined (engine has no webview context),
+			// write the field; the transformer will clean up stale wrapper objects if needed.
+			if (def.conditional) {
+				const condVal = flat[def.conditional.field];
+				if (condVal !== undefined && !isConditionMet(def.conditional, flat)) continue;
+			}
 
 			const value = flat[key];
 			if (value !== undefined && value !== null && value !== '') {

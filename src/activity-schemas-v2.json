@@ -93,10 +93,10 @@
     },
     "typeProperties": {
       "notebook": {
-        "type": "text",
+        "type": "notebook-select",
         "label": "Notebook",
         "required": true,
-        "placeholder": "Enter notebook name",
+        "placeholder": "Select or type notebook name",
         "jsonPath": "typeProperties.notebook",
         "serializeAs": "synapseNotebookConf"
       },
@@ -122,12 +122,9 @@
         "type": "select",
         "label": "Executor size",
         "options": [
-          "Small",
-          "Medium",
-          "Large",
-          "XLarge",
-          "XXLarge"
+          "Small"
         ],
+        "default": "Small",
         "placeholder": "Select...",
         "jsonPath": "typeProperties.executorSize"
       },
@@ -135,7 +132,8 @@
         "type": "text",
         "label": "Driver size",
         "readonly": true,
-        "placeholder": "Select...",
+        "default": "Small",
+        "placeholder": "Small",
         "jsonPath": "typeProperties.driverSize"
       },
       "dynamicAllocation": {
@@ -376,9 +374,7 @@
         "type": "select",
         "label": "Executor size",
         "options": [
-          "Small",
-          "Medium",
-          "Large"
+          "Small"
         ],
         "default": "Small",
         "jsonPath": "typeProperties.executorSize"
@@ -387,9 +383,7 @@
         "type": "select",
         "label": "Driver size",
         "options": [
-          "Small",
-          "Medium",
-          "Large"
+          "Small"
         ],
         "default": "Small",
         "jsonPath": "typeProperties.driverSize"

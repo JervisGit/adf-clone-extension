@@ -241,6 +241,7 @@ class PipelineEditorV2Provider {
 		let datasetContents = {};
 		let pipelineList = [];
 		let linkedServicesList = [];
+		let notebookList = [];
 
 		if (vscode.workspace.workspaceFolders?.length > 0) {
 			const workspaceRoot = vscode.workspace.workspaceFolders[0].uri.fsPath;
@@ -288,6 +289,14 @@ class PipelineEditorV2Provider {
 						} catch { /* skip */ }
 					}
 				}
+
+				const notebookDir = path.join(basePath, 'notebook');
+				if (fs.existsSync(notebookDir)) {
+					for (const file of fs.readdirSync(notebookDir).filter(f => f.endsWith('.json'))) {
+						const name = file.replace('.json', '');
+						if (!notebookList.includes(name)) notebookList.push(name);
+					}
+				}
 			}
 		}
 
@@ -299,7 +308,8 @@ class PipelineEditorV2Provider {
 			datasetList,
 			datasetContents,
 			pipelineList,
-			linkedServicesList
+			linkedServicesList,
+			notebookList
 		});
 	}
 

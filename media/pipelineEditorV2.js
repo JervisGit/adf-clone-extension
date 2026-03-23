@@ -10,7 +10,8 @@
 // Expanded as later steps complete each group.
 const EDITABLE_TYPES = new Set(['Wait', 'Fail', 'SetVariable', 'AppendVariable', 'ExecutePipeline', 'Filter',
     'ForEach', 'Until', 'IfCondition', 'Switch',
-    'Lookup', 'Delete', 'Validation', 'GetMetadata']);
+    'Lookup', 'Delete', 'Validation', 'GetMetadata',
+    'SynapseNotebook', 'SparkJob', 'Script', 'SqlServerStoredProcedure']);
 
 const vscode = acquireVsCodeApi();
 
@@ -879,7 +880,9 @@ function showProperties(activity) {
         // Wire all inputs to write back to the activity and mark dirty
         _wireFormInputs(panesContainer, activity);
         _wireKvFields(panesContainer, activity);
+        _wireScriptArrayFields(panesContainer, activity);
         _wireFieldLists(panesContainer, activity);
+        _wireNotebookSelects(panesContainer, activity);
     } else {
         // Fallback read-only for not-yet-editable types
         tabsContainer.innerHTML = `
@@ -929,7 +932,7 @@ function _buildFormPane(activity, fields, paneId) {
         const cond = def.conditional ? `data-cond-field="${escHtml(def.conditional.field)}" data-cond-value="${escHtml(Array.isArray(def.conditional.value) ? def.conditional.value.join(',') : def.conditional.value)}"` : '';
         const excl = def.excludeConditional ? `data-cond-exclude-field="${escHtml(def.excludeConditional.field)}" data-cond-exclude-value="${escHtml(Array.isArray(def.excludeConditional.value) ? def.excludeConditional.value.join(',') : def.excludeConditional.value)}"` : '';
         const isBool = def.type === 'boolean';
-        const isBlock = isBool || def.multiline || def.type === 'keyvalue' || def.type === 'getmetadata-fieldlist';
+        const isBlock = isBool || def.multiline || def.type === 'keyvalue' || def.type === 'getmetadata-fieldlist' || def.type === 'script-array' || def.type === 'storedprocedure-parameters';
         html += `<div class="form-field${isBlock ? ' form-field--block' : ''}" data-field-key="${escHtml(key)}" ${cond} ${excl}>`;
         if (!isBool) {
             html += `<label class="form-label">${escHtml(def.label || key)}${def.required ? ' <span style="color:var(--vscode-errorForeground)">*</span>' : ''}</label>`;
@@ -1014,13 +1017,56 @@ function _buildFormPane(activity, fields, paneId) {
                 html += `<input type="datetime-local" class="form-input" data-key="${escHtml(key)}" data-field-type="datetime" value="${escHtml(dtVal)}" />`;
                 break;
             }
+            case 'notebook-select': {
+                const nbVal = typeof val === 'string' ? val : (val?.referenceName ?? '');
+                const nbList = window.notebookList || [];
+                const isCustom = !!nbVal && !nbList.includes(nbVal);
+                html += `<div style="display:flex;gap:6px;align-items:center;">`
+                    + `<select class="form-select form-nb-select" data-key="${escHtml(key)}" data-field-type="notebook-select" style="${isCustom ? 'width:auto;max-width:180px;flex-shrink:0;' : 'flex:1;'}">`
+                    + `<option value="">-- Select notebook --</option>`
+                    + nbList.map(n => `<option value="${escHtml(n)}"${n === nbVal ? ' selected' : ''}>${escHtml(n)}</option>`).join('')
+                    + `<option value="__custom"${isCustom ? ' selected' : ''}>Custom...</option>`
+                    + `</select>`
+                    + `<input type="text" class="form-input form-nb-custom" data-nb-custom-for="${escHtml(key)}" value="${escHtml(isCustom ? nbVal : '')}" placeholder="Enter notebook name" style="flex:1;display:${isCustom ? 'block' : 'none'};" />`
+                    + `</div>`;
+                break;
+            }
+            case 'script-linkedservice':
+            case 'storedprocedure-linkedservice': {
+                const currentLs = val?.referenceName ?? (typeof val === 'string' ? val : '');
+                html += `<select class="form-select" data-key="${escHtml(key)}" data-field-type="linkedservice">`
+                    + `<option value="">-- Select linked service --</option>`
+                    + (window.linkedServicesList || []).map(ls =>
+                        `<option value="${escHtml(ls.name)}"${ls.name === currentLs ? ' selected' : ''}>${escHtml(ls.name)}</option>`
+                    ).join('')
+                    + `</select>`;
+                break;
+            }
+            case 'storedprocedure-parameters': {
+                const spTypes = 'String,Boolean,Datetime,Datetimeoffset,Decimal,Double,Guid,Int16,Int32,Int64,Single,Timespan,Byte[]';
+                html += `<div class="form-kv-container" data-kv-field="${escHtml(key)}" data-kv-types="${escHtml(spTypes)}" data-kv-nullable="true"></div>`;
+                break;
+            }
+            case 'script-array': {
+                const scripts = Array.isArray(val) ? val : [];
+                html += `<div class="form-script-array" data-script-key="${escHtml(key)}"><div class="form-script-rows">`;
+                for (const s of scripts) {
+                    html += `<div class="form-script-row" style="border:1px solid var(--vscode-panel-border);border-radius:3px;padding:6px;margin-bottom:6px;">`
+                        + `<div style="display:flex;gap:4px;margin-bottom:4px;align-items:center;">`
+                        + `<select class="form-select form-script-type" style="width:110px;"><option value="Query"${s.type === 'Query' ? ' selected' : ''}>Query</option><option value="NonQuery"${s.type === 'NonQuery' ? ' selected' : ''}>NonQuery</option></select>`
+                        + `<button class="form-script-remove action-icon-btn" style="margin-left:auto;" title="Remove">×</button>`
+                        + `</div><textarea class="form-textarea form-script-text" rows="3" placeholder="Enter SQL script...">${escHtml(s.text || '')}</textarea></div>`;
+                }
+                html += `</div><button class="form-script-add" style="font-size:11px;padding:2px 8px;margin-top:2px;">+ Add script</button></div>`;
+                break;
+            }
             case 'text':
             case 'string':
             default:
                 if (def.multiline) {
                     html += `<textarea class="form-textarea" data-key="${escHtml(key)}" rows="${def.rows ?? 2}" placeholder="${escHtml(def.placeholder || '')}">${escHtml(String(val))}</textarea>`;
                 } else {
-                    html += `<input type="text" class="form-input" data-key="${escHtml(key)}" value="${escHtml(String(val))}" placeholder="${escHtml(def.placeholder || '')}" />`;
+                    html += `<input type="text" class="form-input" data-key="${escHtml(key)}" value="${escHtml(String(val))}" placeholder="${escHtml(def.placeholder || '')}"${def.readonly ? ' readonly style="opacity:0.6;cursor:default;"' : ''} />`;
                 }
                 break;
         }
@@ -1186,10 +1232,18 @@ function _wireFormInputs(container, activity) {
                 });
             } else if (el.dataset.fieldType === 'datetime') {
                 value = el.value ? el.value + ':00Z' : '';
+            } else if (el.dataset.fieldType === 'linkedservice') {
+                value = el.value ? { referenceName: el.value, type: 'LinkedServiceReference' } : null;
             } else {
                 value = el.value;
             }
             activity[key] = value;
+            // Mirror driverSize from executorSize for SynapseNotebook
+            if (key === 'executorSize') {
+                activity.driverSize = value;
+                const driverInput = container.querySelector('[data-key="driverSize"]');
+                if (driverInput) driverInput.value = value;
+            }
             // Update canvas name label if name field changed
             if (key === 'name') {
                 activity.refreshNameLabel();
@@ -1355,6 +1409,67 @@ function _buildFieldlistUI(el, activity) {
 
 function _wireFieldLists(container, activity) {
     container.querySelectorAll('.form-fieldlist-dynamic').forEach(el => _buildFieldlistUI(el, activity));
+}
+
+function _wireNotebookSelects(container, activity) {
+    container.querySelectorAll('.form-nb-select').forEach(sel => {
+        const key = sel.dataset.key;
+        if (!key) return;
+        const customInput = container.querySelector(`.form-nb-custom[data-nb-custom-for="${key}"]`);
+        const applyLayout = () => {
+            const isCustom = sel.value === '__custom';
+            if (isCustom) {
+                sel.style.flex = ''; sel.style.width = 'auto'; sel.style.maxWidth = '180px'; sel.style.flexShrink = '0';
+            } else {
+                sel.style.flex = '1'; sel.style.width = ''; sel.style.maxWidth = ''; sel.style.flexShrink = '';
+            }
+            if (customInput) customInput.style.display = isCustom ? 'block' : 'none';
+        };
+        const syncValue = () => {
+            const v = sel.value === '__custom' ? (customInput?.value?.trim() ?? '') : sel.value;
+            activity[key] = v;
+            markAsDirty();
+        };
+        sel.addEventListener('change', () => { applyLayout(); syncValue(); });
+        if (customInput) customInput.addEventListener('input', syncValue);
+    });
+}
+
+function _wireScriptArrayFields(container, activity) {
+    container.querySelectorAll('.form-script-array').forEach(scriptArray => {
+        const key = scriptArray.dataset.scriptKey;
+        if (!key) return;
+
+        function readBack() {
+            activity[key] = Array.from(scriptArray.querySelectorAll('.form-script-row')).map(row => ({
+                type: row.querySelector('.form-script-type').value,
+                text: row.querySelector('.form-script-text').value,
+            }));
+            markAsDirty();
+        }
+
+        function wireRow(row) {
+            row.querySelector('.form-script-type').addEventListener('change', readBack);
+            row.querySelector('.form-script-text').addEventListener('input', readBack);
+            row.querySelector('.form-script-remove').addEventListener('click', () => { row.remove(); readBack(); });
+        }
+
+        scriptArray.querySelectorAll('.form-script-row').forEach(wireRow);
+
+        scriptArray.querySelector('.form-script-add').addEventListener('click', () => {
+            const rowsEl = scriptArray.querySelector('.form-script-rows');
+            const row = document.createElement('div');
+            row.className = 'form-script-row';
+            row.style.cssText = 'border:1px solid var(--vscode-panel-border);border-radius:3px;padding:6px;margin-bottom:6px;';
+            row.innerHTML = `<div style="display:flex;gap:4px;margin-bottom:4px;align-items:center;">` +
+                `<select class="form-select form-script-type" style="width:110px;"><option value="Query">Query</option><option value="NonQuery">NonQuery</option></select>` +
+                `<button class="form-script-remove action-icon-btn" style="margin-left:auto;" title="Remove">\u00d7</button>` +
+                `</div><textarea class="form-textarea form-script-text" rows="3" placeholder="Enter SQL script..."></textarea>`;
+            rowsEl.appendChild(row);
+            wireRow(row);
+            readBack();
+        });
+    });
 }
 
 // ─── Key-value field renderer ────────────────────────────────────────────────────
@@ -1786,6 +1901,7 @@ window.addEventListener('message', event => {
         locationTypeToStoreSettings  = msg.activitySchemas?.__meta?.locationTypeToStoreSettings  || {};
         datasetTypeToFormatSettings  = msg.activitySchemas?.__meta?.datasetTypeToFormatSettings  || {};
         window.linkedServicesList = msg.linkedServicesList || [];
+        window.notebookList = msg.notebookList || [];
         buildSidebar();
         log('Schemas loaded. Activities config categories: ' + activitiesConfig.categories.length);
     }

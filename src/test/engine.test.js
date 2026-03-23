@@ -1645,6 +1645,122 @@ describe('SparkJob', () => {
     });
 });
 
+// ─── Script ───────────────────────────────────────────────────────────────────
+
+describe('Script', () => {
+    const rawScript = {
+        name: 'Script1', type: 'Script', dependsOn: [], userProperties: [],
+        policy: { timeout: '0.12:00:00', retry: 0, retryIntervalInSeconds: 30, secureOutput: false, secureInput: false },
+        linkedServiceName: { referenceName: 'AzureSqlDatabase1', type: 'LinkedServiceReference' },
+        typeProperties: {
+            scripts: [{ type: 'Query', text: 'SELECT 1' }],
+            scriptBlockExecutionTimeout: '02:00:00',
+        },
+    };
+
+    test('deserialize: reads linkedServiceName reference', () => {
+        const flat = engine.deserializeActivity(rawScript);
+        expect(flat.linkedServiceName).toEqual({ referenceName: 'AzureSqlDatabase1', type: 'LinkedServiceReference' });
+    });
+
+    test('deserialize: reads scripts array', () => {
+        const flat = engine.deserializeActivity(rawScript);
+        expect(flat.scripts).toEqual([{ type: 'Query', text: 'SELECT 1' }]);
+    });
+
+    test('serialize: writes linkedServiceName at top level', () => {
+        const flat = engine.deserializeActivity(rawScript);
+        const out = engine.serializeActivity(flat);
+        expect(out.linkedServiceName).toEqual({ referenceName: 'AzureSqlDatabase1', type: 'LinkedServiceReference' });
+    });
+
+    test('serialize: writes scripts array', () => {
+        const flat = engine.deserializeActivity(rawScript);
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.scripts).toEqual([{ type: 'Query', text: 'SELECT 1' }]);
+    });
+
+    test('serialize: writes scriptBlockExecutionTimeout', () => {
+        const flat = engine.deserializeActivity(rawScript);
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.scriptBlockExecutionTimeout).toBe('02:00:00');
+    });
+
+    test('round-trip stable', () => {
+        expect(stableFlat(roundTrip(rawScript))).toEqual(stableFlat(engine.deserializeActivity(rawScript)));
+    });
+
+    test('validation: missing linkedService is an error', () => {
+        const flat = engine.deserializeActivity({ ...rawScript, linkedServiceName: undefined });
+        expect(engine.validateActivity(flat).some(e => /linked/i.test(e))).toBe(true);
+    });
+
+    test('validation: missing scripts is an error', () => {
+        const flat = engine.deserializeActivity({ ...rawScript, typeProperties: { scriptBlockExecutionTimeout: '02:00:00' } });
+        delete flat.scripts;
+        expect(engine.validateActivity(flat).some(e => /script/i.test(e))).toBe(true);
+    });
+});
+
+// ─── SqlServerStoredProcedure ─────────────────────────────────────────────────
+
+describe('SqlServerStoredProcedure', () => {
+    const rawSP = {
+        name: 'SP1', type: 'SqlServerStoredProcedure', dependsOn: [], userProperties: [],
+        policy: { timeout: '0.12:00:00', retry: 0, retryIntervalInSeconds: 30, secureOutput: false, secureInput: false },
+        linkedServiceName: { referenceName: 'AzureSqlDatabase1', type: 'LinkedServiceReference' },
+        typeProperties: {
+            storedProcedureName: 'dbo.MyProc',
+            storedProcedureParameters: {
+                param1: { value: 'hello', type: 'String' },
+                param2: { value: 42, type: 'Int32' },
+            },
+        },
+    };
+
+    test('deserialize: reads linkedServiceName', () => {
+        const flat = engine.deserializeActivity(rawSP);
+        expect(flat.linkedServiceName).toEqual({ referenceName: 'AzureSqlDatabase1', type: 'LinkedServiceReference' });
+    });
+
+    test('deserialize: reads storedProcedureName', () => {
+        const flat = engine.deserializeActivity(rawSP);
+        expect(flat.storedProcedureName).toBe('dbo.MyProc');
+    });
+
+    test('deserialize: reads storedProcedureParameters', () => {
+        const flat = engine.deserializeActivity(rawSP);
+        expect(flat.storedProcedureParameters.param1).toEqual({ value: 'hello', type: 'String' });
+    });
+
+    test('serialize: writes linkedServiceName at top level', () => {
+        const flat = engine.deserializeActivity(rawSP);
+        const out = engine.serializeActivity(flat);
+        expect(out.linkedServiceName).toEqual({ referenceName: 'AzureSqlDatabase1', type: 'LinkedServiceReference' });
+    });
+
+    test('serialize: writes storedProcedureName and parameters', () => {
+        const flat = engine.deserializeActivity(rawSP);
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.storedProcedureName).toBe('dbo.MyProc');
+        expect(out.typeProperties.storedProcedureParameters.param2).toEqual({ value: 42, type: 'Int32' });
+    });
+
+    test('round-trip stable', () => {
+        expect(stableFlat(roundTrip(rawSP))).toEqual(stableFlat(engine.deserializeActivity(rawSP)));
+    });
+
+    test('validation: missing linkedService is an error', () => {
+        const flat = engine.deserializeActivity({ ...rawSP, linkedServiceName: undefined });
+        expect(engine.validateActivity(flat).some(e => /linked/i.test(e))).toBe(true);
+    });
+
+    test('validation: missing storedProcedureName is an error', () => {
+        const flat = engine.deserializeActivity({ ...rawSP, typeProperties: {} });
+        expect(engine.validateActivity(flat).some(e => /procedure/i.test(e))).toBe(true);
+    });
+});
+
 // ─── validateActivityList ─────────────────────────────────────────────────────
 
 describe('validateActivityList', () => {

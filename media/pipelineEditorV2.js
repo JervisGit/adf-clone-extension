@@ -1649,6 +1649,35 @@ function _buildReadOnlySettings(a, schema) {
 }
 
 // ─── Load pipeline from JSON ───────────────────────────────────────────────────
+// Compute left-to-right dependency layout.
+// Returns Map<name, {x,y}> where column = dependency depth (0 = no deps), row = order within column.
+function computeLayout(flats, src) {
+    const COL_W = 240, ROW_H = 160, START_X = 80, START_Y = 80;
+    const upstreamOf = new Map(src.map(ad => [ad.name, (ad.dependsOn || []).map(d => d.activity)]));
+    // Iterative longest-path: propagate columns until stable
+    const col = new Map(flats.map(f => [f.name, 0]));
+    for (let pass = 0; pass < flats.length; pass++) {
+        let changed = false;
+        for (const ad of src) {
+            const ups = upstreamOf.get(ad.name) || [];
+            if (!ups.length) continue;
+            const needed = Math.max(...ups.map(u => (col.get(u) ?? 0))) + 1;
+            if ((col.get(ad.name) ?? 0) < needed) { col.set(ad.name, needed); changed = true; }
+        }
+        if (!changed) break;
+    }
+    // Assign rows within each column in source order
+    const rowCount = new Map();
+    const positions = new Map();
+    for (const flat of flats) {
+        const c = col.get(flat.name) ?? 0;
+        const r = rowCount.get(c) ?? 0;
+        rowCount.set(c, r + 1);
+        positions.set(flat.name, { x: START_X + c * COL_W, y: START_Y + r * ROW_H });
+    }
+    return positions;
+}
+
 function loadPipelineFromJson(pipelineJson, flatActivities) {
     try {
         activities.forEach(a => a.remove());
@@ -1669,11 +1698,11 @@ function loadPipelineFromJson(pipelineJson, flatActivities) {
         // flatActivities: pre-deserialized flat objects from the extension host (engine.deserializeActivity).
         // Falls back to raw ADF JSON for unsupported types (same index order as src).
         const flats = flatActivities || src;
+        const positions = computeLayout(flats, src);
 
         flats.forEach((flat, index) => {
-            const cols = 3;
-            const x = 100 + (index % cols) * 210;
-            const y = 100 + Math.floor(index / cols) * 160;
+            const pos = positions.get(flat.name) || { x: 80 + (index % 4) * 240, y: 80 + Math.floor(index / 4) * 160 };
+            const { x, y } = pos;
 
             const a = new Activity(flat.type, x, y, wrapper);
 

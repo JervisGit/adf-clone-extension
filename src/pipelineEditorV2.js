@@ -122,8 +122,30 @@ class PipelineEditorV2Provider {
 							);
 							if (!filePath) throw new Error('No file path associated with this panel');
 							fs.writeFileSync(filePath, JSON.stringify(pipelineJson, null, 4), 'utf8');
-							panel.webview.postMessage({ type: 'saveResult', success: true });
+						// Rename file on disk if pipeline name changed
+						const originalPath = filePath;
+						const nameFromFile = path.basename(filePath, '.json');
+						const nameFromData = message.pipelineData && message.pipelineData.name;
+						if (nameFromData && nameFromData !== nameFromFile) {
+							const newFilePath = path.join(path.dirname(filePath), nameFromData + '.json');
+							if (!fs.existsSync(newFilePath)) {
+								fs.renameSync(filePath, newFilePath);
+								PipelineEditorV2Provider.panels.delete(filePath);
+								PipelineEditorV2Provider.panels.set(newFilePath, panel);
+								PipelineEditorV2Provider.dirtyStates.delete(filePath);
+								PipelineEditorV2Provider.stateCache.delete(filePath);
+								PipelineEditorV2Provider.initializedPanels.delete(filePath);
+								filePath = newFilePath;
+								const newBasename = path.basename(newFilePath, '.json');
+								panel.title = `${newBasename} [V2]`;
+								vscode.window.showInformationMessage(`Pipeline renamed and saved: ${nameFromData}.json`);
+							} else {
+								vscode.window.showWarningMessage(`Pipeline saved, but could not rename: "${nameFromData}.json" already exists.`);
+							}
+						} else {
 							vscode.window.showInformationMessage(`Saved: ${path.basename(filePath)}`);
+						}
+						panel.webview.postMessage({ type: 'saveResult', success: true, newFilePath: filePath !== originalPath ? filePath : undefined });
 						} catch (err) {
 							console.error('[V2 Save]', err);
 							panel.webview.postMessage({ type: 'saveResult', success: false, error: err.message });
@@ -141,7 +163,33 @@ class PipelineEditorV2Provider {
 		);
 
 		panel.onDidDispose(
-			() => {
+			async () => {
+				// Prompt user if there are unsaved changes
+				if (filePath && PipelineEditorV2Provider.dirtyStates.get(filePath)) {
+					const basename = path.basename(filePath, '.json');
+					const answer = await vscode.window.showWarningMessage(
+						`Do you want to save the changes you made to ${basename}?`,
+						{ modal: true },
+						'Save',
+						"Don't Save"
+					);
+					if (answer === 'Save') {
+						const cached = PipelineEditorV2Provider.stateCache.get(filePath);
+						if (cached) {
+							try {
+								const pipelineJson = engine.serializePipeline(
+									cached.pipelineData,
+									cached.activities,
+									cached.connections
+								);
+								fs.writeFileSync(filePath, JSON.stringify(pipelineJson, null, 4), 'utf8');
+								vscode.window.showInformationMessage(`Saved: ${basename}.json`);
+							} catch (err) {
+								vscode.window.showErrorMessage(`Failed to save on close: ${err.message}`);
+							}
+						}
+					}
+				}
 				if (filePath) {
 					PipelineEditorV2Provider.panels.delete(filePath);
 					PipelineEditorV2Provider.dirtyStates.delete(filePath);

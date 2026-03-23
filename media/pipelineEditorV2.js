@@ -57,6 +57,15 @@ function markAsDirty() {
         isDirty = true;
         vscode.postMessage({ type: 'contentChanged', isDirty: true });
     }
+    // Always cache current state so extension can save-on-close
+    vscode.postMessage({
+        type: 'cacheState',
+        data: {
+            pipelineData,
+            activities: activities.map(toSaveData),
+            connections: connections.map(c => ({ fromName: c.from.name, toName: c.to.name, condition: c.condition })),
+        },
+    });
 }
 
 function markAsClean() {
@@ -792,14 +801,25 @@ function showProperties(activity) {
     panesContainer.innerHTML = '';
 
     if (!activity) {
-        titleEl.textContent = 'Pipeline Properties';
+        titleEl.textContent = pipelineData.name || 'Pipeline Properties';
         rightPanel.innerHTML = `
-            <div style="font-size:12px;margin-bottom:8px;">
-                <strong>Name:</strong> ${escHtml(pipelineData.name || '(untitled)')}
+            <div class="form-row" style="margin-bottom:8px;">
+                <label class="form-label" style="font-size:12px;">Name</label>
+                <input id="pipelineNameInput" class="form-input" type="text" value="${escHtml(pipelineData.name || '')}" placeholder="Pipeline name" style="font-size:12px;">
             </div>
-            <div style="font-size:12px;margin-bottom:8px;">
-                <strong>Description:</strong> ${escHtml(pipelineData.description || '—')}
+            <div class="form-row" style="margin-bottom:8px;">
+                <label class="form-label" style="font-size:12px;">Description</label>
+                <textarea id="pipelineDescInput" class="form-input" rows="3" placeholder="Pipeline description" style="font-size:12px;resize:vertical;">${escHtml(pipelineData.description || '')}</textarea>
             </div>`;
+        document.getElementById('pipelineNameInput').addEventListener('input', e => {
+            pipelineData.name = e.target.value;
+            titleEl.textContent = pipelineData.name || 'Pipeline Properties';
+            markAsDirty();
+        });
+        document.getElementById('pipelineDescInput').addEventListener('input', e => {
+            pipelineData.description = e.target.value;
+            markAsDirty();
+        });
 
         // Restore first pipeline tab as active
         const firstTab = document.querySelector('.pipeline-tab');
@@ -1730,7 +1750,13 @@ window.addEventListener('message', event => {
         const saveBtn = document.getElementById('saveBtn');
         saveBtn.disabled = false;
         saveBtn.textContent = 'Save';
-        if (msg.success) markAsClean();
+        if (msg.success) {
+            markAsClean();
+            // If file was renamed on save, update our tracked path
+            if (msg.newFilePath) {
+                currentFilePath = msg.newFilePath;
+            }
+        }
     }
 
     if (msg.type === 'addActivity') {

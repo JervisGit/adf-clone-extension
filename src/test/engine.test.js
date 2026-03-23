@@ -1193,6 +1193,215 @@ describe('Lookup', () => {
     test('round-trip stable (SQL stored proc with parameters)', () => {
         expect(stableFlat(roundTrip(rawSqlStoredProcParams))).toEqual(stableFlat(engine.deserializeActivity(rawSqlStoredProcParams)));
     });
+
+    // ── SQL: useQuery=Table inference ────────────────────────────────────────
+
+    test('deserialize SQL: infers useQuery = Table when no query fields present', () => {
+        const rawTable = {
+            name: 'LU_Table', type: 'Lookup', dependsOn: [], userProperties: [],
+            policy: { timeout: '0.12:00:00', retry: 0, retryIntervalInSeconds: 30, secureOutput: false, secureInput: false },
+            typeProperties: {
+                dataset: { referenceName: 'SQL1', type: 'DatasetReference' },
+                firstRowOnly: true,
+                source: { type: 'AzureSqlSource', queryTimeout: '02:00:00' },
+            },
+        };
+        const flat = engine.deserializeActivity(rawTable);
+        expect(flat.useQuery).toBe('Table');
+    });
+
+    // ── SQL: AzureSqlDWTable → SqlDWSource ───────────────────────────────────
+
+    const rawSqlDW = {
+        name: 'LU_DW', type: 'Lookup', dependsOn: [], userProperties: [],
+        policy: { timeout: '0.12:00:00', retry: 0, retryIntervalInSeconds: 30, secureOutput: false, secureInput: false },
+        typeProperties: {
+            dataset: { referenceName: 'DW1', type: 'DatasetReference' },
+            firstRowOnly: true,
+            source: { type: 'SqlDWSource', queryTimeout: '02:00:00' },
+        },
+    };
+
+    test('deserialize SqlDW: infers _datasetCategory = sql', () => {
+        const flat = engine.deserializeActivity(rawSqlDW);
+        expect(flat._datasetCategory).toBe('sql');
+    });
+
+    test('serialize SqlDW: writes source.type = SqlDWSource for AzureSqlDWTable', () => {
+        const flat = engine.deserializeActivity(rawSqlDW);
+        flat._datasetCategory = 'sql';
+        flat._datasetType = 'AzureSqlDWTable';
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.source.type).toBe('SqlDWSource');
+    });
+
+    // ── SQL: storedProcedureParameters with null value ───────────────────────
+
+    test('round-trip preserves storedProcedureParameters with null value', () => {
+        const rawNullParam = {
+            name: 'LU_NullParam', type: 'Lookup', dependsOn: [], userProperties: [],
+            policy: { timeout: '0.12:00:00', retry: 0, retryIntervalInSeconds: 30, secureOutput: false, secureInput: false },
+            typeProperties: {
+                dataset: { referenceName: 'SQL1', type: 'DatasetReference' },
+                firstRowOnly: false,
+                source: {
+                    type: 'AzureSqlSource',
+                    sqlReaderStoredProcedureName: 'dbo.Proc',
+                    queryTimeout: '02:00:00',
+                    storedProcedureParameters: {
+                        active: { value: 'yes', type: 'String' },
+                        removed: { value: null, type: 'String' },
+                    },
+                },
+            },
+        };
+        const flat = engine.deserializeActivity(rawNullParam);
+        expect(flat.storedProcedureParameters.removed).toEqual({ value: null, type: 'String' });
+        flat._datasetCategory = 'sql';
+        flat._datasetType = 'AzureSqlTable';
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.source.storedProcedureParameters.removed).toEqual({ value: null, type: 'String' });
+    });
+
+    // ── Storage: filePathType wildcard and list-of-files inference ───────────
+
+    test('deserialize: infers filePathType = wildcardFilePath from wildcardFileName', () => {
+        const rawWildcard = {
+            name: 'LU_Wildcard', type: 'Lookup', dependsOn: [], userProperties: [],
+            policy: { timeout: '0.12:00:00', retry: 0, retryIntervalInSeconds: 30, secureOutput: false, secureInput: false },
+            typeProperties: {
+                dataset: { referenceName: 'ADLS1', type: 'DatasetReference' },
+                firstRowOnly: true,
+                source: {
+                    type: 'DelimitedTextSource',
+                    storeSettings: {
+                        type: 'AzureBlobFSReadSettings',
+                        wildcardFolderPath: 'data/*',
+                        wildcardFileName: '*.csv',
+                        enablePartitionDiscovery: false,
+                    },
+                    formatSettings: { type: 'DelimitedTextReadSettings' },
+                },
+            },
+        };
+        const flat = engine.deserializeActivity(rawWildcard);
+        expect(flat.filePathType).toBe('wildcardFilePath');
+        expect(flat.wildcardFolderPath).toBe('data/*');
+        expect(flat.wildcardFileName).toBe('*.csv');
+    });
+
+    test('deserialize: infers filePathType = listOfFiles from fileListPath', () => {
+        const rawList = {
+            name: 'LU_List', type: 'Lookup', dependsOn: [], userProperties: [],
+            policy: { timeout: '0.12:00:00', retry: 0, retryIntervalInSeconds: 30, secureOutput: false, secureInput: false },
+            typeProperties: {
+                dataset: { referenceName: 'ADLS1', type: 'DatasetReference' },
+                firstRowOnly: true,
+                source: {
+                    type: 'DelimitedTextSource',
+                    storeSettings: {
+                        type: 'AzureBlobFSReadSettings',
+                        fileListPath: 'container/filelist.txt',
+                        enablePartitionDiscovery: false,
+                    },
+                    formatSettings: { type: 'DelimitedTextReadSettings' },
+                },
+            },
+        };
+        const flat = engine.deserializeActivity(rawList);
+        expect(flat.filePathType).toBe('listOfFiles');
+        expect(flat.fileListPath).toBe('container/filelist.txt');
+    });
+
+    // ── Storage: XML formatSettings ──────────────────────────────────────────
+
+    const rawXml = {
+        name: 'LU_XML', type: 'Lookup', dependsOn: [], userProperties: [],
+        policy: { timeout: '0.12:00:00', retry: 0, retryIntervalInSeconds: 30, secureOutput: false, secureInput: false },
+        typeProperties: {
+            dataset: { referenceName: 'XmlDs1', type: 'DatasetReference' },
+            firstRowOnly: true,
+            source: {
+                type: 'XmlSource',
+                storeSettings: { type: 'AzureBlobFSReadSettings', enablePartitionDiscovery: false },
+                formatSettings: { type: 'XmlReadSettings', validationMode: 'xsd', detectDataType: true, namespaces: true },
+            },
+        },
+    };
+
+    test('deserialize XML: reads _formatSettingsType = XmlReadSettings', () => {
+        const flat = engine.deserializeActivity(rawXml);
+        expect(flat._formatSettingsType).toBe('XmlReadSettings');
+    });
+
+    test('deserialize XML: reads validationMode, detectDataType, namespaces', () => {
+        const flat = engine.deserializeActivity(rawXml);
+        expect(flat.validationMode).toBe('xsd');
+        expect(flat.detectDataType).toBe(true);
+        expect(flat.namespaces).toBe(true);
+    });
+
+    test('serialize XML: writes formatSettings.type = XmlReadSettings', () => {
+        const flat = engine.deserializeActivity(rawXml);
+        flat._datasetCategory = 'storage';
+        flat._datasetType = 'Xml';
+        flat._storeSettingsType = 'AzureBlobFSReadSettings';
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.source.formatSettings.type).toBe('XmlReadSettings');
+        expect(out.typeProperties.source.formatSettings.validationMode).toBe('xsd');
+    });
+
+    test('round-trip stable (XML source)', () => {
+        expect(stableFlat(roundTrip(rawXml))).toEqual(stableFlat(engine.deserializeActivity(rawXml)));
+    });
+
+    // ── Storage: Parquet formatSettings ─────────────────────────────────────
+
+    test('serialize Parquet: writes formatSettings.type = ParquetReadSettings', () => {
+        const rawParquet = {
+            name: 'LU_Parquet', type: 'Lookup', dependsOn: [], userProperties: [],
+            policy: { timeout: '0.12:00:00', retry: 0, retryIntervalInSeconds: 30, secureOutput: false, secureInput: false },
+            typeProperties: {
+                dataset: { referenceName: 'Parquet1', type: 'DatasetReference' },
+                firstRowOnly: true,
+                source: {
+                    type: 'ParquetSource',
+                    storeSettings: { type: 'AzureBlobFSReadSettings', enablePartitionDiscovery: false },
+                    formatSettings: { type: 'ParquetReadSettings' },
+                },
+            },
+        };
+        const flat = engine.deserializeActivity(rawParquet);
+        flat._datasetCategory = 'storage';
+        flat._datasetType = 'Parquet';
+        flat._storeSettingsType = 'AzureBlobFSReadSettings';
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.source.formatSettings.type).toBe('ParquetReadSettings');
+    });
+
+    // ── Storage: JSON formatSettings ─────────────────────────────────────────
+
+    test('serialize Json: writes formatSettings.type = JsonReadSettings', () => {
+        const rawJson = {
+            name: 'LU_Json', type: 'Lookup', dependsOn: [], userProperties: [],
+            policy: { timeout: '0.12:00:00', retry: 0, retryIntervalInSeconds: 30, secureOutput: false, secureInput: false },
+            typeProperties: {
+                dataset: { referenceName: 'Json1', type: 'DatasetReference' },
+                firstRowOnly: true,
+                source: {
+                    type: 'JsonSource',
+                    storeSettings: { type: 'AzureBlobFSReadSettings', enablePartitionDiscovery: false },
+                    formatSettings: { type: 'JsonReadSettings' },
+                },
+            },
+        };
+        const flat = engine.deserializeActivity(rawJson);
+        flat._datasetCategory = 'storage';
+        flat._datasetType = 'Json';
+        flat._storeSettingsType = 'AzureBlobFSReadSettings';
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.source.formatSettings.type).toBe('JsonReadSettings');
+    });
 });
 
 // ─── SynapseNotebook ─────────────────────────────────────────────────────────

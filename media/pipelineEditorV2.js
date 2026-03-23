@@ -305,6 +305,15 @@ function drawGrid() {
     }
 }
 
+// Returns a name based on `base` that doesn't already exist in the activities array.
+function uniqueActivityName(base) {
+    const existing = new Set(activities.map(a => a.name));
+    if (!existing.has(base)) return base;
+    let n = 1;
+    while (existing.has(base + n)) n++;
+    return base + n;
+}
+
 // ─── Activity class ─────────────────────────────────────────────────────────────
 class Activity {
     constructor(type, x, y, container) {
@@ -600,6 +609,8 @@ function setupCanvasEvents() {
         if (!type) return;
         const pos = screenToWorld(e.clientX, e.clientY);
         const a = new Activity(type, pos.x - 90, pos.y - 28, worldEl);
+        a.name = uniqueActivityName(a.name);
+        a.refreshNameLabel();
         activities.push(a);
         selectedActivity = a;
         a._setSelected(true);
@@ -1698,6 +1709,15 @@ function loadPipelineFromJson(pipelineJson, flatActivities) {
         // flatActivities: pre-deserialized flat objects from the extension host (engine.deserializeActivity).
         // Falls back to raw ADF JSON for unsupported types (same index order as src).
         const flats = flatActivities || src;
+
+        // Warn if a file has duplicate activity names (invalid in ADF/Synapse).
+        const seenNames = new Set();
+        const dupNames = new Set();
+        flats.forEach(f => { if (seenNames.has(f.name)) dupNames.add(f.name); else seenNames.add(f.name); });
+        if (dupNames.size > 0) {
+            vscode.postMessage({ type: 'alert', text: `Warning: this pipeline has duplicate activity names (${[...dupNames].join(', ')}), which is invalid in ADF/Synapse. Please rename them before saving.` });
+        }
+
         const positions = computeLayout(flats, src);
 
         flats.forEach((flat, index) => {
@@ -1791,6 +1811,8 @@ window.addEventListener('message', event => {
     if (msg.type === 'addActivity') {
         const wrapper = document.getElementById('worldContainer');
         const a = new Activity(msg.activityType, 100, 100 + activities.length * 30, wrapper);
+        a.name = uniqueActivityName(a.name);
+        a.refreshNameLabel();
         activities.push(a);
         markAsDirty();
         draw();

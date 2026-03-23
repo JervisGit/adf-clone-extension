@@ -316,6 +316,12 @@ function validateActivity(flat) {
 // Returns { activityName: [errors] } for all activities that have errors.
 function validateActivityList(activities) {
 	const allErrors = {};
+	// Check for duplicate names
+	const nameCount = {};
+	for (const a of (activities || [])) if (a.name) nameCount[a.name] = (nameCount[a.name] || 0) + 1;
+	for (const [name, count] of Object.entries(nameCount)) {
+		if (count > 1) allErrors[name] = [`Duplicate activity name "${name}" — each activity must have a unique name`];
+	}
 	for (const a of (activities || [])) {
 		const errs = validateActivity(a);
 		if (errs.length) allErrors[a.name || String(a.id)] = errs;

@@ -1672,4 +1672,24 @@ describe('validateActivityList', () => {
         const errs = engine.validateActivityList(activities);
         expect(Object.keys(errs)).toHaveLength(2);
     });
+
+    test('reports error for duplicate activity names', () => {
+        const activities = [
+            engine.deserializeActivity({ name: 'AppendVariable', type: 'AppendVariable', dependsOn: [], userProperties: [], typeProperties: { variableName: 'v1', value: 'a' } }),
+            engine.deserializeActivity({ name: 'AppendVariable', type: 'AppendVariable', dependsOn: [], userProperties: [], typeProperties: { variableName: 'v2', value: 'b' } }),
+        ];
+        const errs = engine.validateActivityList(activities);
+        expect(errs['AppendVariable']).toBeDefined();
+        expect(errs['AppendVariable'][0]).toMatch(/[Dd]uplicate/);
+    });
+
+    test('no duplicate error when all names are unique', () => {
+        const activities = [
+            engine.deserializeActivity({ name: 'Append1', type: 'AppendVariable', dependsOn: [], userProperties: [], typeProperties: { variableName: 'v1', value: 'a' } }),
+            engine.deserializeActivity({ name: 'Append2', type: 'AppendVariable', dependsOn: [], userProperties: [], typeProperties: { variableName: 'v2', value: 'b' } }),
+        ];
+        const errs = engine.validateActivityList(activities);
+        expect(errs['Append1']).toBeUndefined();
+        expect(errs['Append2']).toBeUndefined();
+    });
 });

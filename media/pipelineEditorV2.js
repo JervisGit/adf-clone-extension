@@ -896,9 +896,10 @@ function _buildFormPane(activity, fields, paneId) {
         const val = activity[key] ?? def.default ?? '';
         console.log(`[V2]   field "${key}" type="${def.type}" val=`, val);
         const cond = def.conditional ? `data-cond-field="${escHtml(def.conditional.field)}" data-cond-value="${escHtml(Array.isArray(def.conditional.value) ? def.conditional.value.join(',') : def.conditional.value)}"` : '';
+        const excl = def.excludeConditional ? `data-cond-exclude-field="${escHtml(def.excludeConditional.field)}" data-cond-exclude-value="${escHtml(Array.isArray(def.excludeConditional.value) ? def.excludeConditional.value.join(',') : def.excludeConditional.value)}"` : '';
         const isBool = def.type === 'boolean';
         const isBlock = isBool || def.multiline || def.type === 'keyvalue' || def.type === 'getmetadata-fieldlist';
-        html += `<div class="form-field${isBlock ? ' form-field--block' : ''}" data-field-key="${escHtml(key)}" ${cond}>`;
+        html += `<div class="form-field${isBlock ? ' form-field--block' : ''}" data-field-key="${escHtml(key)}" ${cond} ${excl}>`;
         if (!isBool) {
             html += `<label class="form-label">${escHtml(def.label || key)}${def.required ? ' <span style="color:var(--vscode-errorForeground)">*</span>' : ''}</label>`;
         }
@@ -917,15 +918,19 @@ function _buildFormPane(activity, fields, paneId) {
                 break;
             case 'select':
                 html += `<select class="form-select" data-key="${escHtml(key)}">` +
-                    (def.options || []).map(opt =>
-                        `<option value="${escHtml(opt)}" ${String(val) === String(opt) ? 'selected' : ''}>${escHtml(def.optionLabels?.[opt] || opt)}</option>`
-                    ).join('') + `</select>`;
+                    (def.options || []).map(opt => {
+                        const optCond = def.optionConditions?.[opt];
+                        const condAttr = optCond
+                            ? ` data-cond-field="${escHtml(optCond.field)}" data-cond-value="${escHtml(Array.isArray(optCond.value) ? optCond.value.join(',') : optCond.value)}"`
+                            : '';
+                        return `<option value="${escHtml(opt)}"${condAttr} ${String(val) === String(opt) ? 'selected' : ''}>${escHtml(def.optionLabels?.[opt] || opt)}</option>`;
+                    }).join('') + `</select>`;
                 break;
             case 'number':
                 html += `<input type="number" class="form-input" data-key="${escHtml(key)}" value="${escHtml(String(val))}"${def.min != null ? ` min="${def.min}"` : ''}${def.max != null ? ` max="${def.max}"` : ''} placeholder="${escHtml(def.placeholder || '')}" />`;
                 break;
             case 'keyvalue':
-                html += `<div class="form-kv-container" data-kv-field="${escHtml(key)}" data-kv-types="${escHtml((def.valueTypes || []).join(','))}"></div>`;
+                html += `<div class="form-kv-container" data-kv-field="${escHtml(key)}" data-kv-types="${escHtml((def.valueTypes || []).join(','))}"${def.nullableValues ? ' data-kv-nullable="true"' : ''}${def.simplePairs ? ` data-kv-simple="true" data-kv-key-label="${escHtml(def.keyLabel || 'Key')}" data-kv-value-label="${escHtml(def.valueLabel || 'Value')}"` : ''}></div>`;
                 break;
             case 'pipeline': {
                 const currentName = val?.referenceName ?? '';
@@ -940,8 +945,11 @@ function _buildFormPane(activity, fields, paneId) {
             case 'getmetadata-dataset':
             case 'dataset': {
                 const currentDs = val?.referenceName ?? '';
+                const _lookupExcluded = new Set((activitySchemas?.__meta?.lookupExcludedTypes) || ['Binary', 'Iceberg', 'Excel']);
                 const filteredDs = def.datasetFilter === 'storageOnly'
                     ? datasetList.filter(d => datasetTypeCategories[datasetContents[d]?.properties?.type ?? ''] === 'storage')
+                    : def.datasetFilter === 'lookupCompatible'
+                    ? datasetList.filter(d => !_lookupExcluded.has(datasetContents[d]?.properties?.type ?? ''))
                     : datasetList;
                 html += `<select class="form-select" data-key="${escHtml(key)}" data-field-type="dataset">`
                     + `<option value="">-- Select dataset --</option>`
@@ -1108,6 +1116,28 @@ function _wireFormInputs(container, activity) {
                 const locType = el.value ? (datasetContents[el.value]?.properties?.typeProperties?.location?.type ?? '') : '';
                 activity._storeSettingsType = locationTypeToStoreSettings[locType] ?? '';
                 activity._formatSettingsType = datasetTypeToFormatSettings[dsType] ?? '';
+                // When switching away from sql, reset sql-specific fields that would leave stale conditionals
+                if (activity._datasetCategory !== 'sql') {
+                    activity.partitionOption = 'None';
+                    delete activity.partitionColumnName;
+                    delete activity.partitionUpperBound;
+                    delete activity.partitionLowerBound;
+                    delete activity.isolationLevel;
+                    delete activity.useQuery;
+                    delete activity.sqlReaderQuery;
+                    delete activity.sqlReaderStoredProcedureName;
+                    delete activity.storedProcedureParameters;
+                }
+                // When switching away from storage, reset storage-specific fields
+                if (activity._datasetCategory !== 'storage') {
+                    activity.filePathType = 'filePathInDataset';
+                    delete activity.prefix;
+                    delete activity.wildcardFolderPath;
+                    delete activity.wildcardFileName;
+                    delete activity.fileListPath;
+                    delete activity.enablePartitionDiscovery;
+                    delete activity.partitionRootPath;
+                }
                 // Clear fieldlist values so old entries from previous dataset don't carry over
                 container.querySelectorAll('.form-fieldlist-dynamic').forEach(fl => {
                     const fieldKey = fl.dataset.fieldlistKey;
@@ -1146,7 +1176,20 @@ function _applyConditionals(container, activity) {
         const field = el.dataset.condField;
         const allowed = el.dataset.condValue.split(',');
         const current = String(activity[field] ?? '');
-        el.style.display = allowed.includes(current) ? '' : 'none';
+        let visible = allowed.includes(current);
+        // Also check excludeConditional — hide if the exclude field matches
+        if (visible && el.dataset.condExcludeField) {
+            const exField = el.dataset.condExcludeField;
+            const exValues = el.dataset.condExcludeValue.split(',');
+            if (exValues.includes(String(activity[exField] ?? ''))) visible = false;
+        }
+        el.style.display = visible ? '' : 'none';
+    });
+    // Also hide form fields that have only excludeConditional (no main cond-field)
+    container.querySelectorAll('.form-field[data-cond-exclude-field]:not([data-cond-field])').forEach(el => {
+        const exField = el.dataset.condExcludeField;
+        const exValues = el.dataset.condExcludeValue.split(',');
+        el.style.display = exValues.includes(String(activity[exField] ?? '')) ? 'none' : '';
     });
     // Hide/show individual radio options that have per-option conditions (e.g. Prefix for Blob only)
     container.querySelectorAll('.form-radio-label[data-cond-field]').forEach(el => {
@@ -1154,6 +1197,30 @@ function _applyConditionals(container, activity) {
         const allowed = el.dataset.condValue.split(',');
         const current = String(activity[field] ?? '');
         el.style.display = allowed.includes(current) ? '' : 'none';
+    });
+    // Hide/show individual <option> elements in selects that have per-option conditions
+    container.querySelectorAll('select option[data-cond-field]').forEach(opt => {
+        const field = opt.dataset.condField;
+        const allowed = opt.dataset.condValue.split(',');
+        const current = String(activity[field] ?? '');
+        const visible = allowed.includes(current);
+        opt.style.display = visible ? '' : 'none';
+        opt.disabled = !visible;
+    });
+    // If any select's currently selected option is now hidden, reset to first visible option
+    container.querySelectorAll('select').forEach(sel => {
+        const selectedOpt = sel.options[sel.selectedIndex];
+        if (selectedOpt && (selectedOpt.style.display === 'none' || selectedOpt.disabled)) {
+            const firstVisible = Array.from(sel.options).find(o => o.style.display !== 'none' && !o.disabled);
+            if (firstVisible) {
+                sel.value = firstVisible.value;
+                const key = sel.dataset.key;
+                if (key) {
+                    activity[key] = firstVisible.value;
+                    markAsDirty();
+                }
+            }
+        }
     });
     // Also hide/show kv containers whose parent form-field is conditional
     container.querySelectorAll('.form-kv-container').forEach(kvEl => {
@@ -1264,29 +1331,104 @@ function _wireFieldLists(container, activity) {
 function _wireKvFields(container, activity) {
     container.querySelectorAll('.form-kv-container').forEach(kvEl => {
         const fieldKey = kvEl.dataset.kvField;
-        const valueTypes = (kvEl.dataset.kvTypes || '').split(',').filter(Boolean);
+        const simple = kvEl.dataset.kvSimple === 'true';
         if (!activity[fieldKey] || typeof activity[fieldKey] !== 'object' || Array.isArray(activity[fieldKey])) {
             activity[fieldKey] = {};
         }
-        _renderKvField(kvEl, activity, fieldKey, valueTypes);
+        if (simple) {
+            const keyLabel = kvEl.dataset.kvKeyLabel || 'Key';
+            const valueLabel = kvEl.dataset.kvValueLabel || 'Value';
+            _renderSimplePairsField(kvEl, activity, fieldKey, keyLabel, valueLabel);
+        } else {
+            const valueTypes = (kvEl.dataset.kvTypes || '').split(',').filter(Boolean);
+            const nullable = kvEl.dataset.kvNullable === 'true';
+            _renderKvField(kvEl, activity, fieldKey, valueTypes, nullable);
+        }
     });
 }
 
-function _renderKvField(kvEl, activity, fieldKey, valueTypes) {
+function _renderSimplePairsField(kvEl, activity, fieldKey, keyLabel, valueLabel) {
+    kvEl.innerHTML = '';
+    const data = activity[fieldKey] || {};
+    const table = document.createElement('table');
+    table.className = 'form-kv-table';
+    const thead = document.createElement('thead');
+    thead.innerHTML = `<tr><th>${escHtml(keyLabel)}</th><th>${escHtml(valueLabel)}</th><th></th></tr>`;
+    table.appendChild(thead);
+    const tbody = document.createElement('tbody');
+    table.appendChild(tbody);
+    kvEl.appendChild(table);
+    for (const [k, v] of Object.entries(data)) {
+        _addSimplePairsRow(tbody, activity, fieldKey, keyLabel, valueLabel, k, v);
+    }
+    const addBtn = document.createElement('button');
+    addBtn.className = 'form-kv-add-btn';
+    addBtn.textContent = '+ Add';
+    kvEl.appendChild(addBtn);
+    addBtn.addEventListener('click', () => {
+        const base = keyLabel.toLowerCase();
+        let newKey = base;
+        let i = 1;
+        while (newKey in (activity[fieldKey] || {})) newKey = base + i++;
+        if (!activity[fieldKey]) activity[fieldKey] = {};
+        activity[fieldKey][newKey] = '';
+        markAsDirty();
+        _renderSimplePairsField(kvEl, activity, fieldKey, keyLabel, valueLabel);
+    });
+}
+
+function _addSimplePairsRow(tbody, activity, fieldKey, keyLabel, valueLabel, key, value) {
+    const tr = document.createElement('tr');
+    tr.dataset.currentKey = key;
+    const keyInput = document.createElement('input');
+    keyInput.type = 'text'; keyInput.className = 'form-input form-kv-cell';
+    keyInput.value = key; keyInput.placeholder = keyLabel;
+    const keyTd = document.createElement('td'); keyTd.appendChild(keyInput); tr.appendChild(keyTd);
+    const valInput = document.createElement('input');
+    valInput.type = 'text'; valInput.className = 'form-input form-kv-cell';
+    valInput.value = value ?? ''; valInput.placeholder = valueLabel;
+    const valTd = document.createElement('td'); valTd.appendChild(valInput); tr.appendChild(valTd);
+    const syncData = () => {
+        const oldKey = tr.dataset.currentKey;
+        const newKey = keyInput.value;
+        const data = activity[fieldKey] || {};
+        if (oldKey !== newKey && oldKey !== '') delete data[oldKey];
+        if (newKey !== '') data[newKey] = valInput.value;
+        activity[fieldKey] = data;
+        tr.dataset.currentKey = newKey;
+        markAsDirty();
+    };
+    const delBtn = document.createElement('button');
+    delBtn.className = 'action-icon-btn'; delBtn.textContent = '\u00d7';
+    const delTd = document.createElement('td'); delTd.appendChild(delBtn); tr.appendChild(delTd);
+    tbody.appendChild(tr);
+    keyInput.addEventListener('input', syncData);
+    valInput.addEventListener('input', syncData);
+    delBtn.addEventListener('click', () => {
+        const data = activity[fieldKey] || {};
+        delete data[tr.dataset.currentKey];
+        activity[fieldKey] = data;
+        markAsDirty(); tr.remove();
+    });
+}
+
+function _renderKvField(kvEl, activity, fieldKey, valueTypes, nullable) {
     kvEl.innerHTML = '';
     const data = activity[fieldKey] || {};
 
     const table = document.createElement('table');
     table.className = 'form-kv-table';
     const thead = document.createElement('thead');
-    thead.innerHTML = '<tr><th>Key</th><th>Type</th><th>Value</th><th></th></tr>';
+    thead.innerHTML = nullable
+        ? '<tr><th>Key</th><th>Type</th><th>Value</th><th>Null</th><th></th></tr>'
+        : '<tr><th>Key</th><th>Type</th><th>Value</th><th></th></tr>';
     table.appendChild(thead);
     const tbody = document.createElement('tbody');
     table.appendChild(tbody);
     kvEl.appendChild(table);
 
     for (const [k, item] of Object.entries(data)) {
-        _addKvRow(tbody, activity, fieldKey, valueTypes, k, item.type || 'String', item.value);
+        _addKvRow(tbody, activity, fieldKey, valueTypes, k, item.type || 'String', item.value, nullable);
     }
 
     const addBtn = document.createElement('button');
@@ -1298,7 +1440,7 @@ function _renderKvField(kvEl, activity, fieldKey, valueTypes) {
         if (!activity[fieldKey]) activity[fieldKey] = {};
         activity[fieldKey][newKey] = { type: valueTypes[0] || 'String', value: '' };
         markAsDirty();
-        _renderKvField(kvEl, activity, fieldKey, valueTypes);
+        _renderKvField(kvEl, activity, fieldKey, valueTypes, nullable);
     });
 }
 
@@ -1368,7 +1510,7 @@ function _makeKvValueWidget(type, value, onChange) {
     return el;
 }
 
-function _addKvRow(tbody, activity, fieldKey, valueTypes, key, type, value) {
+function _addKvRow(tbody, activity, fieldKey, valueTypes, key, type, value, nullable) {
     const tr = document.createElement('tr');
     tr.dataset.currentKey = key;
 
@@ -1393,7 +1535,8 @@ function _addKvRow(tbody, activity, fieldKey, valueTypes, key, type, value) {
     // Value — rebuilt when type changes
     const valTd = document.createElement('td');
     tr.appendChild(valTd);
-    let currentValue = value;
+    let isNull = nullable && value === null;
+    let currentValue = isNull ? null : value;
     const syncData = () => {
         const oldKey = tr.dataset.currentKey;
         const newKey = keyInput.value.trim() || oldKey;
@@ -1407,9 +1550,35 @@ function _addKvRow(tbody, activity, fieldKey, valueTypes, key, type, value) {
     };
     const rebuildValueCell = (newType, newValue) => {
         valTd.innerHTML = '';
-        valTd.appendChild(_makeKvValueWidget(newType, newValue, (v) => { currentValue = v; syncData(); }));
+        if (isNull) {
+            const dis = document.createElement('input');
+            dis.type = 'text'; dis.className = 'form-input form-kv-cell'; dis.disabled = true; dis.value = '';
+            valTd.appendChild(dis);
+        } else {
+            valTd.appendChild(_makeKvValueWidget(newType, newValue, (v) => { currentValue = v; syncData(); }));
+        }
     };
     rebuildValueCell(type, value);
+
+    // Null checkbox (nullable fields only)
+    if (nullable) {
+        const nullCheck = document.createElement('input');
+        nullCheck.type = 'checkbox'; nullCheck.title = 'Treat as null'; nullCheck.checked = isNull;
+        nullCheck.style.margin = '0 auto'; nullCheck.style.display = 'block';
+        const nullTd = document.createElement('td'); nullTd.style.textAlign = 'center';
+        nullTd.appendChild(nullCheck); tr.appendChild(nullTd);
+        nullCheck.addEventListener('change', () => {
+            isNull = nullCheck.checked;
+            if (isNull) {
+                currentValue = null;
+            } else {
+                const t = typeSelect.value;
+                currentValue = t === 'Boolean' ? true : t === 'Array' ? [] : '';
+            }
+            rebuildValueCell(typeSelect.value, currentValue);
+            syncData();
+        });
+    }
 
     // Delete
     const delBtn = document.createElement('button');
@@ -1422,7 +1591,9 @@ function _addKvRow(tbody, activity, fieldKey, valueTypes, key, type, value) {
     keyInput.addEventListener('input', syncData);
     typeSelect.addEventListener('change', () => {
         const newType = typeSelect.value;
-        currentValue = newType === 'Boolean' ? true : newType === 'Array' ? [] : '';
+        if (!isNull) {
+            currentValue = newType === 'Boolean' ? true : newType === 'Array' ? [] : '';
+        }
         rebuildValueCell(newType, currentValue);
         syncData();
     });

@@ -554,7 +554,7 @@ body.properties-visible .expand-properties-btn { display: none; }
 /* ─── Schema-driven form fields ─────────────────────────────────────────────── */
 .form-field {
     display: grid;
-    grid-template-columns: 130px 1fr;
+    grid-template-columns: 160px 1fr;
     gap: 2px 8px;
     align-items: start;
     margin-bottom: 12px;
@@ -567,9 +567,8 @@ body.properties-visible .expand-properties-btn { display: none; }
     color: var(--vscode-descriptionForeground);
     text-align: left;
     padding-top: 5px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    word-break: break-word;
 }
 
 .form-field > .form-help {

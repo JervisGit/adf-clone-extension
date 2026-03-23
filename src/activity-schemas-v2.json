@@ -20,11 +20,11 @@
     },
     "datasetTypeToFormatSettings": {
       "DelimitedText": "DelimitedTextReadSettings",
+      "Parquet": "ParquetReadSettings",
       "Json": "JsonReadSettings",
-      "Avro": "AvroReadSettings",
-      "Orc": "OrcReadSettings",
-      "Parquet": "ParquetReadSettings"
-    }
+      "Xml": "XmlReadSettings"
+    },
+    "lookupExcludedTypes": ["Binary", "Iceberg", "Excel"]
   },
   "SynapseNotebook": {
     "name": "Synapse Notebook",
@@ -1141,6 +1141,7 @@
         "label": "Source dataset",
         "required": true,
         "placeholder": "Select dataset...",
+        "datasetFilter": "lookupCompatible",
         "jsonPath": "typeProperties.dataset"
       },
       "firstRowOnly": {
@@ -1159,7 +1160,7 @@
         "jsonPath": null
       },
       "sqlReaderQuery": {
-        "type": "expression",
+        "type": "string",
         "label": "Query",
         "multiline": true,
         "placeholder": "SELECT * FROM table",
@@ -1224,12 +1225,14 @@
         "type": "datetime",
         "label": "Start time (UTC)",
         "conditional": { "field": "_datasetCategory", "value": "storage" },
+        "excludeConditional": { "field": "filePathType", "value": "listOfFiles" },
         "jsonPath": "typeProperties.source.storeSettings.modifiedDatetimeStart"
       },
       "modifiedDatetimeEnd": {
         "type": "datetime",
         "label": "End time (UTC)",
         "conditional": { "field": "_datasetCategory", "value": "storage" },
+        "excludeConditional": { "field": "filePathType", "value": "listOfFiles" },
         "jsonPath": "typeProperties.source.storeSettings.modifiedDatetimeEnd"
       },
       "skipLineCount": {
@@ -1242,27 +1245,32 @@
       "validationMode": {
         "type": "select",
         "label": "Validation mode",
-        "options": ["None", "xsd", "dtd"],
+        "options": ["none", "xsd", "dtd"],
+        "optionLabels": { "none": "None", "xsd": "xsd", "dtd": "dtd" },
+        "default": "none",
         "conditional": { "field": "_datasetType", "value": "Xml" },
         "jsonPath": "typeProperties.source.formatSettings.validationMode"
       },
       "detectDataType": {
         "type": "boolean",
         "label": "Detect data type",
-        "default": false,
+        "default": true,
         "conditional": { "field": "_datasetType", "value": "Xml" },
         "jsonPath": "typeProperties.source.formatSettings.detectDataType"
       },
       "namespaces": {
         "type": "boolean",
         "label": "Namespaces",
-        "default": false,
+        "default": true,
         "conditional": { "field": "_datasetType", "value": "Xml" },
         "jsonPath": "typeProperties.source.formatSettings.namespaces"
       },
       "namespacePrefixes": {
         "type": "keyvalue",
         "label": "Namespace prefix pairs",
+        "simplePairs": true,
+        "keyLabel": "URL",
+        "valueLabel": "Prefix",
         "conditional": { "field": "_datasetType", "value": "Xml" },
         "jsonPath": "typeProperties.source.formatSettings.namespacePrefixes"
       },
@@ -1271,6 +1279,7 @@
         "label": "Recursive",
         "default": true,
         "conditional": { "field": "_datasetCategory", "value": "storage" },
+        "excludeConditional": { "field": "filePathType", "value": "listOfFiles" },
         "jsonPath": "typeProperties.source.storeSettings.recursive"
       },
       "enablePartitionDiscovery": {
@@ -1297,6 +1306,14 @@
         "type": "select",
         "label": "Isolation level",
         "options": ["None", "ReadCommitted", "ReadUncommitted", "RepeatableRead", "Serializable", "Snapshot"],
+        "optionLabels": {
+          "None": "None",
+          "ReadCommitted": "Read committed",
+          "ReadUncommitted": "Read uncommitted",
+          "RepeatableRead": "Repeatable read",
+          "Serializable": "Serializable",
+          "Snapshot": "Snapshot"
+        },
         "conditional": { "field": "_datasetCategory", "value": "sql" },
         "jsonPath": "typeProperties.source.isolationLevel"
       },
@@ -1305,6 +1322,15 @@
         "label": "Partition option",
         "options": ["None", "PhysicalPartitionsOfTable", "DynamicRange"],
         "default": "None",
+        "optionLabels": {
+          "None": "None",
+          "PhysicalPartitionsOfTable": "Physical partitions of table",
+          "DynamicRange": "Dynamic range"
+        },
+        "optionConditions": {
+          "PhysicalPartitionsOfTable": { "field": "useQuery", "value": "Table" },
+          "DynamicRange": { "field": "useQuery", "value": ["Table", "Query"] }
+        },
         "conditional": { "field": "_datasetCategory", "value": "sql" },
         "jsonPath": "typeProperties.source.partitionOption"
       },
@@ -1329,6 +1355,8 @@
       "storedProcedureParameters": {
         "type": "keyvalue",
         "label": "Stored procedure parameters",
+        "valueTypes": ["String", "Boolean", "Datetime", "Datetimeoffset", "Decimal", "Double", "Guid", "Int16", "Int32", "Int64", "Single", "Timespan", "Byte[]"],
+        "nullableValues": true,
         "conditional": { "field": "useQuery", "value": "StoredProcedure" },
         "jsonPath": "typeProperties.source.storedProcedureParameters"
       },

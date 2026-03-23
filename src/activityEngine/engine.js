@@ -670,6 +670,10 @@ const TRANSFORMERS = {
 			if (src.sqlReaderStoredProcedureName)       flat.useQuery = 'StoredProcedure';
 			else if (src.sqlReaderQuery !== undefined)  flat.useQuery = 'Query';
 			else                                        flat.useQuery = 'Table';
+			// Unwrap legacy Expression objects → plain string for sqlReaderQuery
+			if (flat.sqlReaderQuery && typeof flat.sqlReaderQuery === 'object' && 'value' in flat.sqlReaderQuery) {
+				flat.sqlReaderQuery = flat.sqlReaderQuery.value ?? '';
+			}
 		},
 	},
 

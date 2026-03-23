@@ -814,7 +814,7 @@ describe('Lookup', () => {
             firstRowOnly: true,
             source: {
                 type: 'AzureSqlSource',
-                sqlReaderQuery: { value: 'SELECT 1', type: 'Expression' },
+                sqlReaderQuery: 'SELECT 1',
                 queryTimeout: '02:00:00',
             },
         },
@@ -916,9 +916,9 @@ describe('Lookup', () => {
         expect(flat.useQuery).toBe('Query');
     });
 
-    test('deserialize SQL: reads sqlReaderQuery expression', () => {
+    test('deserialize SQL: reads sqlReaderQuery as plain string', () => {
         const flat = engine.deserializeActivity(rawSql);
-        expect(flat.sqlReaderQuery).toEqual({ value: 'SELECT 1', type: 'Expression' });
+        expect(flat.sqlReaderQuery).toBe('SELECT 1');
     });
 
     test('deserialize SQL: infers useQuery = StoredProcedure', () => {
@@ -940,7 +940,7 @@ describe('Lookup', () => {
         flat._datasetCategory = 'sql';
         flat._datasetType = 'AzureSqlTable';
         const out = engine.serializeActivity(flat);
-        expect(out.typeProperties.source.sqlReaderQuery).toEqual({ value: 'SELECT 1', type: 'Expression' });
+        expect(out.typeProperties.source.sqlReaderQuery).toBe('SELECT 1');
         expect(out.typeProperties.source.queryTimeout).toBe('02:00:00');
     });
 
@@ -961,8 +961,17 @@ describe('Lookup', () => {
         expect(out.typeProperties.source.sqlReaderStoredProcedureName).toBe('dbo.MyProc');
     });
 
-    test('round-trip stable (SQL query)', () => {
-        expect(stableFlat(roundTrip(rawSql))).toEqual(stableFlat(engine.deserializeActivity(rawSql)));
+    // Expression object from old JSON should be unwrapped to plain string
+    test('deserialize SQL: unwraps legacy Expression object for sqlReaderQuery', () => {
+        const rawWithExpr = {
+            ...rawSql,
+            typeProperties: {
+                ...rawSql.typeProperties,
+                source: { type: 'AzureSqlSource', sqlReaderQuery: { value: 'SELECT 2', type: 'Expression' }, queryTimeout: '02:00:00' },
+            },
+        };
+        const flat = engine.deserializeActivity(rawWithExpr);
+        expect(flat.sqlReaderQuery).toBe('SELECT 2');
     });
 
     test('round-trip stable (SQL stored proc)', () => {

@@ -864,8 +864,9 @@ function showProperties(activity) {
             }>${escHtml(t)}</button>`
         ).join('');
         panesContainer.innerHTML = tabs.map((t, i) => {
+            const sharedCP = activitySchemas.__meta?.sharedCommonProperties;
             const html = t === 'General'
-                ? _buildFormPane(activity, schema.commonProperties || {}, 'general')
+                ? _buildFormPane(activity, schema.commonProperties || {}, 'general', sharedCP)
                 : t === 'Settings'
                     ? _buildFormPane(activity, schema.typeProperties || {}, 'settings')
                     : t === 'Source'
@@ -921,10 +922,14 @@ function _propRow(key, val) {
 // ─── Schema-driven form renderer ───────────────────────────────────────────────
 // Renders editable HTML form fields for one group of schema fields.
 // Fields hidden by `conditional` are rendered but show/hide via JS.
-function _buildFormPane(activity, fields, paneId) {
+function _buildFormPane(activity, fields, paneId, sharedFields) {
     console.log(`[V2] _buildFormPane pane="${paneId}" activity="${activity.type}" fields:`, Object.fromEntries(Object.entries(fields).map(([k,d]) => [k, d.type])));
+    // Merge shared fields that are not already defined in the activity's own schema
+    const mergedFields = sharedFields
+        ? Object.assign({}, fields, Object.fromEntries(Object.entries(sharedFields).filter(([k]) => !(k in fields))))
+        : fields;
     let html = '';
-    for (const [key, def] of Object.entries(fields)) {
+    for (const [key, def] of Object.entries(mergedFields)) {
         if (def.uiOnly) continue;
         if (def.type === 'containerActivities' || def.type === 'switchCases') continue;
         const val = activity[key] ?? def.default ?? '';
@@ -1125,6 +1130,15 @@ function _applySchemaDefaults(activity, schema) {
         if (!fields) continue;
         for (const [key, def] of Object.entries(fields)) {
             if (def.type === 'containerActivities' || def.type === 'switchCases') continue;
+            if (activity[key] === undefined && def.default !== undefined) {
+                activity[key] = def.default;
+            }
+        }
+    }
+    // Apply defaults from shared common fields (state, onInactiveMarkAs)
+    const shared = activitySchemas.__meta?.sharedCommonProperties;
+    if (shared) {
+        for (const [key, def] of Object.entries(shared)) {
             if (activity[key] === undefined && def.default !== undefined) {
                 activity[key] = def.default;
             }
@@ -1582,7 +1596,10 @@ function _renderKvField(kvEl, activity, fieldKey, valueTypes, nullable) {
     addBtn.textContent = '+ Add';
     kvEl.appendChild(addBtn);
     addBtn.addEventListener('click', () => {
-        const newKey = 'key' + (Object.keys(activity[fieldKey] || {}).length + 1);
+        const existing = activity[fieldKey] || {};
+        let n = Object.keys(existing).length + 1;
+        while (('key' + n) in existing) n++;
+        const newKey = 'key' + n;
         if (!activity[fieldKey]) activity[fieldKey] = {};
         activity[fieldKey][newKey] = { type: valueTypes[0] || 'String', value: '' };
         markAsDirty();

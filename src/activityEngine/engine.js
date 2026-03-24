@@ -138,6 +138,11 @@ function deserializeActivity(raw) {
 	// Run deserialize transformers for fields needing adjustment after direct path reads
 	runDeserializeTransformers(raw, schema, flat);
 
+	// Default state to Activated when not written in JSON (e.g. TestVariables-style pipelines)
+	if (!flat.state) flat.state = 'Activated';
+	// Normalize legacy state value so UI radio always matches
+	if (flat.state === 'Deactivated') flat.state = 'Inactive';
+
 	// Container children — preserved as raw JSON arrays until per-container editing is implemented
 	for (const group of ['typeProperties']) {
 		const fields = schema[group];
@@ -171,8 +176,13 @@ function serializeActivity(flat) {
 	const output = { name: flat.name, type: flat.type };
 
 	if (flat.description)       output.description      = flat.description;
-	if (flat.state)             output.state            = flat.state;
-	if (flat.onInactiveMarkAs)  output.onInactiveMarkAs = flat.onInactiveMarkAs;
+	// Normalize state: translate legacy "Deactivated" → "Inactive" and emit onInactiveMarkAs
+	const isInactive = flat.state === 'Inactive' || flat.state === 'Deactivated';
+	if (isInactive) {
+		output.state            = 'Inactive';
+		output.onInactiveMarkAs = flat.onInactiveMarkAs || 'Succeeded';
+	}
+	// "Activated" (default) — omit state entirely for cleaner JSON
 	output.dependsOn      = flat.dependsOn      || [];
 	output.userProperties = flat.userProperties || [];
 

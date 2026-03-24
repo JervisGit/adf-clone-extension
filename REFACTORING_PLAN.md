@@ -12,8 +12,8 @@
 | Step 6 | ✅ Done | Containers: ForEach, Until, IfCondition, Switch — editable expression/settings fields, Activities tab shows nested activity list (inner canvas editing deferred). |
 | Step 6.5 | ✅ Done | Unit tests (Jest) for `engine.js` — 48 tests covering deserialize/serialize round-trips for all types done so far (Steps 1–6), `setVariableReturnValues` transformer (incl. Array/Boolean), `validateActivity` required-field checks. Run with `npm run test:engine`. Nested activity round-trips (ForEach→Until→ForEach) deferred to Step 11.5. |
 | Step 7 | ✅ Done | Lookup, Delete, Validation, GetMetadata — dataset `<select>` from datasetList, GetMetadata field list checkboxes, Delete source path options, Source tab rendering. |
-| Step 8 | 🔲 | SynapseNotebook, SparkJob |
-| Step 9 | 🔲 | Script, SqlServerStoredProcedure |
+| Step 8 | ✅ Done | SynapseNotebook, SparkJob — engine transformers, schema, UI editable, 176 engine tests passing |
+| Step 9 | ✅ Done | Script, SqlServerStoredProcedure — schema, UI editable (script-array, linked-service select, storedprocedure-parameters), 176 engine tests passing |
 | Step 10 | 🔲 | WebActivity, WebHook — auth transformer |
 | Step 11 | 🔲 | Copy — last; uses copy-activity-config.json |
 | Step 11.5 | 🔲 | Container inner canvas editing — ForEach, Until, IfCondition, Switch render their nested activities on a sub-canvas. Enables nested activity round-trip tests from Step 6.5. |

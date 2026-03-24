@@ -24,7 +24,38 @@
       "Json": "JsonReadSettings",
       "Xml": "XmlReadSettings"
     },
-    "lookupExcludedTypes": ["Binary", "Iceberg", "Excel"]
+    "lookupExcludedTypes": [
+      "Binary",
+      "Iceberg",
+      "Excel"
+    ],
+    "sharedCommonProperties": {
+      "state": {
+        "type": "radio",
+        "label": "Activity state",
+        "options": [
+          "Activated",
+          "Inactive"
+        ],
+        "default": "Activated",
+        "jsonPath": "@state"
+      },
+      "onInactiveMarkAs": {
+        "type": "radio",
+        "label": "Mark activity as",
+        "options": [
+          "Succeeded",
+          "Failed",
+          "Skipped"
+        ],
+        "default": "Succeeded",
+        "conditional": {
+          "field": "state",
+          "value": "Inactive"
+        },
+        "jsonPath": "@onInactiveMarkAs"
+      }
+    }
   },
   "SynapseNotebook": {
     "name": "Synapse Notebook",
@@ -45,15 +76,6 @@
         "label": "Description",
         "multiline": true,
         "jsonPath": "@description"
-      },
-      "state": {
-        "type": "radio",
-        "label": "Activity state",
-        "options": [
-          "Activated",
-          "Deactivated"
-        ],
-        "jsonPath": "@state"
       },
       "timeout": {
         "type": "string",
@@ -212,17 +234,6 @@
         ],
         "default": "Active",
         "jsonPath": "@state"
-      },
-      "onInactiveMarkAs": {
-        "type": "select",
-        "label": "Mark activity as",
-        "options": [
-          "Succeeded",
-          "Failed",
-          "Skipped"
-        ],
-        "default": "Succeeded",
-        "jsonPath": "@onInactiveMarkAs"
       },
       "timeout": {
         "type": "string",
@@ -416,15 +427,6 @@
         "label": "Description",
         "multiline": true,
         "jsonPath": "@description"
-      },
-      "state": {
-        "type": "radio",
-        "label": "Activity state",
-        "options": [
-          "Activated",
-          "Deactivated"
-        ],
-        "jsonPath": "@state"
       }
     },
     "typeProperties": {
@@ -463,15 +465,6 @@
         "label": "Description",
         "multiline": true,
         "jsonPath": "@description"
-      },
-      "state": {
-        "type": "radio",
-        "label": "Activity state",
-        "options": [
-          "Activated",
-          "Deactivated"
-        ],
-        "jsonPath": "@state"
       },
       "secureOutput": {
         "type": "boolean",
@@ -580,15 +573,6 @@
         "label": "Description",
         "multiline": true,
         "jsonPath": "@description"
-      },
-      "state": {
-        "type": "radio",
-        "label": "Activity state",
-        "options": [
-          "Activated",
-          "Deactivated"
-        ],
-        "jsonPath": "@state"
       }
     },
     "typeProperties": {
@@ -627,15 +611,6 @@
         "label": "Description",
         "multiline": true,
         "jsonPath": "@description"
-      },
-      "state": {
-        "type": "radio",
-        "label": "Activity state",
-        "options": [
-          "Activated",
-          "Deactivated"
-        ],
-        "jsonPath": "@state"
       }
     },
     "typeProperties": {
@@ -669,15 +644,6 @@
         "label": "Description",
         "multiline": true,
         "jsonPath": "@description"
-      },
-      "state": {
-        "type": "radio",
-        "label": "Activity state",
-        "options": [
-          "Activated",
-          "Deactivated"
-        ],
-        "jsonPath": "@state"
       }
     },
     "typeProperties": {
@@ -718,16 +684,6 @@
         "label": "Description",
         "multiline": true,
         "jsonPath": "@description"
-      },
-      "state": {
-        "type": "radio",
-        "label": "Activity state",
-        "options": [
-          "Activated",
-          "Deactivated"
-        ],
-        "default": "Activated",
-        "jsonPath": "@state"
       },
       "timeout": {
         "type": "string",
@@ -822,16 +778,6 @@
         "multiline": true,
         "jsonPath": "@description"
       },
-      "state": {
-        "type": "radio",
-        "label": "Activity state",
-        "options": [
-          "Activated",
-          "Deactivated"
-        ],
-        "default": "Activated",
-        "jsonPath": "@state"
-      },
       "timeout": {
         "type": "string",
         "label": "Timeout",
@@ -913,16 +859,6 @@
         "multiline": true,
         "jsonPath": "@description"
       },
-      "state": {
-        "type": "radio",
-        "label": "Activity state",
-        "options": [
-          "Activated",
-          "Deactivated"
-        ],
-        "default": "Activated",
-        "jsonPath": "@state"
-      },
       "timeout": {
         "type": "string",
         "label": "Timeout",
@@ -1002,16 +938,6 @@
         "multiline": true,
         "jsonPath": "@description"
       },
-      "state": {
-        "type": "radio",
-        "label": "Activity state",
-        "options": [
-          "Activated",
-          "Deactivated"
-        ],
-        "default": "Activated",
-        "jsonPath": "@state"
-      },
       "timeout": {
         "type": "string",
         "label": "Timeout",
@@ -1084,15 +1010,6 @@
         "multiline": true,
         "jsonPath": "@description"
       },
-      "state": {
-        "type": "radio",
-        "label": "Activity state",
-        "options": [
-          "Activated",
-          "Deactivated"
-        ],
-        "jsonPath": "@state"
-      },
       "timeout": {
         "type": "string",
         "label": "Timeout",
@@ -1147,10 +1064,21 @@
       "useQuery": {
         "type": "radio",
         "label": "Use query",
-        "options": ["Table", "Query", "Stored procedure"],
-        "optionValues": ["Table", "Query", "StoredProcedure"],
+        "options": [
+          "Table",
+          "Query",
+          "Stored procedure"
+        ],
+        "optionValues": [
+          "Table",
+          "Query",
+          "StoredProcedure"
+        ],
         "default": "Table",
-        "conditional": { "field": "_datasetCategory", "value": "sql" },
+        "conditional": {
+          "field": "_datasetCategory",
+          "value": "sql"
+        },
         "jsonPath": null
       },
       "sqlReaderQuery": {
@@ -1158,13 +1086,19 @@
         "label": "Query",
         "multiline": true,
         "placeholder": "SELECT * FROM table",
-        "conditional": { "field": "useQuery", "value": "Query" },
+        "conditional": {
+          "field": "useQuery",
+          "value": "Query"
+        },
         "jsonPath": "typeProperties.source.sqlReaderQuery"
       },
       "sqlReaderStoredProcedureName": {
         "type": "string",
         "label": "Stored procedure name",
-        "conditional": { "field": "useQuery", "value": "StoredProcedure" },
+        "conditional": {
+          "field": "useQuery",
+          "value": "StoredProcedure"
+        },
         "jsonPath": "typeProperties.source.sqlReaderStoredProcedureName"
       },
       "queryTimeout": {
@@ -1172,91 +1106,154 @@
         "label": "Query timeout",
         "default": "02:00:00",
         "placeholder": "HH:MM:SS",
-        "conditional": { "field": "_datasetCategory", "value": "sql" },
+        "conditional": {
+          "field": "_datasetCategory",
+          "value": "sql"
+        },
         "jsonPath": "typeProperties.source.queryTimeout"
       },
       "filePathType": {
         "type": "radio",
         "label": "File path type",
-        "options": ["File path in dataset", "Prefix", "Wildcard file path", "List of files"],
-        "optionValues": ["filePathInDataset", "prefix", "wildcardFilePath", "listOfFiles"],
+        "options": [
+          "File path in dataset",
+          "Prefix",
+          "Wildcard file path",
+          "List of files"
+        ],
+        "optionValues": [
+          "filePathInDataset",
+          "prefix",
+          "wildcardFilePath",
+          "listOfFiles"
+        ],
         "optionConditions": {
-          "prefix": { "field": "_storeSettingsType", "value": "AzureBlobStorageReadSettings" }
+          "prefix": {
+            "field": "_storeSettingsType",
+            "value": "AzureBlobStorageReadSettings"
+          }
         },
         "default": "filePathInDataset",
-        "conditional": { "field": "_datasetCategory", "value": "storage" },
+        "conditional": {
+          "field": "_datasetCategory",
+          "value": "storage"
+        },
         "jsonPath": null
       },
       "prefix": {
         "type": "text",
         "label": "Prefix",
         "placeholder": "Enter prefix",
-        "conditional": { "field": "filePathType", "value": "prefix" },
+        "conditional": {
+          "field": "filePathType",
+          "value": "prefix"
+        },
         "jsonPath": "typeProperties.source.storeSettings.prefix"
       },
       "wildcardFolderPath": {
         "type": "text",
         "label": "Wildcard folder path",
         "placeholder": "Enter wildcard folder path",
-        "conditional": { "field": "filePathType", "value": "wildcardFilePath" },
+        "conditional": {
+          "field": "filePathType",
+          "value": "wildcardFilePath"
+        },
         "jsonPath": "typeProperties.source.storeSettings.wildcardFolderPath"
       },
       "wildcardFileName": {
         "type": "text",
         "label": "Wildcard file name",
         "placeholder": "Enter wildcard file name",
-        "conditional": { "field": "filePathType", "value": "wildcardFilePath" },
+        "conditional": {
+          "field": "filePathType",
+          "value": "wildcardFilePath"
+        },
         "jsonPath": "typeProperties.source.storeSettings.wildcardFileName"
       },
       "fileListPath": {
         "type": "text",
         "label": "Path to file list",
         "placeholder": "Enter path to file list",
-        "conditional": { "field": "filePathType", "value": "listOfFiles" },
+        "conditional": {
+          "field": "filePathType",
+          "value": "listOfFiles"
+        },
         "jsonPath": "typeProperties.source.storeSettings.fileListPath"
       },
       "modifiedDatetimeStart": {
         "type": "datetime",
         "label": "Start time (UTC)",
-        "conditional": { "field": "_datasetCategory", "value": "storage" },
-        "excludeConditional": { "field": "filePathType", "value": "listOfFiles" },
+        "conditional": {
+          "field": "_datasetCategory",
+          "value": "storage"
+        },
+        "excludeConditional": {
+          "field": "filePathType",
+          "value": "listOfFiles"
+        },
         "jsonPath": "typeProperties.source.storeSettings.modifiedDatetimeStart"
       },
       "modifiedDatetimeEnd": {
         "type": "datetime",
         "label": "End time (UTC)",
-        "conditional": { "field": "_datasetCategory", "value": "storage" },
-        "excludeConditional": { "field": "filePathType", "value": "listOfFiles" },
+        "conditional": {
+          "field": "_datasetCategory",
+          "value": "storage"
+        },
+        "excludeConditional": {
+          "field": "filePathType",
+          "value": "listOfFiles"
+        },
         "jsonPath": "typeProperties.source.storeSettings.modifiedDatetimeEnd"
       },
       "skipLineCount": {
         "type": "number",
         "label": "Skip line count",
         "min": 0,
-        "conditional": { "field": "_datasetType", "value": "DelimitedText" },
+        "conditional": {
+          "field": "_datasetType",
+          "value": "DelimitedText"
+        },
         "jsonPath": "typeProperties.source.formatSettings.skipLineCount"
       },
       "validationMode": {
         "type": "select",
         "label": "Validation mode",
-        "options": ["none", "xsd", "dtd"],
-        "optionLabels": { "none": "None", "xsd": "xsd", "dtd": "dtd" },
+        "options": [
+          "none",
+          "xsd",
+          "dtd"
+        ],
+        "optionLabels": {
+          "none": "None",
+          "xsd": "xsd",
+          "dtd": "dtd"
+        },
         "default": "none",
-        "conditional": { "field": "_datasetType", "value": "Xml" },
+        "conditional": {
+          "field": "_datasetType",
+          "value": "Xml"
+        },
         "jsonPath": "typeProperties.source.formatSettings.validationMode"
       },
       "detectDataType": {
         "type": "boolean",
         "label": "Detect data type",
         "default": true,
-        "conditional": { "field": "_datasetType", "value": "Xml" },
+        "conditional": {
+          "field": "_datasetType",
+          "value": "Xml"
+        },
         "jsonPath": "typeProperties.source.formatSettings.detectDataType"
       },
       "namespaces": {
         "type": "boolean",
         "label": "Namespaces",
         "default": true,
-        "conditional": { "field": "_datasetType", "value": "Xml" },
+        "conditional": {
+          "field": "_datasetType",
+          "value": "Xml"
+        },
         "jsonPath": "typeProperties.source.formatSettings.namespaces"
       },
       "namespacePrefixes": {
@@ -1265,41 +1262,66 @@
         "simplePairs": true,
         "keyLabel": "URL",
         "valueLabel": "Prefix",
-        "conditional": { "field": "_datasetType", "value": "Xml" },
+        "conditional": {
+          "field": "_datasetType",
+          "value": "Xml"
+        },
         "jsonPath": "typeProperties.source.formatSettings.namespacePrefixes"
       },
       "recursive": {
         "type": "boolean",
         "label": "Recursive",
         "default": true,
-        "conditional": { "field": "_datasetCategory", "value": "storage" },
-        "excludeConditional": { "field": "filePathType", "value": "listOfFiles" },
+        "conditional": {
+          "field": "_datasetCategory",
+          "value": "storage"
+        },
+        "excludeConditional": {
+          "field": "filePathType",
+          "value": "listOfFiles"
+        },
         "jsonPath": "typeProperties.source.storeSettings.recursive"
       },
       "enablePartitionDiscovery": {
         "type": "boolean",
         "label": "Enable partition discovery",
         "default": false,
-        "conditional": { "field": "_datasetCategory", "value": "storage" },
+        "conditional": {
+          "field": "_datasetCategory",
+          "value": "storage"
+        },
         "jsonPath": "typeProperties.source.storeSettings.enablePartitionDiscovery"
       },
       "partitionRootPath": {
         "type": "text",
         "label": "Partition root path",
-        "conditional": { "field": "enablePartitionDiscovery", "value": true },
+        "conditional": {
+          "field": "enablePartitionDiscovery",
+          "value": true
+        },
         "jsonPath": "typeProperties.source.storeSettings.partitionRootPath"
       },
       "maxConcurrentConnections": {
         "type": "number",
         "label": "Max concurrent connections",
         "min": 1,
-        "conditional": { "field": "_datasetCategory", "value": "storage" },
+        "conditional": {
+          "field": "_datasetCategory",
+          "value": "storage"
+        },
         "jsonPath": "typeProperties.source.storeSettings.maxConcurrentConnections"
       },
       "isolationLevel": {
         "type": "select",
         "label": "Isolation level",
-        "options": ["None", "ReadCommitted", "ReadUncommitted", "RepeatableRead", "Serializable", "Snapshot"],
+        "options": [
+          "None",
+          "ReadCommitted",
+          "ReadUncommitted",
+          "RepeatableRead",
+          "Serializable",
+          "Snapshot"
+        ],
         "optionLabels": {
           "None": "None",
           "ReadCommitted": "Read committed",
@@ -1308,13 +1330,20 @@
           "Serializable": "Serializable",
           "Snapshot": "Snapshot"
         },
-        "conditional": { "field": "_datasetCategory", "value": "sql" },
+        "conditional": {
+          "field": "_datasetCategory",
+          "value": "sql"
+        },
         "jsonPath": "typeProperties.source.isolationLevel"
       },
       "partitionOption": {
         "type": "select",
         "label": "Partition option",
-        "options": ["None", "PhysicalPartitionsOfTable", "DynamicRange"],
+        "options": [
+          "None",
+          "PhysicalPartitionsOfTable",
+          "DynamicRange"
+        ],
         "default": "None",
         "optionLabels": {
           "None": "None",
@@ -1322,36 +1351,74 @@
           "DynamicRange": "Dynamic range"
         },
         "optionConditions": {
-          "PhysicalPartitionsOfTable": { "field": "useQuery", "value": "Table" },
-          "DynamicRange": { "field": "useQuery", "value": ["Table", "Query"] }
+          "PhysicalPartitionsOfTable": {
+            "field": "useQuery",
+            "value": "Table"
+          },
+          "DynamicRange": {
+            "field": "useQuery",
+            "value": [
+              "Table",
+              "Query"
+            ]
+          }
         },
-        "conditional": { "field": "_datasetCategory", "value": "sql" },
+        "conditional": {
+          "field": "_datasetCategory",
+          "value": "sql"
+        },
         "jsonPath": "typeProperties.source.partitionOption"
       },
       "partitionColumnName": {
         "type": "text",
         "label": "Partition column name",
-        "conditional": { "field": "partitionOption", "value": "DynamicRange" },
+        "conditional": {
+          "field": "partitionOption",
+          "value": "DynamicRange"
+        },
         "jsonPath": "typeProperties.source.partitionSettings.partitionColumnName"
       },
       "partitionUpperBound": {
         "type": "text",
         "label": "Partition upper bound",
-        "conditional": { "field": "partitionOption", "value": "DynamicRange" },
+        "conditional": {
+          "field": "partitionOption",
+          "value": "DynamicRange"
+        },
         "jsonPath": "typeProperties.source.partitionSettings.partitionUpperBound"
       },
       "partitionLowerBound": {
         "type": "text",
         "label": "Partition lower bound",
-        "conditional": { "field": "partitionOption", "value": "DynamicRange" },
+        "conditional": {
+          "field": "partitionOption",
+          "value": "DynamicRange"
+        },
         "jsonPath": "typeProperties.source.partitionSettings.partitionLowerBound"
       },
       "storedProcedureParameters": {
         "type": "keyvalue",
         "label": "Stored procedure parameters",
-        "valueTypes": ["String", "Boolean", "Datetime", "Datetimeoffset", "Decimal", "Double", "Guid", "Int16", "Int32", "Int64", "Single", "Timespan", "Byte[]"],
+        "valueTypes": [
+          "String",
+          "Boolean",
+          "Datetime",
+          "Datetimeoffset",
+          "Decimal",
+          "Double",
+          "Guid",
+          "Int16",
+          "Int32",
+          "Int64",
+          "Single",
+          "Timespan",
+          "Byte[]"
+        ],
         "nullableValues": true,
-        "conditional": { "field": "useQuery", "value": "StoredProcedure" },
+        "conditional": {
+          "field": "useQuery",
+          "value": "StoredProcedure"
+        },
         "jsonPath": "typeProperties.source.storedProcedureParameters"
       },
       "_lookupSourceMeta": {
@@ -1379,15 +1446,6 @@
         "label": "Description",
         "multiline": true,
         "jsonPath": "@description"
-      },
-      "state": {
-        "type": "radio",
-        "label": "Activity state",
-        "options": [
-          "Activated",
-          "Deactivated"
-        ],
-        "jsonPath": "@state"
       },
       "timeout": {
         "type": "string",
@@ -1449,7 +1507,10 @@
           "listOfFiles"
         ],
         "optionConditions": {
-          "prefix": { "field": "_storeSettingsType", "value": "AzureBlobStorageReadSettings" }
+          "prefix": {
+            "field": "_storeSettingsType",
+            "value": "AzureBlobStorageReadSettings"
+          }
         },
         "default": "filePathInDataset",
         "jsonPath": null
@@ -1558,15 +1619,6 @@
         "multiline": true,
         "jsonPath": "@description"
       },
-      "state": {
-        "type": "radio",
-        "label": "Activity state",
-        "options": [
-          "Activated",
-          "Deactivated"
-        ],
-        "jsonPath": "@state"
-      },
       "secureInput": {
         "type": "boolean",
         "label": "Secure input",
@@ -1610,16 +1662,6 @@
         "label": "Description",
         "multiline": true,
         "jsonPath": "@description"
-      },
-      "state": {
-        "type": "radio",
-        "label": "Activity state",
-        "options": [
-          "Activated",
-          "Deactivated"
-        ],
-        "default": "Activated",
-        "jsonPath": "@state"
       }
     },
     "typeProperties": {
@@ -1681,16 +1723,6 @@
         "multiline": true,
         "jsonPath": "@description"
       },
-      "state": {
-        "type": "radio",
-        "label": "Activity state",
-        "options": [
-          "Activated",
-          "Deactivated"
-        ],
-        "default": "Activated",
-        "jsonPath": "@state"
-      },
       "timeout": {
         "type": "string",
         "label": "Timeout",
@@ -1741,16 +1773,40 @@
         "required": true,
         "fieldListOptions": {
           "storage": [
-            { "value": "childItems",   "label": "Child items" },
-            { "value": "exists",       "label": "Exists" },
-            { "value": "itemName",     "label": "Item name" },
-            { "value": "itemType",     "label": "Item type" },
-            { "value": "lastModified", "label": "Last modified" }
+            {
+              "value": "childItems",
+              "label": "Child items"
+            },
+            {
+              "value": "exists",
+              "label": "Exists"
+            },
+            {
+              "value": "itemName",
+              "label": "Item name"
+            },
+            {
+              "value": "itemType",
+              "label": "Item type"
+            },
+            {
+              "value": "lastModified",
+              "label": "Last modified"
+            }
           ],
           "sql": [
-            { "value": "columnCount", "label": "Column count" },
-            { "value": "exists",      "label": "Exists" },
-            { "value": "structure",   "label": "Structure" }
+            {
+              "value": "columnCount",
+              "label": "Column count"
+            },
+            {
+              "value": "exists",
+              "label": "Exists"
+            },
+            {
+              "value": "structure",
+              "label": "Structure"
+            }
           ],
           "default": []
         },
@@ -1811,16 +1867,6 @@
         "label": "Description",
         "multiline": true,
         "jsonPath": "@description"
-      },
-      "state": {
-        "type": "radio",
-        "label": "Activity state",
-        "options": [
-          "Activated",
-          "Deactivated"
-        ],
-        "default": "Activated",
-        "jsonPath": "@state"
       },
       "timeout": {
         "type": "string",
@@ -1900,16 +1946,6 @@
         "label": "Description",
         "multiline": true,
         "jsonPath": "@description"
-      },
-      "state": {
-        "type": "radio",
-        "label": "Activity state",
-        "options": [
-          "Activated",
-          "Deactivated"
-        ],
-        "default": "Activated",
-        "jsonPath": "@state"
       },
       "timeout": {
         "type": "string",
@@ -2000,16 +2036,6 @@
         "label": "Description",
         "multiline": true,
         "jsonPath": "@description"
-      },
-      "state": {
-        "type": "radio",
-        "label": "Activity state",
-        "options": [
-          "Activated",
-          "Deactivated"
-        ],
-        "default": "Activated",
-        "jsonPath": "@state"
       },
       "timeout": {
         "type": "string",
@@ -2378,16 +2404,6 @@
         "label": "Description",
         "multiline": true,
         "jsonPath": "@description"
-      },
-      "state": {
-        "type": "radio",
-        "label": "Activity state",
-        "options": [
-          "Activated",
-          "Deactivated"
-        ],
-        "default": "Activated",
-        "jsonPath": "@state"
       },
       "secureOutput": {
         "type": "boolean",

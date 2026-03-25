@@ -35,7 +35,7 @@
         "label": "Activity state",
         "options": [
           "Activated",
-          "Inactive"
+          "Deactivated"
         ],
         "default": "Activated",
         "jsonPath": "@state"
@@ -51,7 +51,7 @@
         "default": "Succeeded",
         "conditional": {
           "field": "state",
-          "value": "Inactive"
+          "value": "Deactivated"
         },
         "jsonPath": "@onInactiveMarkAs"
       }
@@ -2013,6 +2013,13 @@
         "type": "storedprocedure-parameters",
         "label": "Stored procedure parameters",
         "jsonPath": "typeProperties.storedProcedureParameters"
+      },
+      "enforceOneTimeExecution": {
+        "type": "boolean",
+        "label": "Enforce one-time execution",
+        "default": false,
+        "omitWhenFalse": true,
+        "jsonPath": "typeProperties.enforceOneTimeExecution"
       }
     }
   },

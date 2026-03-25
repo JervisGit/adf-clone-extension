@@ -522,6 +522,11 @@ class Activity {
         if (el) el.textContent = this.name;
     }
 
+    refreshState() {
+        const isInactive = this.state === 'Inactive' || this.state === 'Deactivated';
+        this.element?.classList.toggle('inactive', isInactive);
+    }
+
     updatePosition(x, y) {
         this.x = x; this.y = y;
         if (this.element) { this.element.style.left = x + 'px'; this.element.style.top = y + 'px'; }
@@ -924,10 +929,18 @@ function _propRow(key, val) {
 // Fields hidden by `conditional` are rendered but show/hide via JS.
 function _buildFormPane(activity, fields, paneId, sharedFields) {
     console.log(`[V2] _buildFormPane pane="${paneId}" activity="${activity.type}" fields:`, Object.fromEntries(Object.entries(fields).map(([k,d]) => [k, d.type])));
-    // Merge shared fields that are not already defined in the activity's own schema
-    const mergedFields = sharedFields
-        ? Object.assign({}, fields, Object.fromEntries(Object.entries(sharedFields).filter(([k]) => !(k in fields))))
-        : fields;
+    // Merge shared fields after 'description' (or at start if no description exists)
+    let mergedFields;
+    if (sharedFields) {
+        const newShared = Object.entries(sharedFields).filter(([k]) => !(k in fields));
+        const entries = Object.entries(fields);
+        const descIdx = entries.findIndex(([k]) => k === 'description');
+        const insertAt = descIdx >= 0 ? descIdx + 1 : 0;
+        entries.splice(insertAt, 0, ...newShared);
+        mergedFields = Object.fromEntries(entries);
+    } else {
+        mergedFields = fields;
+    }
     let html = '';
     for (const [key, def] of Object.entries(mergedFields)) {
         if (def.uiOnly) continue;
@@ -1263,6 +1276,10 @@ function _wireFormInputs(container, activity) {
                 activity.refreshNameLabel();
                 document.getElementById('propertiesPanelTitle').textContent = value;
             }
+            // Update inactive shading when state changes
+            if (key === 'state') {
+                activity.refreshState();
+            }
             markAsDirty();
             _applyConditionals(container, activity);
         });
@@ -1596,12 +1613,8 @@ function _renderKvField(kvEl, activity, fieldKey, valueTypes, nullable) {
     addBtn.textContent = '+ Add';
     kvEl.appendChild(addBtn);
     addBtn.addEventListener('click', () => {
-        const existing = activity[fieldKey] || {};
-        let n = Object.keys(existing).length + 1;
-        while (('key' + n) in existing) n++;
-        const newKey = 'key' + n;
         if (!activity[fieldKey]) activity[fieldKey] = {};
-        activity[fieldKey][newKey] = { type: valueTypes[0] || 'String', value: '' };
+        activity[fieldKey][''] = { type: valueTypes[0] || 'String', value: '' };
         markAsDirty();
         _renderKvField(kvEl, activity, fieldKey, valueTypes, nullable);
     });
@@ -1706,6 +1719,7 @@ function _addKvRow(tbody, activity, fieldKey, valueTypes, key, type, value, null
         const newType = typeSelect.value;
         const data = activity[fieldKey] || {};
         if (oldKey !== newKey) delete data[oldKey];
+        // Keep '' key in memory so validation can block save; serializer strips it before writing
         data[newKey] = { type: newType, value: newType === 'Null' ? undefined : currentValue };
         activity[fieldKey] = data;
         tr.dataset.currentKey = newKey;
@@ -1867,6 +1881,7 @@ function loadPipelineFromJson(pipelineJson, flatActivities) {
             }
 
             a.refreshNameLabel();
+            a.refreshState();
 
             if (a.isContainer) {
                 const infoEl = a.element?.querySelector('[data-info-el]');

@@ -215,6 +215,8 @@ body.properties-visible .expand-properties-btn { display: none; }
 
 .activity-box.dragging { cursor: move; opacity: 0.8; z-index: 100; }
 .activity-box:hover { background: #e8e8e8; box-shadow: 0 2px 4px rgba(0,0,0,0.12); }
+.activity-box.inactive { background: #c8c8c8; border-color: #999999; opacity: 0.70; }
+.activity-box.inactive .activity-header { background: rgba(0,0,0,0.15); }
 
 .activity-box.selected {
     background: #ffffff;

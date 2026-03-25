@@ -140,8 +140,8 @@ function deserializeActivity(raw) {
 
 	// Default state to Activated when not written in JSON (e.g. TestVariables-style pipelines)
 	if (!flat.state) flat.state = 'Activated';
-	// Normalize legacy state value so UI radio always matches
-	if (flat.state === 'Deactivated') flat.state = 'Inactive';
+	// Map Inactive → Deactivated so UI radio shows "Deactivated" label
+	if (flat.state === 'Inactive') flat.state = 'Deactivated';
 
 	// Container children — preserved as raw JSON arrays until per-container editing is implemented
 	for (const group of ['typeProperties']) {
@@ -176,7 +176,7 @@ function serializeActivity(flat) {
 	const output = { name: flat.name, type: flat.type };
 
 	if (flat.description)       output.description      = flat.description;
-	// Normalize state: translate legacy "Deactivated" → "Inactive" and emit onInactiveMarkAs
+	// Normalize state: translate UI "Deactivated" → JSON "Inactive" and emit onInactiveMarkAs
 	const isInactive = flat.state === 'Inactive' || flat.state === 'Deactivated';
 	if (isInactive) {
 		output.state            = 'Inactive';
@@ -205,8 +205,15 @@ function serializeActivity(flat) {
 				if (condVal !== undefined && !isConditionMet(def.conditional, flat)) continue;
 			}
 
-			const value = flat[key];
+			let value = flat[key];
+			// Strip empty-key entries from KV-type objects before writing
+			if ((def.type === 'keyvalue' || def.type === 'storedprocedure-parameters') && value && typeof value === 'object') {
+				value = Object.fromEntries(Object.entries(value).filter(([k]) => k.trim() !== ''));
+				if (Object.keys(value).length === 0) continue;
+			}
 			if (value !== undefined && value !== null && value !== '') {
+				// Omit boolean fields marked omitWhenFalse when their value is false
+				if (def.omitWhenFalse && value === false) continue;
 				setByPath(output, def.jsonPath, value);
 			}
 		}
@@ -310,13 +317,28 @@ function validateActivity(flat) {
 		const fields = schema[group];
 		if (!fields) continue;
 		for (const [key, def] of Object.entries(fields)) {
-			if (!def.required) continue;
-			if (def.conditional && !isConditionMet(def.conditional, flat)) continue;
-			const value = flat[key];
-			const isEmpty = value === undefined || value === null || value === ''
-				|| (Array.isArray(value) && value.length === 0);
-			if (isEmpty) {
-				errors.push(`"${def.label || key}" is required`);
+			// Check required fields
+			if (def.required) {
+				if (!def.conditional || isConditionMet(def.conditional, flat)) {
+					const value = flat[key];
+					const isEmpty = value === undefined || value === null || value === ''
+						|| (Array.isArray(value) && value.length === 0);
+					if (isEmpty) {
+						errors.push(`"${def.label || key}" is required`);
+					}
+				}
+			}
+			// Check KV-type fields for empty parameter names (regardless of required flag)
+			if (def.type === 'keyvalue' || def.type === 'storedprocedure-parameters') {
+				const value = flat[key];
+				if (value && typeof value === 'object') {
+					for (const k of Object.keys(value)) {
+						if (!k || !k.trim()) {
+							errors.push(`"${def.label || key}" has a parameter with an empty name — please fill it in or delete the row`);
+							break;
+						}
+					}
+				}
 			}
 		}
 	}

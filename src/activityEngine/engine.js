@@ -340,13 +340,27 @@ function validateActivity(flat) {
 					}
 				}
 			}
-			// Check script-array: each script must have non-empty text
+			// Check script-array: each script must have non-empty text and valid parameters
 			if (def.type === 'script-array') {
 				const scripts = flat[key];
 				if (Array.isArray(scripts)) {
 					scripts.forEach((s, i) => {
 						if (!s.text || !s.text.trim()) {
 							errors.push(`Script ${i + 1}: text cannot be empty`);
+						}
+						// Validate parameters for each script
+						if (Array.isArray(s.parameters)) {
+							s.parameters.forEach((p, j) => {
+								// Name is required
+								// if (!p.name || !p.name.trim()) {
+								// 	errors.push(`Script ${i + 1} parameter ${j + 1}: name is required`);
+								// }
+								// For Output/InputOutput and String/Byte[] types, Size is required
+								const needsSize = (p.direction === 'Output' || p.direction === 'InputOutput') && (p.type === 'String' || p.type === 'Byte[]');
+								if (needsSize && (p.size === undefined || p.size === null || p.size === '' || isNaN(p.size))) {
+									errors.push(`Script ${i + 1} parameter ${j + 1}: Size is required for Output/InputOutput String or Byte[]`);
+								}
+							});
 						}
 					});
 				}

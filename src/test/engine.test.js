@@ -1700,6 +1700,53 @@ describe('Script', () => {
         delete flat.scripts;
         expect(engine.validateActivity(flat).some(e => /script/i.test(e))).toBe(true);
     });
+
+    test('validation: script with empty text is an error', () => {
+        const flat = engine.deserializeActivity({ ...rawScript, typeProperties: { scripts: [{ type: 'Query', text: '' }] } });
+        expect(engine.validateActivity(flat).some(e => /text cannot be empty/i.test(e))).toBe(true);
+    });
+
+    test('validation: script with whitespace-only text is an error', () => {
+        const flat = engine.deserializeActivity({ ...rawScript, typeProperties: { scripts: [{ type: 'Query', text: '   ' }] } });
+        expect(engine.validateActivity(flat).some(e => /text cannot be empty/i.test(e))).toBe(true);
+    });
+
+    test('validation: script with valid text passes', () => {
+        const flat = engine.deserializeActivity(rawScript);
+        expect(engine.validateActivity(flat).filter(e => /text cannot be empty/i.test(e))).toHaveLength(0);
+    });
+
+    test('deserialize: reads script parameters', () => {
+        const raw = { ...rawScript, typeProperties: { scripts: [{ type: 'Query', text: 'SELECT 1', parameters: [{ name: 'p1', type: 'String', value: 'hello', direction: 'Input' }] }] } };
+        const flat = engine.deserializeActivity(raw);
+        expect(flat.scripts[0].parameters[0]).toEqual({ name: 'p1', type: 'String', value: 'hello', direction: 'Input' });
+    });
+
+    test('serialize: scripts with parameters writes parameters array', () => {
+        const raw = { ...rawScript, typeProperties: { scripts: [{ type: 'Query', text: 'SELECT 1', parameters: [{ name: 'p1', type: 'String', value: 'hello', direction: 'Input' }] }] } };
+        const flat = engine.deserializeActivity(raw);
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.scripts[0].parameters).toEqual([{ name: 'p1', type: 'String', value: 'hello', direction: 'Input' }]);
+    });
+
+    test('serialize: script parameter with null value preserves null', () => {
+        const raw = { ...rawScript, typeProperties: { scripts: [{ type: 'Query', text: 'SELECT 1', parameters: [{ name: 'p1', type: 'String', value: null, direction: 'Input' }] }] } };
+        const flat = engine.deserializeActivity(raw);
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.scripts[0].parameters[0].value).toBeNull();
+    });
+
+    test('serialize: script parameter with Output+String writes size', () => {
+        const raw = { ...rawScript, typeProperties: { scripts: [{ type: 'NonQuery', text: 'EXEC sp', parameters: [{ name: 'out1', type: 'String', value: null, direction: 'Output', size: 50 }] }] } };
+        const flat = engine.deserializeActivity(raw);
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.scripts[0].parameters[0].size).toBe(50);
+    });
+
+    test('round-trip with parameters stable', () => {
+        const raw = { ...rawScript, typeProperties: { scripts: [{ type: 'Query', text: 'SELECT 1', parameters: [{ name: 'p1', type: 'Int32', value: '42', direction: 'Input' }] }] } };
+        expect(stableFlat(roundTrip(raw))).toEqual(stableFlat(engine.deserializeActivity(raw)));
+    });
 });
 
 // ─── SqlServerStoredProcedure ─────────────────────────────────────────────────
@@ -1758,6 +1805,36 @@ describe('SqlServerStoredProcedure', () => {
     test('validation: missing storedProcedureName is an error', () => {
         const flat = engine.deserializeActivity({ ...rawSP, typeProperties: {} });
         expect(engine.validateActivity(flat).some(e => /procedure/i.test(e))).toBe(true);
+    });
+
+    test('validation: empty-key storedProcedureParameters is an error', () => {
+        const flat = engine.deserializeActivity({ ...rawSP, typeProperties: { storedProcedureName: 'dbo.MyProc', storedProcedureParameters: { '': { value: 'x', type: 'String' } } } });
+        expect(engine.validateActivity(flat).some(e => /empty/i.test(e))).toBe(true);
+    });
+
+    test('validation: named storedProcedureParameters passes', () => {
+        const flat = engine.deserializeActivity(rawSP);
+        expect(engine.validateActivity(flat).filter(e => /empty/i.test(e))).toHaveLength(0);
+    });
+
+    test('serialize: enforceOneTimeExecution true is written to JSON', () => {
+        const flat = engine.deserializeActivity({ ...rawSP, typeProperties: { storedProcedureName: 'dbo.MyProc', enforceOneTimeExecution: true } });
+        flat.enforceOneTimeExecution = true;
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.enforceOneTimeExecution).toBe(true);
+    });
+
+    test('serialize: enforceOneTimeExecution false is omitted from JSON', () => {
+        const flat = engine.deserializeActivity(rawSP);
+        flat.enforceOneTimeExecution = false;
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties).not.toHaveProperty('enforceOneTimeExecution');
+    });
+
+    test('serialize: strips empty-key parameter and does not write to JSON', () => {
+        const flat = engine.deserializeActivity({ ...rawSP, typeProperties: { storedProcedureName: 'dbo.MyProc', storedProcedureParameters: { '': { value: 'x', type: 'String' } } } });
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.storedProcedureParameters).toBeUndefined();
     });
 });
 

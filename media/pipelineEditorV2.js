@@ -1068,14 +1068,15 @@ function _buildFormPane(activity, fields, paneId, sharedFields) {
             case 'script-array': {
                 const scripts = Array.isArray(val) ? val : [];
                 html += `<div class="form-script-array" data-script-key="${escHtml(key)}"><div class="form-script-rows">`;
-                for (const s of scripts) {
+                scripts.forEach((s, si) => {
                     html += `<div class="form-script-row" style="border:1px solid var(--vscode-panel-border);border-radius:3px;padding:6px;margin-bottom:6px;">`
-                        + `<div style="display:flex;gap:4px;margin-bottom:4px;align-items:center;">`
-                        + `<select class="form-select form-script-type" style="width:110px;"><option value="Query"${s.type === 'Query' ? ' selected' : ''}>Query</option><option value="NonQuery"${s.type === 'NonQuery' ? ' selected' : ''}>NonQuery</option></select>`
+                        + `<div style="display:flex;gap:12px;margin-bottom:4px;align-items:center;">`
+                        + `<label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:12px;"><input type="radio" class="form-script-type" name="stype-${escHtml(key)}-${si}" value="Query"${s.type !== 'NonQuery' ? ' checked' : ''}> Query</label>`
+                        + `<label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:12px;"><input type="radio" class="form-script-type" name="stype-${escHtml(key)}-${si}" value="NonQuery"${s.type === 'NonQuery' ? ' checked' : ''}> NonQuery</label>`
                         + `<button class="form-script-remove action-icon-btn" style="margin-left:auto;" title="Remove">×</button>`
                         + `</div><textarea class="form-textarea form-script-text" rows="3" placeholder="Enter SQL script...">${escHtml(s.text || '')}</textarea></div>`;
-                }
-                html += `</div><button class="form-script-add" style="font-size:11px;padding:2px 8px;margin-top:2px;">+ Add script</button></div>`;
+                });
+                html += `</div><button class="form-script-add form-kv-add-btn" style="margin-top:4px;">+ Add script</button></div>`;
                 break;
             }
             case 'text':
@@ -1466,38 +1467,126 @@ function _wireNotebookSelects(container, activity) {
     });
 }
 
+const _SCRIPT_PARAM_TYPES = ['Boolean','Byte[]','Datetime','Datetimeoffset','Decimal','Double','Guid','Int16','Int32','Int64','Single','String','Timespan'];
+
 function _wireScriptArrayFields(container, activity) {
     container.querySelectorAll('.form-script-array').forEach(scriptArray => {
         const key = scriptArray.dataset.scriptKey;
         if (!key) return;
 
         function readBack() {
-            activity[key] = Array.from(scriptArray.querySelectorAll('.form-script-row')).map(row => ({
-                type: row.querySelector('.form-script-type').value,
-                text: row.querySelector('.form-script-text').value,
-            }));
+            activity[key] = Array.from(scriptArray.querySelectorAll('.form-script-row')).map(row => {
+                const entry = {
+                    type: row.querySelector('.form-script-type:checked')?.value || 'Query',
+                    text: row.querySelector('.form-script-text').value,
+                };
+                if (row._scriptParams && row._scriptParams.length > 0) entry.parameters = row._scriptParams;
+                return entry;
+            });
             markAsDirty();
         }
 
-        function wireRow(row) {
-            row.querySelector('.form-script-type').addEventListener('change', readBack);
-            row.querySelector('.form-script-text').addEventListener('input', readBack);
-            row.querySelector('.form-script-remove').addEventListener('click', () => { row.remove(); readBack(); });
+        function buildParamsUI(row) {
+            const old = row.querySelector('.form-script-params-section');
+            if (old) old.remove();
+
+            const section = document.createElement('div');
+            section.className = 'form-script-params-section';
+            section.style.cssText = 'margin-top:8px;border-top:1px solid var(--vscode-panel-border);padding-top:6px;';
+            const hdr = document.createElement('div');
+            hdr.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;';
+            hdr.innerHTML = '<span style="font-size:11px;font-weight:600;">Parameters</span>';
+            const addParamBtn = document.createElement('button');
+            addParamBtn.className = 'form-kv-add-btn'; addParamBtn.type = 'button';
+            addParamBtn.textContent = '+ Add parameter';
+            hdr.appendChild(addParamBtn); section.appendChild(hdr);
+
+            const table = document.createElement('table');
+            table.className = 'form-kv-table'; table.style.cssText = 'width:100%;font-size:11px;';
+            table.innerHTML = '<thead><tr><th>Name</th><th>Type</th><th>Value</th><th>Null</th><th>Direction</th><th>Size</th><th></th></tr></thead>';
+            const tbody = document.createElement('tbody');
+            table.appendChild(tbody); section.appendChild(table);
+
+            const syncParams = () => {
+                row._scriptParams = Array.from(tbody.querySelectorAll('tr')).map(tr => {
+                    const type = tr.querySelector('.sp-type').value, dir = tr.querySelector('.sp-direction').value;
+                    const isNull = tr.querySelector('.sp-null').checked, rawSize = tr.querySelector('.sp-size').value;
+                    const obj = { name: tr.querySelector('.sp-name').value, type, value: isNull ? null : tr.querySelector('.sp-value').value, direction: dir };
+                    if ((dir === 'Output' || dir === 'InputOutput') && (type === 'String' || type === 'Byte[]') && rawSize) obj.size = parseInt(rawSize, 10);
+                    return obj;
+                });
+                readBack();
+            };
+
+            const addParamRow = (p) => {
+                p = p || { name: '', type: 'String', value: '', direction: 'Input' };
+                const isByte = p.type === 'Byte[]', isNull = p.value === null;
+                const showSize = (p.direction === 'Output' || p.direction === 'InputOutput') && (p.type === 'String' || isByte);
+                const tr = document.createElement('tr');
+
+                const nameIn     = _appendTd(tr, _mkInput('text',   'sp-name',      p.name || '',        'Name'));
+                const typeSelect = _appendTd(tr, _mkSelect(          'sp-type',      _SCRIPT_PARAM_TYPES, p.type || 'String'));
+                const valIn      = _appendTd(tr, _mkInput('text',    'sp-value',     isNull ? '' : (p.value ?? ''), 'Value'));
+                if (isNull) valIn.disabled = true;
+                const nullCk = document.createElement('input'); nullCk.type = 'checkbox'; nullCk.className = 'sp-null'; if (isNull) nullCk.checked = true;
+                _appendTd(tr, nullCk, 'text-align:center');
+                const dirSel     = _appendTd(tr, _mkSelect(          'sp-direction', ['Input', 'Output', 'InputOutput'], p.direction || 'Input'));
+                if (isByte) { dirSel.options[0].disabled = true; dirSel.options[2].disabled = true; }
+                const sizeIn     = _appendTd(tr, _mkInput('number',  'sp-size',      p.size ?? '',        'Size'));
+                sizeIn.style.width = '60px';
+                if (!showSize) { sizeIn.disabled = true; sizeIn.style.opacity = '0.4'; }
+                const rmBtn = document.createElement('button');
+                rmBtn.className = 'action-icon-btn'; rmBtn.type = 'button'; rmBtn.title = 'Remove'; rmBtn.textContent = '×';
+                _appendTd(tr, rmBtn);
+
+                const updateSize = () => {
+                    const en = (dirSel.value === 'Output' || dirSel.value === 'InputOutput') && (typeSelect.value === 'String' || typeSelect.value === 'Byte[]');
+                    sizeIn.disabled = !en; sizeIn.style.opacity = en ? '' : '0.4'; if (!en) sizeIn.value = '';
+                };
+                const updateDir = () => {
+                    const b = typeSelect.value === 'Byte[]';
+                    dirSel.options[0].disabled = b; dirSel.options[2].disabled = b;
+                    if (b && (dirSel.value === 'Input' || dirSel.value === 'InputOutput')) dirSel.value = 'Output';
+                };
+                nullCk.addEventListener('change', () => { valIn.disabled = nullCk.checked; if (nullCk.checked) valIn.value = ''; syncParams(); });
+                typeSelect.addEventListener('change', () => { updateDir(); updateSize(); syncParams(); });
+                dirSel.addEventListener('change', () => { updateSize(); syncParams(); });
+                [nameIn, valIn, sizeIn].forEach(el => el.addEventListener('input', syncParams));
+                rmBtn.addEventListener('click', () => { tr.remove(); syncParams(); });
+                tbody.appendChild(tr);
+            };
+
+            for (const p of (row._scriptParams || [])) addParamRow(p);
+            addParamBtn.addEventListener('click', () => { addParamRow(null); syncParams(); });
+            row.appendChild(section);
         }
 
-        scriptArray.querySelectorAll('.form-script-row').forEach(wireRow);
+        function wireRow(row, existingParams) {
+            row._scriptParams = existingParams || [];
+            row.querySelectorAll('.form-script-type').forEach(r => r.addEventListener('change', readBack));
+            row.querySelector('.form-script-text').addEventListener('input', readBack);
+            row.querySelector('.form-script-remove').addEventListener('click', () => { row.remove(); readBack(); });
+            buildParamsUI(row);
+        }
+
+        scriptArray.querySelectorAll('.form-script-row').forEach((row, ri) => {
+            const existing = (activity[key] || [])[ri]?.parameters || [];
+            wireRow(row, existing);
+        });
 
         scriptArray.querySelector('.form-script-add').addEventListener('click', () => {
             const rowsEl = scriptArray.querySelector('.form-script-rows');
+            const uid = key + '-' + Date.now();
             const row = document.createElement('div');
             row.className = 'form-script-row';
             row.style.cssText = 'border:1px solid var(--vscode-panel-border);border-radius:3px;padding:6px;margin-bottom:6px;';
-            row.innerHTML = `<div style="display:flex;gap:4px;margin-bottom:4px;align-items:center;">` +
-                `<select class="form-select form-script-type" style="width:110px;"><option value="Query">Query</option><option value="NonQuery">NonQuery</option></select>` +
+            row.innerHTML = `<div style="display:flex;gap:12px;margin-bottom:4px;align-items:center;">` +
+                `<label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:12px;"><input type="radio" class="form-script-type" name="stype-${uid}" value="Query" checked> Query</label>` +
+                `<label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:12px;"><input type="radio" class="form-script-type" name="stype-${uid}" value="NonQuery"> NonQuery</label>` +
                 `<button class="form-script-remove action-icon-btn" style="margin-left:auto;" title="Remove">\u00d7</button>` +
                 `</div><textarea class="form-textarea form-script-text" rows="3" placeholder="Enter SQL script..."></textarea>`;
             rowsEl.appendChild(row);
-            wireRow(row);
+            wireRow(row, []);
             readBack();
         });
     });
@@ -1686,31 +1775,36 @@ function _makeKvValueWidget(type, value, onChange) {
     return el;
 }
 
+// ─── Shared micro DOM helpers ─────────────────────────────────────────────────
+function _mkInput(type, cls, val, placeholder) {
+    const el = document.createElement('input');
+    el.type = type; el.className = 'form-input form-kv-cell' + (cls ? ' ' + cls : '');
+    el.value = val ?? ''; if (placeholder) el.placeholder = placeholder;
+    return el;
+}
+function _mkSelect(cls, options, current) {
+    const sel = document.createElement('select');
+    sel.className = 'form-select form-kv-cell' + (cls ? ' ' + cls : '');
+    for (const opt of options) {
+        const o = document.createElement('option'); o.value = opt; o.textContent = opt;
+        if (opt === current) o.selected = true; sel.appendChild(o);
+    }
+    return sel;
+}
+function _appendTd(tr, el, tdStyle) {
+    const td = document.createElement('td'); if (tdStyle) td.style.cssText = tdStyle;
+    td.appendChild(el); tr.appendChild(td); return el;
+}
+
 function _addKvRow(tbody, activity, fieldKey, valueTypes, key, type, value, nullable) {
     const tr = document.createElement('tr');
     tr.dataset.currentKey = key;
 
-    // Key
-    const keyInput = document.createElement('input');
-    keyInput.type = 'text'; keyInput.className = 'form-input form-kv-cell'; keyInput.value = key;
-    const keyTd = document.createElement('td');
-    keyTd.appendChild(keyInput); tr.appendChild(keyTd);
+    const keyInput   = _appendTd(tr, _mkInput('text', '', key));
+    const typeSelect = _appendTd(tr, _mkSelect('', valueTypes, type));
 
-    // Type
-    const typeSelect = document.createElement('select');
-    typeSelect.className = 'form-select form-kv-cell';
-    for (const t of valueTypes) {
-        const opt = document.createElement('option');
-        opt.value = t; opt.textContent = t;
-        if (t === type) opt.selected = true;
-        typeSelect.appendChild(opt);
-    }
-    const typeTd = document.createElement('td');
-    typeTd.appendChild(typeSelect); tr.appendChild(typeTd);
-
-    // Value — rebuilt when type changes
-    const valTd = document.createElement('td');
-    tr.appendChild(valTd);
+    // Value cell — rebuilt when type or null changes
+    const valTd = document.createElement('td'); tr.appendChild(valTd);
     let isNull = nullable && value === null;
     let currentValue = isNull ? null : value;
     const syncData = () => {
@@ -1728,57 +1822,42 @@ function _addKvRow(tbody, activity, fieldKey, valueTypes, key, type, value, null
     const rebuildValueCell = (newType, newValue) => {
         valTd.innerHTML = '';
         if (isNull) {
-            const dis = document.createElement('input');
-            dis.type = 'text'; dis.className = 'form-input form-kv-cell'; dis.disabled = true; dis.value = '';
-            valTd.appendChild(dis);
+            const dis = _mkInput('text', '', ''); dis.disabled = true; valTd.appendChild(dis);
         } else {
             valTd.appendChild(_makeKvValueWidget(newType, newValue, (v) => { currentValue = v; syncData(); }));
         }
     };
     rebuildValueCell(type, value);
 
-    // Null checkbox (nullable fields only)
     if (nullable) {
         const nullCheck = document.createElement('input');
         nullCheck.type = 'checkbox'; nullCheck.title = 'Treat as null'; nullCheck.checked = isNull;
-        nullCheck.style.margin = '0 auto'; nullCheck.style.display = 'block';
-        const nullTd = document.createElement('td'); nullTd.style.textAlign = 'center';
-        nullTd.appendChild(nullCheck); tr.appendChild(nullTd);
+        nullCheck.style.cssText = 'margin:0 auto;display:block;';
+        _appendTd(tr, nullCheck, 'text-align:center');
         nullCheck.addEventListener('change', () => {
             isNull = nullCheck.checked;
-            if (isNull) {
-                currentValue = null;
-            } else {
-                const t = typeSelect.value;
-                currentValue = t === 'Boolean' ? true : t === 'Array' ? [] : '';
-            }
+            currentValue = isNull ? null : (typeSelect.value === 'Boolean' ? true : typeSelect.value === 'Array' ? [] : '');
             rebuildValueCell(typeSelect.value, currentValue);
             syncData();
         });
     }
 
-    // Delete
     const delBtn = document.createElement('button');
     delBtn.className = 'action-icon-btn'; delBtn.textContent = '×';
-    const delTd = document.createElement('td');
-    delTd.appendChild(delBtn); tr.appendChild(delTd);
-
+    _appendTd(tr, delBtn);
     tbody.appendChild(tr);
 
     keyInput.addEventListener('input', syncData);
     typeSelect.addEventListener('change', () => {
         const newType = typeSelect.value;
-        if (!isNull) {
-            currentValue = newType === 'Boolean' ? true : newType === 'Array' ? [] : '';
-        }
+        if (!isNull) currentValue = newType === 'Boolean' ? true : newType === 'Array' ? [] : '';
         rebuildValueCell(newType, currentValue);
         syncData();
     });
     delBtn.addEventListener('click', () => {
         const data = activity[fieldKey] || {};
         delete data[tr.dataset.currentKey];
-        activity[fieldKey] = data;
-        markAsDirty(); tr.remove();
+        activity[fieldKey] = data; markAsDirty(); tr.remove();
     });
 }
 

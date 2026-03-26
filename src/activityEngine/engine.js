@@ -340,6 +340,17 @@ function validateActivity(flat) {
 					}
 				}
 			}
+			// Check script-array: each script must have non-empty text
+			if (def.type === 'script-array') {
+				const scripts = flat[key];
+				if (Array.isArray(scripts)) {
+					scripts.forEach((s, i) => {
+						if (!s.text || !s.text.trim()) {
+							errors.push(`Script ${i + 1}: text cannot be empty`);
+						}
+					});
+				}
+			}
 		}
 	}
 	return errors;

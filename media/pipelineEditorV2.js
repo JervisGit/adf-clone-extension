@@ -1809,10 +1809,18 @@ function _addKvRow(tbody, activity, fieldKey, valueTypes, key, type, value, null
     let currentValue = isNull ? null : value;
     const syncData = () => {
         const oldKey = tr.dataset.currentKey;
-        const newKey = keyInput.value.trim() || oldKey;
+        const newKey = keyInput.value.trim();
         const newType = typeSelect.value;
         const data = activity[fieldKey] || {};
         if (oldKey !== newKey) delete data[oldKey];
+        if (newKey === '') {
+            // Remove the entry and the row if key is empty
+            delete data[oldKey];
+            activity[fieldKey] = data;
+            markAsDirty();
+            tr.remove();
+            return;
+        }
         // Keep '' key in memory so validation can block save; serializer strips it before writing
         data[newKey] = { type: newType, value: newType === 'Null' ? undefined : currentValue };
         activity[fieldKey] = data;

@@ -367,6 +367,27 @@ function validateActivity(flat) {
 					});
 				}
 			}
+			// Check web-headers: each header must have a non-empty name and value; no duplicate names
+			if (def.type === 'web-headers') {
+				const headers = flat[key];
+				if (Array.isArray(headers)) {
+					const seen = new Set();
+					headers.forEach((h, i) => {
+						if (!h.name || !String(h.name).trim()) {
+							errors.push(`Header ${i + 1}: name is required`);
+						} else if (!h.value && h.value !== 0) {
+							errors.push(`Header ${i + 1} ("${h.name}"): value is required`);
+						} else {
+							const lower = String(h.name).trim().toLowerCase();
+							if (seen.has(lower)) {
+								errors.push(`Duplicate header name: "${h.name}"`);
+							} else {
+								seen.add(lower);
+							}
+						}
+					});
+				}
+			}
 		}
 	}
 	return errors;

@@ -946,7 +946,7 @@ function _buildFormPane(activity, fields, paneId, sharedFields) {
     }
     let html = '';
     for (const [key, def] of Object.entries(mergedFields)) {
-        if (def.uiOnly) continue;
+        if (def.uiOnly && !def.type) continue; // skip sentinel-only marker fields (no renderable type)
         if (def.type === 'containerActivities' || def.type === 'switchCases') continue;
         const val = activity[key] ?? def.default ?? '';
         console.log(`[V2]   field "${key}" type="${def.type}" val=`, val);

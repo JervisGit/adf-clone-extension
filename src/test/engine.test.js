@@ -2185,6 +2185,36 @@ describe('WebActivity', () => {
         const errs = engine.validateActivity(flat);
         expect(errs.some(e => /tenant/i.test(e))).toBe(false);
     });
+
+    test('validation: header with missing name is an error', () => {
+        const flat = engine.deserializeActivity(base);
+        flat.headers = [{ name: '', value: 'v1' }];
+        expect(engine.validateActivity(flat).some(e => /name.*required/i.test(e))).toBe(true);
+    });
+
+    test('validation: header with missing value is an error', () => {
+        const flat = engine.deserializeActivity(base);
+        flat.headers = [{ name: 'X-My-Header', value: '' }];
+        expect(engine.validateActivity(flat).some(e => /value.*required/i.test(e))).toBe(true);
+    });
+
+    test('validation: duplicate header names are an error', () => {
+        const flat = engine.deserializeActivity(base);
+        flat.headers = [{ name: 'X-Hdr', value: 'a' }, { name: 'X-Hdr', value: 'b' }];
+        expect(engine.validateActivity(flat).some(e => /duplicate/i.test(e))).toBe(true);
+    });
+
+    test('validation: duplicate header names are case-insensitive', () => {
+        const flat = engine.deserializeActivity(base);
+        flat.headers = [{ name: 'X-HDR', value: 'a' }, { name: 'x-hdr', value: 'b' }];
+        expect(engine.validateActivity(flat).some(e => /duplicate/i.test(e))).toBe(true);
+    });
+
+    test('validation: valid headers pass', () => {
+        const flat = engine.deserializeActivity(base);
+        flat.headers = [{ name: 'Content-Type', value: 'application/json' }, { name: 'X-Custom', value: 'val' }];
+        expect(engine.validateActivity(flat)).toHaveLength(0);
+    });
 });
 
 // ─── WebHook ──────────────────────────────────────────────────────────────────
@@ -2279,5 +2309,17 @@ describe('WebHook', () => {
     test('validation: valid activity passes', () => {
         const flat = engine.deserializeActivity(base);
         expect(engine.validateActivity(flat)).toHaveLength(0);
+    });
+
+    test('validation: WebHook header missing name is an error', () => {
+        const flat = engine.deserializeActivity(base);
+        flat.headers = [{ name: '', value: 'v' }];
+        expect(engine.validateActivity(flat).some(e => /name.*required/i.test(e))).toBe(true);
+    });
+
+    test('validation: WebHook duplicate headers are an error', () => {
+        const flat = engine.deserializeActivity(base);
+        flat.headers = [{ name: 'Authorization', value: 'a' }, { name: 'Authorization', value: 'b' }];
+        expect(engine.validateActivity(flat).some(e => /duplicate/i.test(e))).toBe(true);
     });
 });

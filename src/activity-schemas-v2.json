@@ -2100,6 +2100,7 @@
           "DELETE",
           "PATCH"
         ],
+        "default": "GET",
         "placeholder": "Select method...",
         "jsonPath": "typeProperties.method"
       },

@@ -5,6 +5,7 @@ const activitiesConfig = require('./activities-config-verified.json');
 const activitySchemas = require('./activity-schemas-v2.json');
 const copyActivityConfig = require('./copy-activity-config.json');
 const engine = require('./activityEngine/engine');
+const irConfig = require('./ir-config.json');
 
 class PipelineEditorV2Provider {
 	static panels = new Map();           // Map<filePath, panel>
@@ -120,6 +121,19 @@ class PipelineEditorV2Provider {
 								message.activities,
 								message.connections
 							);
+							// Inject connectVia for WebActivity (V1 compatibility — always written)
+							const irName = irConfig?.integrationRuntime?.name;
+							if (irName && pipelineJson.properties?.activities) {
+								for (const act of pipelineJson.properties.activities) {
+									if (act.type === 'WebActivity') {
+										if (!act.typeProperties) act.typeProperties = {};
+										act.typeProperties.connectVia = {
+											referenceName: irName,
+											type: 'IntegrationRuntimeReference',
+										};
+									}
+								}
+							}
 							if (!filePath) throw new Error('No file path associated with this panel');
 							fs.writeFileSync(filePath, JSON.stringify(pipelineJson, null, 4), 'utf8');
 						// Rename file on disk if pipeline name changed

@@ -1886,3 +1886,398 @@ describe('validateActivityList', () => {
         expect(errs['Append2']).toBeUndefined();
     });
 });
+
+// ─── WebActivity ──────────────────────────────────────────────────────────────
+
+describe('WebActivity', () => {
+    const base = {
+        name: 'Web1', type: 'WebActivity', dependsOn: [], userProperties: [],
+        policy: { timeout: '0.12:00:00', retry: 0, retryIntervalInSeconds: 30, secureOutput: false, secureInput: false },
+        typeProperties: { url: 'https://example.com', method: 'GET' },
+    };
+
+    // ── None auth ─────────────────────────────────────────────────────────────
+    test('deserialize: reads url and method', () => {
+        const flat = engine.deserializeActivity(base);
+        expect(flat.url).toBe('https://example.com');
+        expect(flat.method).toBe('GET');
+    });
+
+    test('deserialize: no auth → authenticationType None', () => {
+        const flat = engine.deserializeActivity(base);
+        expect(flat.authenticationType).toBe('None');
+    });
+
+    test('serialize: writes url and method', () => {
+        const flat = engine.deserializeActivity(base);
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.url).toBe('https://example.com');
+        expect(out.typeProperties.method).toBe('GET');
+    });
+
+    test('serialize: no authentication key when auth is None', () => {
+        const flat = engine.deserializeActivity(base);
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.authentication).toBeUndefined();
+    });
+
+    test('round-trip stable (GET, no auth)', () => {
+        expect(stableFlat(roundTrip(base))).toEqual(stableFlat(engine.deserializeActivity(base)));
+    });
+
+    // ── Body conditional ──────────────────────────────────────────────────────
+    test('serialize: body written for POST', () => {
+        const raw = { ...base, typeProperties: { url: 'https://x.com', method: 'POST', body: '{"key":"val"}' } };
+        const flat = engine.deserializeActivity(raw);
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.body).toBe('{"key":"val"}');
+    });
+
+    // ── Headers ───────────────────────────────────────────────────────────────
+    test('deserialize: headers object → array', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, headers: { 'Content-Type': 'application/json' } } };
+        const flat = engine.deserializeActivity(raw);
+        expect(flat.headers).toEqual([{ name: 'Content-Type', value: 'application/json' }]);
+    });
+
+    test('serialize: headers array → object', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, headers: { 'X-Custom': 'abc' } } };
+        const flat = engine.deserializeActivity(raw);
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.headers).toEqual({ 'X-Custom': 'abc' });
+    });
+
+    test('serialize: empty headers not written', () => {
+        const flat = engine.deserializeActivity(base);
+        flat.headers = [];
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.headers).toBeUndefined();
+    });
+
+    // ── Advanced fields ───────────────────────────────────────────────────────
+    test('deserialize: reads disableAsyncPattern from turnOffAsync', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, turnOffAsync: true } };
+        const flat = engine.deserializeActivity(raw);
+        expect(flat.disableAsyncPattern).toBe(true);
+    });
+
+    test('serialize: disableAsyncPattern → turnOffAsync', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, turnOffAsync: true } };
+        const flat = engine.deserializeActivity(raw);
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.turnOffAsync).toBe(true);
+        expect(out.typeProperties.disableAsyncPattern).toBeUndefined();
+    });
+
+    test('serialize: omits turnOffAsync when false', () => {
+        const flat = engine.deserializeActivity(base);
+        flat.disableAsyncPattern = false;
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.turnOffAsync).toBeUndefined();
+    });
+
+    test('serialize: omits disableCertValidation when false', () => {
+        const flat = engine.deserializeActivity(base);
+        flat.disableCertValidation = false;
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.disableCertValidation).toBeUndefined();
+    });
+
+    test('serialize: writes disableCertValidation when true', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, disableCertValidation: true } };
+        const flat = engine.deserializeActivity(raw);
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.disableCertValidation).toBe(true);
+    });
+
+    // ── Basic auth ────────────────────────────────────────────────────────────
+    test('deserialize: Basic auth reads username and password', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, authentication: { type: 'Basic', username: 'usr', password: 'pwd' } } };
+        const flat = engine.deserializeActivity(raw);
+        expect(flat.authenticationType).toBe('Basic');
+        expect(flat.username).toBe('usr');
+        expect(flat.password).toBe('pwd');
+    });
+
+    test('serialize: Basic auth writes correct structure', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, authentication: { type: 'Basic', username: 'usr', password: 'pwd' } } };
+        const flat = engine.deserializeActivity(raw);
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.authentication).toEqual({ type: 'Basic', username: 'usr', password: 'pwd' });
+    });
+
+    test('round-trip stable (Basic auth)', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, authentication: { type: 'Basic', username: 'usr', password: 'pwd' } } };
+        expect(stableFlat(roundTrip(raw))).toEqual(stableFlat(engine.deserializeActivity(raw)));
+    });
+
+    // ── MSI auth ──────────────────────────────────────────────────────────────
+    test('deserialize: MSI auth reads resource', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, authentication: { type: 'MSI', resource: 'https://storage.azure.com' } } };
+        const flat = engine.deserializeActivity(raw);
+        expect(flat.authenticationType).toBe('MSI');
+        expect(flat.resource).toBe('https://storage.azure.com');
+    });
+
+    test('serialize: MSI auth writes correct structure', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, authentication: { type: 'MSI', resource: 'https://storage.azure.com' } } };
+        const flat = engine.deserializeActivity(raw);
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.authentication).toEqual({ type: 'MSI', resource: 'https://storage.azure.com' });
+    });
+
+    // ── ClientCertificate auth ────────────────────────────────────────────────
+    test('deserialize: ClientCertificate reads pfx and pfxPassword (from password)', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, authentication: { type: 'ClientCertificate', pfx: 'base64cert', password: 'certpass' } } };
+        const flat = engine.deserializeActivity(raw);
+        expect(flat.authenticationType).toBe('ClientCertificate');
+        expect(flat.pfx).toBe('base64cert');
+        expect(flat.pfxPassword).toBe('certpass');
+    });
+
+    test('serialize: ClientCertificate writes pfx and password', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, authentication: { type: 'ClientCertificate', pfx: 'base64cert', password: 'certpass' } } };
+        const flat = engine.deserializeActivity(raw);
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.authentication.pfx).toBe('base64cert');
+        expect(out.typeProperties.authentication.password).toBe('certpass');
+        expect(out.typeProperties.authentication.type).toBe('ClientCertificate');
+    });
+
+    test('round-trip stable (ClientCertificate)', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, authentication: { type: 'ClientCertificate', pfx: 'b64', password: 'pw' } } };
+        expect(stableFlat(roundTrip(raw))).toEqual(stableFlat(engine.deserializeActivity(raw)));
+    });
+
+    // ── ServicePrincipal Inline key ────────────────────────────────────────────
+    test('deserialize: SP Inline reads userTenant→tenant and username→servicePrincipalId', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, authentication: { type: 'ServicePrincipal', userTenant: 'myTenant', username: 'spId', password: 'spKey', resource: 'https://res' } } };
+        const flat = engine.deserializeActivity(raw);
+        expect(flat.authenticationType).toBe('ServicePrincipal');
+        expect(flat.servicePrincipalAuthMethod).toBe('Inline');
+        expect(flat.tenant).toBe('myTenant');
+        expect(flat.servicePrincipalId).toBe('spId');
+        expect(flat.servicePrincipalKey).toBe('spKey');
+        expect(flat.servicePrincipalCredentialType).toBe('Service Principal Key');
+        expect(flat.servicePrincipalResource).toBe('https://res');
+    });
+
+    test('serialize: SP Inline key writes userTenant and username', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, authentication: { type: 'ServicePrincipal', userTenant: 'myTenant', username: 'spId', password: 'spKey', resource: 'https://res' } } };
+        const flat = engine.deserializeActivity(raw);
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.authentication.type).toBe('ServicePrincipal');
+        expect(out.typeProperties.authentication.userTenant).toBe('myTenant');
+        expect(out.typeProperties.authentication.username).toBe('spId');
+        expect(out.typeProperties.authentication.password).toBe('spKey');
+        expect(out.typeProperties.authentication.resource).toBe('https://res');
+        expect(out.typeProperties.authentication.tenant).toBeUndefined();
+        expect(out.typeProperties.authentication.servicePrincipalId).toBeUndefined();
+    });
+
+    test('round-trip stable (SP Inline key)', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, authentication: { type: 'ServicePrincipal', userTenant: 't', username: 'u', password: 'k', resource: 'r' } } };
+        expect(stableFlat(roundTrip(raw))).toEqual(stableFlat(engine.deserializeActivity(raw)));
+    });
+
+    // ── ServicePrincipal Inline certificate ───────────────────────────────────
+    test('deserialize: SP Inline cert sets servicePrincipalCredentialType = Certificate', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, authentication: { type: 'ServicePrincipal', userTenant: 't', username: 'u', pfx: 'certdata', resource: 'r' } } };
+        const flat = engine.deserializeActivity(raw);
+        expect(flat.servicePrincipalCredentialType).toBe('Service Principal Certificate');
+        expect(flat.servicePrincipalCert).toBe('certdata');
+    });
+
+    test('serialize: SP Inline cert writes pfx', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, authentication: { type: 'ServicePrincipal', userTenant: 't', username: 'u', pfx: 'certdata', resource: 'r' } } };
+        const flat = engine.deserializeActivity(raw);
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.authentication.pfx).toBe('certdata');
+        expect(out.typeProperties.authentication.password).toBeUndefined();
+    });
+
+    // ── ServicePrincipal Credential method ────────────────────────────────────
+    test('deserialize: SP Credential (no type) sets servicePrincipalAuthMethod = Credential', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, authentication: { credential: { referenceName: 'MyCred', type: 'CredentialReference' }, resource: 'https://res' } } };
+        const flat = engine.deserializeActivity(raw);
+        expect(flat.authenticationType).toBe('ServicePrincipal');
+        expect(flat.servicePrincipalAuthMethod).toBe('Credential');
+        expect(flat.credential).toBe('MyCred');
+        expect(flat.credentialResource).toBe('https://res');
+    });
+
+    test('serialize: SP Credential writes no type, wraps credential as reference', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, authentication: { credential: { referenceName: 'MyCred', type: 'CredentialReference' }, resource: 'https://res' } } };
+        const flat = engine.deserializeActivity(raw);
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.authentication.type).toBeUndefined();
+        expect(out.typeProperties.authentication.credential).toEqual({ referenceName: 'MyCred', type: 'CredentialReference' });
+        expect(out.typeProperties.authentication.resource).toBe('https://res');
+    });
+
+    test('round-trip stable (SP Credential)', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, authentication: { credential: { referenceName: 'MyCred', type: 'CredentialReference' }, resource: 'r' } } };
+        expect(stableFlat(roundTrip(raw))).toEqual(stableFlat(engine.deserializeActivity(raw)));
+    });
+
+    // ── UserAssignedManagedIdentity ────────────────────────────────────────────
+    test('deserialize: UAMI reads resource and unwraps credential', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, authentication: { type: 'UserAssignedManagedIdentity', credential: { referenceName: 'UamiCred', type: 'CredentialReference' }, resource: 'https://storage' } } };
+        const flat = engine.deserializeActivity(raw);
+        expect(flat.authenticationType).toBe('UserAssignedManagedIdentity');
+        expect(flat.credentialUserAssigned).toBe('UamiCred');
+        expect(flat.resource).toBe('https://storage');
+    });
+
+    test('serialize: UAMI wraps credential as reference', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, authentication: { type: 'UserAssignedManagedIdentity', credential: { referenceName: 'UamiCred', type: 'CredentialReference' }, resource: 'https://storage' } } };
+        const flat = engine.deserializeActivity(raw);
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.authentication.type).toBe('UserAssignedManagedIdentity');
+        expect(out.typeProperties.authentication.credential).toEqual({ referenceName: 'UamiCred', type: 'CredentialReference' });
+        expect(out.typeProperties.authentication.resource).toBe('https://storage');
+    });
+
+    test('round-trip stable (UAMI)', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, authentication: { type: 'UserAssignedManagedIdentity', credential: { referenceName: 'c', type: 'CredentialReference' }, resource: 'r' } } };
+        expect(stableFlat(roundTrip(raw))).toEqual(stableFlat(engine.deserializeActivity(raw)));
+    });
+
+    // ── Validation ────────────────────────────────────────────────────────────
+    test('validation: missing url is an error', () => {
+        const flat = engine.deserializeActivity({ ...base, typeProperties: { method: 'GET' } });
+        expect(engine.validateActivity(flat).some(e => /url/i.test(e))).toBe(true);
+    });
+
+    test('validation: valid GET activity passes', () => {
+        const flat = engine.deserializeActivity(base);
+        expect(engine.validateActivity(flat)).toHaveLength(0);
+    });
+
+    test('validation: Basic auth without username fails', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, authentication: { type: 'Basic', password: 'pw' } } };
+        const flat = engine.deserializeActivity(raw);
+        // username is required for Basic; need to clear it
+        flat.username = '';
+        expect(engine.validateActivity(flat).some(e => /username/i.test(e))).toBe(true);
+    });
+
+    test('validation: SP Inline requires tenant + servicePrincipalId + resource', () => {
+        const flat = engine.deserializeActivity(base);
+        flat.authenticationType = 'ServicePrincipal';
+        flat.servicePrincipalAuthMethod = 'Inline';
+        flat.tenant = '';
+        flat.servicePrincipalId = '';
+        flat.servicePrincipalResource = '';
+        const errs = engine.validateActivity(flat);
+        expect(errs.some(e => /tenant/i.test(e))).toBe(true);
+        expect(errs.some(e => /service principal id/i.test(e))).toBe(true);
+        expect(errs.some(e => /resource/i.test(e))).toBe(true);
+    });
+
+    test('validation: SP Credential should NOT require tenant (nestedConditional)', () => {
+        const flat = engine.deserializeActivity(base);
+        flat.authenticationType = 'ServicePrincipal';
+        flat.servicePrincipalAuthMethod = 'Credential';
+        flat.credential = 'MyCred';
+        flat.credentialResource = 'https://res';
+        flat.tenant = '';  // tenant is for Inline only; should not be required here
+        const errs = engine.validateActivity(flat);
+        expect(errs.some(e => /tenant/i.test(e))).toBe(false);
+    });
+});
+
+// ─── WebHook ──────────────────────────────────────────────────────────────────
+
+describe('WebHook', () => {
+    const base = {
+        name: 'Hook1', type: 'WebHook', dependsOn: [], userProperties: [],
+        policy: { secureOutput: false, secureInput: false },
+        typeProperties: { url: 'https://callback.example.com', method: 'POST', timeout: '00:10:00' },
+    };
+
+    test('deserialize: reads url, method, timeout', () => {
+        const flat = engine.deserializeActivity(base);
+        expect(flat.url).toBe('https://callback.example.com');
+        expect(flat.method).toBe('POST');
+        expect(flat.timeout).toBe('00:10:00');
+    });
+
+    test('deserialize: no auth → authenticationType None', () => {
+        const flat = engine.deserializeActivity(base);
+        expect(flat.authenticationType).toBe('None');
+    });
+
+    test('serialize: writes url, method, timeout', () => {
+        const flat = engine.deserializeActivity(base);
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.url).toBe('https://callback.example.com');
+        expect(out.typeProperties.method).toBe('POST');
+        expect(out.typeProperties.timeout).toBe('00:10:00');
+    });
+
+    test('serialize: reportStatusOnCallBack omitted when false', () => {
+        const flat = engine.deserializeActivity(base);
+        flat.reportStatusOnCallBack = false;
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.reportStatusOnCallBack).toBeUndefined();
+    });
+
+    test('serialize: reportStatusOnCallBack written when true', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, reportStatusOnCallBack: true } };
+        const flat = engine.deserializeActivity(raw);
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.reportStatusOnCallBack).toBe(true);
+    });
+
+    test('serialize: disableCertValidation omitted when false', () => {
+        const flat = engine.deserializeActivity(base);
+        flat.disableCertValidation = false;
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.disableCertValidation).toBeUndefined();
+    });
+
+    test('serialize: disableCertValidation written when true', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, disableCertValidation: true } };
+        const flat = engine.deserializeActivity(raw);
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.disableCertValidation).toBe(true);
+    });
+
+    test('round-trip stable (basic)', () => {
+        expect(stableFlat(roundTrip(base))).toEqual(stableFlat(engine.deserializeActivity(base)));
+    });
+
+    test('headers object → array on deserialize', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, headers: { Authorization: 'Bearer token' } } };
+        const flat = engine.deserializeActivity(raw);
+        expect(flat.headers).toEqual([{ name: 'Authorization', value: 'Bearer token' }]);
+    });
+
+    test('headers array → object on serialize', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, headers: { Authorization: 'Bearer token' } } };
+        const flat = engine.deserializeActivity(raw);
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.headers).toEqual({ Authorization: 'Bearer token' });
+    });
+
+    test('round-trip stable (with headers and reportStatusOnCallBack)', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, headers: { 'X-Key': 'val' }, reportStatusOnCallBack: true } };
+        expect(stableFlat(roundTrip(raw))).toEqual(stableFlat(engine.deserializeActivity(raw)));
+    });
+
+    test('WebHook Basic auth round-trip stable', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, authentication: { type: 'Basic', username: 'u', password: 'p' } } };
+        expect(stableFlat(roundTrip(raw))).toEqual(stableFlat(engine.deserializeActivity(raw)));
+    });
+
+    test('validation: missing url is an error', () => {
+        const flat = engine.deserializeActivity({ ...base, typeProperties: { method: 'POST', timeout: '00:10:00' } });
+        expect(engine.validateActivity(flat).some(e => /url/i.test(e))).toBe(true);
+    });
+
+    test('validation: valid activity passes', () => {
+        const flat = engine.deserializeActivity(base);
+        expect(engine.validateActivity(flat)).toHaveLength(0);
+    });
+});

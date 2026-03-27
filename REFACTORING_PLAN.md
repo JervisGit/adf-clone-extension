@@ -14,7 +14,7 @@
 | Step 7 | ✅ Done | Lookup, Delete, Validation, GetMetadata — dataset `<select>` from datasetList, GetMetadata field list checkboxes, Delete source path options, Source tab rendering. |
 | Step 8 | ✅ Done | SynapseNotebook, SparkJob — engine transformers, schema, UI editable, 176 engine tests passing |
 | Step 9 | ✅ Done | Script, SqlServerStoredProcedure — schema, UI editable (script-array, linked-service select, storedprocedure-parameters), 176 engine tests passing |
-| Step 10 | 🔲 | WebActivity, WebHook — auth transformer |
+| Step 10 | ✅ Done | WebActivity, WebHook — auth transformer (webAuthentication fixed: SP Inline/Credential/UAMI/ClientCert), webHeaders transformer, nestedConditional in validate/UI, web-secret/web-headers/web-dataset-list/web-linkedservice-list field renderers, 241 engine tests passing |
 | Step 11 | 🔲 | Copy — last; uses copy-activity-config.json |
 | Step 11.5 | 🔲 | Container inner canvas editing — ForEach, Until, IfCondition, Switch render their nested activities on a sub-canvas. Enables nested activity round-trip tests from Step 6.5. |
 | Step 12 | 🔲 | V2 becomes default, V1 removed |

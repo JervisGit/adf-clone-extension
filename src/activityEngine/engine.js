@@ -319,7 +319,9 @@ function validateActivity(flat) {
 		for (const [key, def] of Object.entries(fields)) {
 			// Check required fields
 			if (def.required) {
-				if (!def.conditional || isConditionMet(def.conditional, flat)) {
+				const condOk = !def.conditional || isConditionMet(def.conditional, flat);
+				const nestedOk = !def.nestedConditional || isConditionMet(def.nestedConditional, flat);
+				if (condOk && nestedOk) {
 					const value = flat[key];
 					const isEmpty = value === undefined || value === null || value === ''
 						|| (Array.isArray(value) && value.length === 0);
@@ -591,51 +593,126 @@ const TRANSFORMERS = {
 		serialize(flat, output) {
 			if (!flat.authenticationType || flat.authenticationType === 'None') return;
 			if (!output.typeProperties) output.typeProperties = {};
-			const auth = { type: flat.authenticationType };
 			switch (flat.authenticationType) {
-				case 'Basic':
+				case 'Basic': {
+					const auth = { type: 'Basic' };
 					if (flat.username) auth.username = flat.username;
 					if (flat.password) auth.password = flat.password;
+					output.typeProperties.authentication = auth;
 					break;
-				case 'MSI':
+				}
+				case 'MSI': {
+					const auth = { type: 'MSI' };
 					if (flat.resource) auth.resource = flat.resource;
+					output.typeProperties.authentication = auth;
 					break;
-				case 'UserAssignedManagedIdentity':
+				}
+				case 'UserAssignedManagedIdentity': {
+					const auth = { type: 'UserAssignedManagedIdentity' };
 					if (flat.resource) auth.resource = flat.resource;
-					if (flat.credentialUserAssigned) auth.credential = flat.credentialUserAssigned;
+					if (flat.credentialUserAssigned) auth.credential = { referenceName: flat.credentialUserAssigned, type: 'CredentialReference' };
+					output.typeProperties.authentication = auth;
 					break;
-				case 'ClientCertificate':
+				}
+				case 'ClientCertificate': {
+					const auth = { type: 'ClientCertificate' };
 					if (flat.pfx)         auth.pfx      = flat.pfx;
 					if (flat.pfxPassword) auth.password = flat.pfxPassword;
+					output.typeProperties.authentication = auth;
 					break;
-				case 'ServicePrincipal':
+				}
+				case 'ServicePrincipal': {
 					if (flat.servicePrincipalAuthMethod === 'Credential') {
-						if (flat.credential)         auth.credential = flat.credential;
+						// Credential method: no `type` field in JSON
+						const auth = {};
+						if (flat.credential)         auth.credential = { referenceName: flat.credential, type: 'CredentialReference' };
 						if (flat.credentialResource) auth.resource   = flat.credentialResource;
+						output.typeProperties.authentication = auth;
 					} else {
-						if (flat.tenant)             auth.tenant             = flat.tenant;
-						if (flat.servicePrincipalId) auth.servicePrincipalId = flat.servicePrincipalId;
+						// Inline method: uses userTenant and username in JSON
+						const auth = { type: 'ServicePrincipal' };
+						if (flat.tenant)             auth.userTenant  = flat.tenant;
+						if (flat.servicePrincipalId) auth.username    = flat.servicePrincipalId;
 						const useKey = flat.servicePrincipalCredentialType !== 'Service Principal Certificate';
-						if (useKey && flat.servicePrincipalKey)  auth.servicePrincipalKey  = flat.servicePrincipalKey;
-						if (!useKey && flat.servicePrincipalCert) auth.servicePrincipalCert = flat.servicePrincipalCert;
+						if (useKey && flat.servicePrincipalKey)   auth.password = flat.servicePrincipalKey;
+						if (!useKey && flat.servicePrincipalCert) auth.pfx      = flat.servicePrincipalCert;
 						if (flat.servicePrincipalResource) auth.resource = flat.servicePrincipalResource;
+						output.typeProperties.authentication = auth;
 					}
 					break;
+				}
 			}
-			output.typeProperties.authentication = auth;
 		},
 		deserialize(raw, flat) {
 			const auth = raw.typeProperties?.authentication;
 			if (!auth) { flat.authenticationType = 'None'; return; }
+
+			// ServicePrincipal + Credential method: no `type` field in JSON
+			if (!auth.type && auth.credential) {
+				flat.authenticationType = 'ServicePrincipal';
+				flat.servicePrincipalAuthMethod = 'Credential';
+				flat.credential = auth.credential?.referenceName ?? auth.credential;
+				if (auth.resource) flat.credentialResource = auth.resource;
+				return;
+			}
+
 			flat.authenticationType = auth.type || 'None';
-			if (auth.username)            flat.username            = auth.username;
-			if (auth.password)            flat.password            = auth.password;
-			if (auth.resource)            flat.resource            = auth.resource;
-			if (auth.pfx)                 flat.pfx                 = auth.pfx;
-			if (auth.tenant)              flat.tenant              = auth.tenant;
-			if (auth.servicePrincipalId)  flat.servicePrincipalId  = auth.servicePrincipalId;
-			if (auth.servicePrincipalKey) flat.servicePrincipalKey = auth.servicePrincipalKey;
-			if (auth.credential)          flat.credential          = auth.credential;
+			switch (auth.type) {
+				case 'Basic':
+					if (auth.username) flat.username = auth.username;
+					if (auth.password) flat.password = auth.password;
+					break;
+				case 'MSI':
+					if (auth.resource) flat.resource = auth.resource;
+					break;
+				case 'UserAssignedManagedIdentity':
+					if (auth.resource) flat.resource = auth.resource;
+					if (auth.credential) flat.credentialUserAssigned = auth.credential?.referenceName ?? auth.credential;
+					break;
+				case 'ClientCertificate':
+					if (auth.pfx)      flat.pfx         = auth.pfx;
+					if (auth.password) flat.pfxPassword  = auth.password;
+					break;
+				case 'ServicePrincipal':
+					// Inline method: userTenant + username in JSON
+					flat.servicePrincipalAuthMethod = 'Inline';
+					if (auth.userTenant)  flat.tenant             = auth.userTenant;
+					if (auth.username)    flat.servicePrincipalId = auth.username;
+					if (auth.resource)    flat.servicePrincipalResource = auth.resource;
+					if (auth.password) {
+						flat.servicePrincipalKey          = auth.password;
+						flat.servicePrincipalCredentialType = 'Service Principal Key';
+					} else if (auth.pfx) {
+						flat.servicePrincipalCert           = auth.pfx;
+						flat.servicePrincipalCredentialType = 'Service Principal Certificate';
+					} else {
+						flat.servicePrincipalCredentialType = 'Service Principal Key';
+					}
+					break;
+			}
+		},
+	},
+
+	// ── 3b. Web headers ───────────────────────────────────────────────────────
+	// Disk format: { "HeaderName": "HeaderValue", ... }
+	// Flat format: [ { name, value }, ... ]
+	webHeaders: {
+		serialize(flat, output) {
+			const headers = flat.headers;
+			if (!Array.isArray(headers) || headers.length === 0) return;
+			if (!output.typeProperties) output.typeProperties = {};
+			const obj = {};
+			for (const h of headers) {
+				if (h.name) obj[h.name] = h.value ?? '';
+			}
+			if (Object.keys(obj).length > 0) output.typeProperties.headers = obj;
+		},
+		deserialize(raw, flat) {
+			const h = raw.typeProperties?.headers;
+			if (!h) { flat.headers = []; return; }
+			// Already an array (shouldn't happen in real ADF JSON, but handle gracefully)
+			if (Array.isArray(h)) { flat.headers = h; return; }
+			flat.headers = Object.entries(h).map(([name, value]) => ({ name, value: value ?? '' }));
 		},
 	},
 

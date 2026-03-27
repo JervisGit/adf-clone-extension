@@ -820,7 +820,7 @@
         "label": "Expression",
         "required": true,
         "placeholder": "@equals(variables('myVar'), true)",
-        "helpText": "Boolean expression — when true, the loop stops",
+        "helpText": "Boolean expression \u00e2\u20ac\u201d when true, the loop stops",
         "jsonPath": "typeProperties.expression"
       },
       "timeout": {
@@ -2149,7 +2149,8 @@
           "value": "Basic"
         },
         "jsonPath": "typeProperties.authentication.username",
-        "serializeAs": "webAuthentication"
+        "serializeAs": "webAuthentication",
+        "required": true
       },
       "password": {
         "type": "web-secret",
@@ -2160,7 +2161,8 @@
           "value": "Basic"
         },
         "jsonPath": "typeProperties.authentication.password",
-        "serializeAs": "webAuthentication"
+        "serializeAs": "webAuthentication",
+        "required": true
       },
       "resource": {
         "type": "text",
@@ -2174,7 +2176,8 @@
           ]
         },
         "jsonPath": "typeProperties.authentication.resource",
-        "serializeAs": "webAuthentication"
+        "serializeAs": "webAuthentication",
+        "required": true
       },
       "pfx": {
         "type": "web-secret",
@@ -2185,7 +2188,8 @@
           "value": "ClientCertificate"
         },
         "jsonPath": "typeProperties.authentication.pfx",
-        "serializeAs": "webAuthentication"
+        "serializeAs": "webAuthentication",
+        "required": true
       },
       "pfxPassword": {
         "type": "web-secret",
@@ -2196,7 +2200,8 @@
           "value": "ClientCertificate"
         },
         "jsonPath": "typeProperties.authentication.password",
-        "serializeAs": "webAuthentication"
+        "serializeAs": "webAuthentication",
+        "required": true
       },
       "servicePrincipalAuthMethod": {
         "type": "radio",
@@ -2358,7 +2363,8 @@
       "headers": {
         "type": "web-headers",
         "label": "Headers",
-        "jsonPath": "typeProperties.headers"
+        "jsonPath": "typeProperties.headers",
+        "serializeAs": "webHeaders"
       }
     },
     "advancedProperties": {
@@ -2372,12 +2378,14 @@
         "type": "boolean",
         "label": "Disable async pattern",
         "default": false,
-        "jsonPath": "typeProperties.disableAsyncPattern"
+        "omitWhenFalse": true,
+        "jsonPath": "typeProperties.turnOffAsync"
       },
       "disableCertValidation": {
         "type": "boolean",
         "label": "Disable certificate validation",
         "default": false,
+        "omitWhenFalse": true,
         "jsonPath": "typeProperties.disableCertValidation"
       },
       "datasets": {
@@ -2449,7 +2457,8 @@
       "headers": {
         "type": "web-headers",
         "label": "Headers",
-        "jsonPath": "typeProperties.headers"
+        "jsonPath": "typeProperties.headers",
+        "serializeAs": "webHeaders"
       },
       "body": {
         "type": "string",
@@ -2469,12 +2478,14 @@
         "type": "boolean",
         "label": "Disable certificate validation",
         "default": false,
+        "omitWhenFalse": true,
         "jsonPath": "typeProperties.disableCertValidation"
       },
       "reportStatusOnCallBack": {
         "type": "boolean",
         "label": "Report status on callback",
         "default": false,
+        "omitWhenFalse": true,
         "jsonPath": "typeProperties.reportStatusOnCallBack"
       },
       "authenticationType": {
@@ -2507,7 +2518,8 @@
           "value": "Basic"
         },
         "jsonPath": "typeProperties.authentication.username",
-        "serializeAs": "webAuthentication"
+        "serializeAs": "webAuthentication",
+        "required": true
       },
       "password": {
         "type": "web-secret",
@@ -2518,7 +2530,8 @@
           "value": "Basic"
         },
         "jsonPath": "typeProperties.authentication.password",
-        "serializeAs": "webAuthentication"
+        "serializeAs": "webAuthentication",
+        "required": true
       },
       "resource": {
         "type": "text",
@@ -2532,7 +2545,8 @@
           ]
         },
         "jsonPath": "typeProperties.authentication.resource",
-        "serializeAs": "webAuthentication"
+        "serializeAs": "webAuthentication",
+        "required": true
       },
       "pfx": {
         "type": "web-secret",
@@ -2543,7 +2557,8 @@
           "value": "ClientCertificate"
         },
         "jsonPath": "typeProperties.authentication.pfx",
-        "serializeAs": "webAuthentication"
+        "serializeAs": "webAuthentication",
+        "required": true
       },
       "pfxPassword": {
         "type": "web-secret",
@@ -2554,7 +2569,8 @@
           "value": "ClientCertificate"
         },
         "jsonPath": "typeProperties.authentication.password",
-        "serializeAs": "webAuthentication"
+        "serializeAs": "webAuthentication",
+        "required": true
       },
       "servicePrincipalAuthMethod": {
         "type": "radio",

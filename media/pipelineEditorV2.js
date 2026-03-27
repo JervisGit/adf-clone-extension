@@ -11,7 +11,8 @@
 const EDITABLE_TYPES = new Set(['Wait', 'Fail', 'SetVariable', 'AppendVariable', 'ExecutePipeline', 'Filter',
     'ForEach', 'Until', 'IfCondition', 'Switch',
     'Lookup', 'Delete', 'Validation', 'GetMetadata',
-    'SynapseNotebook', 'SparkJob', 'Script', 'SqlServerStoredProcedure']);
+    'SynapseNotebook', 'SparkJob', 'Script', 'SqlServerStoredProcedure',
+    'WebActivity', 'WebHook']);
 
 const vscode = acquireVsCodeApi();
 
@@ -885,7 +886,9 @@ function showProperties(activity) {
         }).join('');
         // Wire all inputs to write back to the activity and mark dirty
         _wireFormInputs(panesContainer, activity);
-        _wireKvFields(panesContainer, activity);
+        _wireWebHeaders(panesContainer, activity);
+    _wireWebRefLists(panesContainer, activity);
+    _wireKvFields(panesContainer, activity);
         _wireScriptArrayFields(panesContainer, activity);
         _wireFieldLists(panesContainer, activity);
         _wireNotebookSelects(panesContainer, activity);
@@ -948,10 +951,11 @@ function _buildFormPane(activity, fields, paneId, sharedFields) {
         const val = activity[key] ?? def.default ?? '';
         console.log(`[V2]   field "${key}" type="${def.type}" val=`, val);
         const cond = def.conditional ? `data-cond-field="${escHtml(def.conditional.field)}" data-cond-value="${escHtml(Array.isArray(def.conditional.value) ? def.conditional.value.join(',') : def.conditional.value)}"` : '';
+        const nestedCond = def.nestedConditional ? `data-nested-cond-field="${escHtml(def.nestedConditional.field)}" data-nested-cond-value="${escHtml(Array.isArray(def.nestedConditional.value) ? def.nestedConditional.value.join(',') : def.nestedConditional.value)}"` : '';
         const excl = def.excludeConditional ? `data-cond-exclude-field="${escHtml(def.excludeConditional.field)}" data-cond-exclude-value="${escHtml(Array.isArray(def.excludeConditional.value) ? def.excludeConditional.value.join(',') : def.excludeConditional.value)}"` : '';
         const isBool = def.type === 'boolean';
-        const isBlock = isBool || def.multiline || def.type === 'keyvalue' || def.type === 'getmetadata-fieldlist' || def.type === 'script-array' || def.type === 'storedprocedure-parameters';
-        html += `<div class="form-field${isBlock ? ' form-field--block' : ''}" data-field-key="${escHtml(key)}" ${cond} ${excl}>`;
+        const isBlock = isBool || def.multiline || def.type === 'keyvalue' || def.type === 'getmetadata-fieldlist' || def.type === 'script-array' || def.type === 'storedprocedure-parameters' || def.type === 'web-headers' || def.type === 'web-dataset-list' || def.type === 'web-linkedservice-list';
+        html += `<div class="form-field${isBlock ? ' form-field--block' : ''}" data-field-key="${escHtml(key)}" ${cond} ${nestedCond} ${excl}>`;
         if (!isBool) {
             html += `<label class="form-label">${escHtml(def.label || key)}${def.required ? ' <span style="color:var(--vscode-errorForeground)">*</span>' : ''}</label>`;
         }
@@ -1063,6 +1067,38 @@ function _buildFormPane(activity, fields, paneId, sharedFields) {
             case 'storedprocedure-parameters': {
                 const spTypes = 'String,Boolean,Datetime,Datetimeoffset,Decimal,Double,Guid,Int16,Int32,Int64,Single,Timespan,Byte[]';
                 html += `<div class="form-kv-container" data-kv-field="${escHtml(key)}" data-kv-types="${escHtml(spTypes)}" data-kv-nullable="true"></div>`;
+                break;
+            }
+            case 'web-headers': {
+                const headers = Array.isArray(val) ? val : [];
+                html += `<div class="form-web-headers" data-headers-key="${escHtml(key)}"><table class="form-kv-table" style="width:100%;font-size:11px;"><thead><tr><th>Name</th><th>Value</th><th></th></tr></thead><tbody>`;
+                for (const h of headers) {
+                    html += `<tr><td><input type="text" class="form-input form-kv-cell wh-name" placeholder="Header name" value="${escHtml(h.name || '')}" /></td><td><input type="text" class="form-input form-kv-cell wh-value" placeholder="Header value" value="${escHtml(h.value || '')}" /></td><td><button class="action-icon-btn wh-remove" type="button" title="Remove">×</button></td></tr>`;
+                }
+                html += `</tbody></table><button class="form-kv-add-btn wh-add" type="button">+ Add header</button></div>`;
+                break;
+            }
+            case 'web-secret': {
+                const secretVal = (val && typeof val === 'object') ? JSON.stringify(val) : String(val ?? '');
+                html += `<input type="text" class="form-input" data-key="${escHtml(key)}" data-field-type="web-secret" value="${escHtml(secretVal)}" placeholder="${escHtml(def.placeholder || '')}" />`;
+                break;
+            }
+            case 'web-dataset-list': {
+                const datasets = Array.isArray(val) ? val.map(d => d?.referenceName ?? d) : [];
+                html += `<div class="form-web-reflist" data-reflist-key="${escHtml(key)}" data-reflist-type="dataset">`;
+                for (const d of datasets) {
+                    html += `<div class="form-web-reflist-row"><select class="form-select form-web-reflist-select"><option value="">-- Select dataset --</option>${datasetList.map(ds => `<option value="${escHtml(ds)}"${ds === d ? ' selected' : ''}>${escHtml(ds)}</option>`).join('')}</select><button class="action-icon-btn form-web-reflist-remove" type="button" title="Remove">×</button></div>`;
+                }
+                html += `<button class="form-kv-add-btn form-web-reflist-add" type="button">+ Add dataset</button></div>`;
+                break;
+            }
+            case 'web-linkedservice-list': {
+                const linkedServices = Array.isArray(val) ? val.map(ls => ls?.referenceName ?? ls) : [];
+                html += `<div class="form-web-reflist" data-reflist-key="${escHtml(key)}" data-reflist-type="linkedservice">`;
+                for (const ls of linkedServices) {
+                    html += `<div class="form-web-reflist-row"><select class="form-select form-web-reflist-select"><option value="">-- Select linked service --</option>${(window.linkedServicesList || []).map(s => `<option value="${escHtml(s.name)}"${s.name === ls ? ' selected' : ''}>${escHtml(s.name)}</option>`).join('')}</select><button class="action-icon-btn form-web-reflist-remove" type="button" title="Remove">×</button></div>`;
+                }
+                html += `<button class="form-kv-add-btn form-web-reflist-add" type="button">+ Add linked service</button></div>`;
                 break;
             }
             case 'script-array': {
@@ -1205,6 +1241,13 @@ function _wireFormInputs(container, activity) {
                 value = el.checked;
             } else if (tag === 'input' && el.type === 'number') {
                 value = el.value === '' ? '' : Number(el.value);
+            } else if (el.dataset.fieldType === 'web-secret') {
+                // Try to parse as JSON (AKV object); fall back to plain string
+                const raw = el.value.trim();
+                try {
+                    const parsed = JSON.parse(raw);
+                    value = (parsed && typeof parsed === 'object' && parsed.type === 'AzureKeyVaultSecret') ? parsed : raw;
+                } catch { value = raw; }
             } else if (el.dataset.fieldType === 'expression') {
                 // Re-wrap into ADF Expression object
                 value = { value: el.value, type: 'Expression' };
@@ -1294,6 +1337,12 @@ function _applyConditionals(container, activity) {
         const allowed = el.dataset.condValue.split(',');
         const current = String(activity[field] ?? '');
         let visible = allowed.includes(current);
+        // Check nestedConditional if present (both must be met to show the field)
+        if (visible && el.dataset.nestedCondField) {
+            const nField = el.dataset.nestedCondField;
+            const nAllowed = el.dataset.nestedCondValue.split(',');
+            if (!nAllowed.includes(String(activity[nField] ?? ''))) visible = false;
+        }
         // Also check excludeConditional — hide if the exclude field matches
         if (visible && el.dataset.condExcludeField) {
             const exField = el.dataset.condExcludeField;
@@ -1588,6 +1637,76 @@ function _wireScriptArrayFields(container, activity) {
             rowsEl.appendChild(row);
             wireRow(row, []);
             readBack();
+        });
+    });
+}
+
+// ─── Web headers field wiring ──────────────────────────────────────────────────
+function _wireWebHeaders(container, activity) {
+    container.querySelectorAll('.form-web-headers').forEach(el => {
+        const key = el.dataset.headersKey;
+        if (!key) return;
+        if (!Array.isArray(activity[key])) activity[key] = [];
+
+        const syncHeaders = () => {
+            activity[key] = Array.from(el.querySelectorAll('tbody tr')).map(tr => ({
+                name:  tr.querySelector('.wh-name').value,
+                value: tr.querySelector('.wh-value').value,
+            })).filter(h => h.name);
+            markAsDirty();
+        };
+
+        el.querySelectorAll('tbody tr').forEach(tr => {
+            tr.querySelector('.wh-name').addEventListener('input', syncHeaders);
+            tr.querySelector('.wh-value').addEventListener('input', syncHeaders);
+            tr.querySelector('.wh-remove').addEventListener('click', () => { tr.remove(); syncHeaders(); });
+        });
+
+        el.querySelector('.wh-add').addEventListener('click', () => {
+            const tbody = el.querySelector('tbody');
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td><input type="text" class="form-input form-kv-cell wh-name" placeholder="Header name" /></td><td><input type="text" class="form-input form-kv-cell wh-value" placeholder="Header value" /></td><td><button class="action-icon-btn wh-remove" type="button" title="Remove">×</button></td>`;
+            tbody.appendChild(tr);
+            tr.querySelector('.wh-name').addEventListener('input', syncHeaders);
+            tr.querySelector('.wh-value').addEventListener('input', syncHeaders);
+            tr.querySelector('.wh-remove').addEventListener('click', () => { tr.remove(); syncHeaders(); });
+            syncHeaders();
+        });
+    });
+}
+
+// ─── Web dataset/linked-service reference list wiring ─────────────────────────
+function _wireWebRefLists(container, activity) {
+    container.querySelectorAll('.form-web-reflist').forEach(el => {
+        const key = el.dataset.reflistKey;
+        const refType = el.dataset.reflistType; // 'dataset' or 'linkedservice'
+        if (!key) return;
+        if (!Array.isArray(activity[key])) activity[key] = [];
+
+        const syncList = () => {
+            activity[key] = Array.from(el.querySelectorAll('.form-web-reflist-select'))
+                .map(sel => sel.value)
+                .filter(v => v)
+                .map(v => ({ referenceName: v, type: refType === 'dataset' ? 'DatasetReference' : 'LinkedServiceReference' }));
+            markAsDirty();
+        };
+
+        el.querySelectorAll('.form-web-reflist-row').forEach(row => {
+            row.querySelector('.form-web-reflist-select').addEventListener('change', syncList);
+            row.querySelector('.form-web-reflist-remove').addEventListener('click', () => { row.remove(); syncList(); });
+        });
+
+        el.querySelector('.form-web-reflist-add').addEventListener('click', () => {
+            const opts = refType === 'dataset'
+                ? datasetList.map(d => `<option value="${escHtml(d)}">${escHtml(d)}</option>`).join('')
+                : (window.linkedServicesList || []).map(s => `<option value="${escHtml(s.name)}">${escHtml(s.name)}</option>`).join('');
+            const row = document.createElement('div');
+            row.className = 'form-web-reflist-row';
+            row.innerHTML = `<select class="form-select form-web-reflist-select"><option value="">-- Select --</option>${opts}</select><button class="action-icon-btn form-web-reflist-remove" type="button" title="Remove">×</button>`;
+            el.insertBefore(row, el.querySelector('.form-web-reflist-add'));
+            row.querySelector('.form-web-reflist-select').addEventListener('change', syncList);
+            row.querySelector('.form-web-reflist-remove').addEventListener('click', () => { row.remove(); syncList(); });
+            syncList();
         });
     });
 }

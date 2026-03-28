@@ -881,9 +881,11 @@ function showProperties(activity) {
                         ? _buildFormPane(activity, schema.sourceProperties || {}, 'source')
                         : t === 'Sink'
                             ? _buildFormPane(activity, schema.sinkProperties || {}, 'sink')
-                            : t === 'Activities'
-                                ? _buildActivitiesTab(activity, schema)
-                                : `<div class="empty-state">Not yet implemented.</div>`;
+                            : t === 'Advanced'
+                                ? _buildFormPane(activity, schema.advancedProperties || {}, 'advanced')
+                                : t === 'Activities'
+                                    ? _buildActivitiesTab(activity, schema)
+                                    : `<div class="empty-state">Not yet implemented.</div>`;
             return `<div class="config-tab-pane${i === 0 ? ' active' : ''}" id="tab-v2-tab-${i}" style="display:${i === 0 ? 'block' : 'none'}">${html}</div>`;
         }).join('');
         // Wire all inputs to write back to the activity and mark dirty

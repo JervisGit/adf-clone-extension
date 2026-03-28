@@ -35,6 +35,7 @@ let locationTypeToStoreSettings = {};
 let datasetTypeToFormatSettings = {};
 let kvLinkedServiceList = [];
 let credentialList = [];
+let allLinkedServicesList = [];
 
 // Pipeline-level data
 let pipelineData = { name: '', description: '', annotations: [], parameters: {}, variables: {}, concurrency: 1 };
@@ -1128,7 +1129,7 @@ function _buildFormPane(activity, fields, paneId, sharedFields) {
                 const linkedServices = Array.isArray(val) ? val.map(ls => ls?.referenceName ?? ls) : [];
                 html += `<div class="form-web-reflist" data-reflist-key="${escHtml(key)}" data-reflist-type="linkedservice">`;
                 for (const ls of linkedServices) {
-                    html += `<div class="form-web-reflist-row"><select class="form-select form-web-reflist-select"><option value="">-- Select linked service --</option>${(window.linkedServicesList || []).map(s => `<option value="${escHtml(s.name)}"${s.name === ls ? ' selected' : ''}>${escHtml(s.name)}</option>`).join('')}</select><button class="action-icon-btn form-web-reflist-remove" type="button" title="Remove">×</button></div>`;
+                    html += `<div class="form-web-reflist-row"><select class="form-select form-web-reflist-select"><option value="">-- Select linked service --</option>${allLinkedServicesList.map(s => `<option value="${escHtml(s.name)}"${s.name === ls ? ' selected' : ''}>${escHtml(s.name)}</option>`).join('')}</select><button class="action-icon-btn form-web-reflist-remove" type="button" title="Remove">×</button></div>`;
                 }
                 html += `<button class="form-kv-add-btn form-web-reflist-add" type="button">+ Add linked service</button></div>`;
                 break;
@@ -1680,7 +1681,7 @@ function _wireWebHeaders(container, activity) {
             activity[key] = Array.from(el.querySelectorAll('tbody tr')).map(tr => ({
                 name:  tr.querySelector('.wh-name').value,
                 value: tr.querySelector('.wh-value').value,
-            })).filter(h => h.name);
+            }));
             markAsDirty();
         };
 
@@ -1727,7 +1728,7 @@ function _wireWebRefLists(container, activity) {
         el.querySelector('.form-web-reflist-add').addEventListener('click', () => {
             const opts = refType === 'dataset'
                 ? datasetList.map(d => `<option value="${escHtml(d)}">${escHtml(d)}</option>`).join('')
-                : (window.linkedServicesList || []).map(s => `<option value="${escHtml(s.name)}">${escHtml(s.name)}</option>`).join('');
+                : allLinkedServicesList.map(s => `<option value="${escHtml(s.name)}">${escHtml(s.name)}</option>`).join('');
             const row = document.createElement('div');
             row.className = 'form-web-reflist-row';
             row.innerHTML = `<select class="form-select form-web-reflist-select"><option value="">-- Select --</option>${opts}</select><button class="action-icon-btn form-web-reflist-remove" type="button" title="Remove">×</button>`;
@@ -2204,6 +2205,7 @@ window.addEventListener('message', event => {
         window.notebookList = msg.notebookList || [];
         kvLinkedServiceList = msg.kvLinkedServiceList || [];
         credentialList = msg.credentialList || [];
+        allLinkedServicesList = msg.allLinkedServicesList || [];
         buildSidebar();
         log('Schemas loaded. Activities config categories: ' + activitiesConfig.categories.length);
     }

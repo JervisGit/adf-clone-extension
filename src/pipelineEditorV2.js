@@ -255,6 +255,7 @@ class PipelineEditorV2Provider {
 		let datasetContents = {};
 		let pipelineList = [];
 		let linkedServicesList = [];
+		let allLinkedServicesList = [];
 		let notebookList = [];
 		let kvLinkedServiceList = [];
 		let credentialList = [];
@@ -341,6 +342,7 @@ class PipelineEditorV2Provider {
 			datasetContents,
 			pipelineList,
 			linkedServicesList,
+			allLinkedServicesList,
 			notebookList,
 			kvLinkedServiceList,
 			credentialList

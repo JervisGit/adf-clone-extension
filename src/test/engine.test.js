@@ -2216,6 +2216,61 @@ describe('WebActivity', () => {
         expect(engine.validateActivity(flat)).toHaveLength(0);
     });
 
+    test('validation: header row with empty name AND empty value is an error', () => {
+        const flat = engine.deserializeActivity(base);
+        flat.headers = [{ name: '', value: '' }];
+        expect(engine.validateActivity(flat).some(e => /name is required/i.test(e))).toBe(true);
+    });
+
+    test('validation: header row with empty value is an error', () => {
+        const flat = engine.deserializeActivity(base);
+        flat.headers = [{ name: 'X-Header', value: '' }];
+        expect(engine.validateActivity(flat).some(e => /value is required/i.test(e))).toBe(true);
+    });
+
+    // ── httpRequestTimeout validation ──────────────────────────────────────────
+    test('validation: httpRequestTimeout with invalid format is an error', () => {
+        const flat = engine.deserializeActivity(base);
+        flat.httpRequestTimeout = '5 minutes';
+        expect(engine.validateActivity(flat).some(e => /HH:MM:SS/i.test(e))).toBe(true);
+    });
+
+    test('validation: httpRequestTimeout below 1 minute is an error', () => {
+        const flat = engine.deserializeActivity(base);
+        flat.httpRequestTimeout = '00:00:30';
+        expect(engine.validateActivity(flat).some(e => /between 1 and 10 minutes/i.test(e))).toBe(true);
+    });
+
+    test('validation: httpRequestTimeout above 10 minutes is an error', () => {
+        const flat = engine.deserializeActivity(base);
+        flat.httpRequestTimeout = '00:11:00';
+        expect(engine.validateActivity(flat).some(e => /between 1 and 10 minutes/i.test(e))).toBe(true);
+    });
+
+    test('validation: httpRequestTimeout exactly 1 minute passes', () => {
+        const flat = engine.deserializeActivity(base);
+        flat.httpRequestTimeout = '00:01:00';
+        expect(engine.validateActivity(flat)).toHaveLength(0);
+    });
+
+    test('validation: httpRequestTimeout exactly 10 minutes passes', () => {
+        const flat = engine.deserializeActivity(base);
+        flat.httpRequestTimeout = '00:10:00';
+        expect(engine.validateActivity(flat)).toHaveLength(0);
+    });
+
+    test('validation: httpRequestTimeout 5 minutes passes', () => {
+        const flat = engine.deserializeActivity(base);
+        flat.httpRequestTimeout = '00:05:00';
+        expect(engine.validateActivity(flat)).toHaveLength(0);
+    });
+
+    test('validation: empty httpRequestTimeout is not an error (optional field)', () => {
+        const flat = engine.deserializeActivity(base);
+        flat.httpRequestTimeout = '';
+        expect(engine.validateActivity(flat)).toHaveLength(0);
+    });
+
     // ── AKV secret fields ──────────────────────────────────────────────────────
     const akvObj = { type: 'AzureKeyVaultSecret', store: { referenceName: 'AzureKeyVault1', type: 'LinkedServiceReference' }, secretName: 'my-secret' };
     const akvObjWithVersion = { ...akvObj, secretVersion: 'abc123' };

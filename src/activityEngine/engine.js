@@ -406,6 +406,22 @@ function validateActivity(flat) {
 					});
 				}
 			}
+			// Check validateAs = 'hhmmss' with optional timeRangeMinutes
+			if (def.validateAs === 'hhmmss') {
+				const val = flat[key];
+				if (val && String(val).trim()) {
+					const m = /^(\d{2}):(\d{2}):(\d{2})$/.exec(String(val).trim());
+					if (!m) {
+						errors.push(`"${def.label || key}" is invalid. The value must be formatted as HH:MM:SS and must be between 1 and 10 minutes`);
+					} else if (def.timeRangeMinutes) {
+						const totalMin = parseInt(m[1]) * 60 + parseInt(m[2]) + parseInt(m[3]) / 60;
+						const [min, max] = def.timeRangeMinutes;
+						if (totalMin < min || totalMin > max) {
+							errors.push(`"${def.label || key}" is invalid. The value must be formatted as HH:MM:SS and must be between ${min} and ${max} minutes`);
+						}
+					}
+				}
+			}
 		}
 	}
 	return errors;

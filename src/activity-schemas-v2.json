@@ -2376,6 +2376,8 @@
         "type": "text",
         "label": "HTTP request timeout (HH:MM:SS)",
         "placeholder": "00:05:00",
+        "validateAs": "hhmmss",
+        "timeRangeMinutes": [1, 10],
         "jsonPath": "typeProperties.httpRequestTimeout"
       },
       "disableAsyncPattern": {

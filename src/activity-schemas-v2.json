@@ -292,8 +292,9 @@
         "required": true,
         "datasetFilter": {
           "excludeTypes": [
-            "Iceberg",
-            "Excel"
+            "Excel",
+            "Xml",
+            "HttpFile"
           ]
         },
         "jsonPath": "@outputs[0].referenceName",
@@ -307,6 +308,7 @@
         "default": 4,
         "min": 2,
         "max": 256,
+        "omitWhenValue": 4,
         "jsonPath": "typeProperties.dataIntegrationUnits"
       },
       "parallelCopies": {
@@ -319,6 +321,7 @@
         "type": "boolean",
         "label": "Fault tolerance - Skip incompatible rows",
         "default": false,
+        "omitWhenFalse": true,
         "jsonPath": "typeProperties.enableSkipIncompatibleRow"
       }
     }

@@ -2829,3 +2829,90 @@ describe('Copy — AzureSqlDWTable sink writeBehavior', () => {
     });
 });
 
+// ─── Copy Activity — config-field validation ───────────────────────────────────
+
+describe('Copy — validate: additional-columns empty name blocked', () => {
+    test('blocks save when additional-columns row has empty name', () => {
+        const flat = {
+            type: 'Copy', name: 'TestCopy',
+            sourceDataset: 'DS1', sinkDataset: 'DS2',
+            _sourceDatasetType: 'Avro', _sinkDatasetType: 'AzureSqlTable',
+            src_additionalColumns: [{ name: '', value: '$$FILEPATH' }],
+            dependsOn: [], userProperties: [],
+        };
+        const errs = engine.validateActivity(flat);
+        expect(errs.some(e => e.includes('Additional columns') || e.includes('additionalColumns') || e.includes('empty'))).toBe(true);
+    });
+
+    test('passes when all additional-columns rows have names', () => {
+        const flat = {
+            type: 'Copy', name: 'TestCopy',
+            sourceDataset: 'DS1', sinkDataset: 'DS2',
+            _sourceDatasetType: 'Avro', _sinkDatasetType: 'AzureSqlTable',
+            src_additionalColumns: [{ name: 'col1', value: '$$FILEPATH' }],
+            dependsOn: [], userProperties: [],
+        };
+        const errs = engine.validateActivity(flat);
+        expect(errs.filter(e => e.toLowerCase().includes('additional'))).toHaveLength(0);
+    });
+});
+
+describe('Copy — validate: string-list empty item blocked (upsert keys)', () => {
+    test('blocks save when upsert key list has an empty entry', () => {
+        const flat = {
+            type: 'Copy', name: 'TestCopy',
+            sourceDataset: 'DS1', sinkDataset: 'DS2',
+            _sourceDatasetType: 'AzureSqlTable', _sinkDatasetType: 'AzureSqlTable',
+            snk_writeBehavior: 'upsert',
+            snk_upsertKeys: [''],
+            dependsOn: [], userProperties: [],
+        };
+        const errs = engine.validateActivity(flat);
+        expect(errs.some(e => e.toLowerCase().includes('empty'))).toBe(true);
+    });
+
+    test('passes when upsert keys are all non-empty', () => {
+        const flat = {
+            type: 'Copy', name: 'TestCopy',
+            sourceDataset: 'DS1', sinkDataset: 'DS2',
+            _sourceDatasetType: 'AzureSqlTable', _sinkDatasetType: 'AzureSqlTable',
+            snk_writeBehavior: 'upsert',
+            snk_upsertKeys: ['Id', 'Name'],
+            dependsOn: [], userProperties: [],
+        };
+        const errs = engine.validateActivity(flat);
+        expect(errs.filter(e => e.toLowerCase().includes('empty'))).toHaveLength(0);
+    });
+});
+
+describe('Copy — validate: sp-parameters empty name blocked', () => {
+    // Use source-side stored procedure parameters (conditional: src_useQuery = 'Stored procedure')
+    test('blocks save when sp-parameters has an empty-key entry', () => {
+        const flat = {
+            type: 'Copy', name: 'TestCopy',
+            sourceDataset: 'DS1', sinkDataset: 'DS2',
+            _sourceDatasetType: 'AzureSqlTable', _sinkDatasetType: 'AzureSqlTable',
+            src_useQuery: 'Stored procedure',
+            src_sqlReaderStoredProcedureName: 'sp_read',
+            src_storedProcedureParameters: { '': { value: 'foo', type: 'String' } },
+            dependsOn: [], userProperties: [],
+        };
+        const errs = engine.validateActivity(flat);
+        expect(errs.some(e => e.toLowerCase().includes('parameter') || e.toLowerCase().includes('empty'))).toBe(true);
+    });
+
+    test('passes when all sp-parameter keys are non-empty', () => {
+        const flat = {
+            type: 'Copy', name: 'TestCopy',
+            sourceDataset: 'DS1', sinkDataset: 'DS2',
+            _sourceDatasetType: 'AzureSqlTable', _sinkDatasetType: 'AzureSqlTable',
+            src_useQuery: 'Stored procedure',
+            src_sqlReaderStoredProcedureName: 'sp_read',
+            src_storedProcedureParameters: { myParam: { value: 'foo', type: 'String' } },
+            dependsOn: [], userProperties: [],
+        };
+        const errs = engine.validateActivity(flat);
+        expect(errs.filter(e => e.toLowerCase().includes('parameter') && e.toLowerCase().includes('empty'))).toHaveLength(0);
+    });
+});
+

@@ -230,6 +230,8 @@ function serializeActivity(flat) {
 			if (value !== undefined && value !== null && value !== '') {
 				// Omit boolean fields marked omitWhenFalse when their value is false
 				if (def.omitWhenFalse && value === false) continue;
+				// Omit fields equal to a specific value (e.g. omit dataIntegrationUnits when it equals default 4)
+				if (def.omitWhenValue !== undefined && value === def.omitWhenValue) continue;
 				setByPath(output, def.jsonPath, value);
 			}
 		}
@@ -266,9 +268,9 @@ function serializeActivity(flat) {
 		if (srcTypeConf) {
 			const src = buildCopySource(flat, srcTypeConf, flat._sourceLocationType ?? null, flat._sourceObject ?? null);
 			if (src) tp.source = src;
-			// XML: copy namespacePrefixPairs → formatSettings.namespacePrefixes
-			if (srcType === 'Xml' && flat.namespacePrefixPairs && Object.keys(flat.namespacePrefixPairs).length > 0) {
-				if (tp.source?.formatSettings) tp.source.formatSettings.namespacePrefixes = flat.namespacePrefixPairs;
+			// XML: copy src_namespacePrefixPairs → formatSettings.namespacePrefixes
+			if (srcType === 'Xml' && flat['src_namespacePrefixPairs'] && Object.keys(flat['src_namespacePrefixPairs']).length > 0) {
+				if (tp.source?.formatSettings) tp.source.formatSettings.namespacePrefixes = flat['src_namespacePrefixPairs'];
 			}
 		} else if (flat._sourceObject) {
 			tp.source = JSON.parse(JSON.stringify(flat._sourceObject));
@@ -299,10 +301,12 @@ function serializeActivity(flat) {
 			const defTranslator = copyActivityConfig.copyDefaults?.typeProperties?.translator;
 			if (defTranslator && !(srcTypeConf?.noTranslator)) tp.translator = JSON.parse(JSON.stringify(defTranslator));
 		}
-		// Staging pass-through
-		if (flat._copyEnableStaging !== undefined) tp.enableStaging = flat._copyEnableStaging;
-		if (flat._copyStagingSettings)             tp.stagingSettings = flat._copyStagingSettings;
-		if (flat._copyLogSettings)                 tp.logSettings = flat._copyLogSettings;
+		// Staging: only write when explicitly enabled (false is the default and adds no information)
+		if (flat._copyEnableStaging === true) {
+			tp.enableStaging = true;
+			if (flat._copyStagingSettings) tp.stagingSettings = flat._copyStagingSettings;
+		}
+		if (flat._copyLogSettings) tp.logSettings = flat._copyLogSettings;
 	}
 
 	// Trim empty wrapper objects produced by setByPath
@@ -493,6 +497,74 @@ function validateActivity(flat) {
 			}
 		}
 	}
+
+	// ── Copy Activity: validate config-driven src_* / snk_* fields ──────────────
+	if (flat.type === 'Copy') {
+		const _isCopyCondMet = (cond, f) => {
+			if (!cond) return true;
+			const v = f[cond.field];
+			if (cond.notEmpty) return v !== undefined && v !== null && v !== '';
+			return Array.isArray(cond.value) ? cond.value.includes(v) : v === cond.value;
+		};
+		const _isCopyCondAllMet = (condAll, f) =>
+			!condAll || condAll.every(c => {
+				const v = f[c.field];
+				return Array.isArray(c.value) ? c.value.includes(v) : v === c.value;
+			});
+
+		for (const [side, typeKey] of [['source', flat._sourceDatasetType], ['sink', flat._sinkDatasetType]]) {
+			if (!typeKey) continue;
+			const typeConf = copyActivityConfig.datasetTypes?.[typeKey];
+			if (!typeConf) continue;
+			const fields = typeConf.fields?.[side] || {};
+			for (const [key, def] of Object.entries(fields)) {
+				// Only validate when all conditions are met
+				if (!_isCopyCondMet(def.conditional, flat)) continue;
+				if (def.nestedConditional && !_isCopyCondMet(def.nestedConditional, flat)) continue;
+				if (!_isCopyCondAllMet(def.conditionalAll, flat)) continue;
+
+				const val = flat[key];
+
+				// Required fields
+				if (def.required) {
+					const isEmpty = val === undefined || val === null || val === ''
+						|| (Array.isArray(val) && val.length === 0);
+					if (isEmpty) errors.push(`Copy ${side}: "${def.label || key}" is required`);
+				}
+
+				// filterEmpty array fields (additional-columns, metadata, copy-cmd-default-values)
+				if (def.filterEmpty && Array.isArray(val)) {
+					for (const row of val) {
+						if (!row[def.filterEmpty] || !String(row[def.filterEmpty]).trim()) {
+							errors.push(`Copy ${side}: "${def.label || key}" has a row with an empty ${def.filterEmpty} — fill it in or delete the row`);
+							break;
+						}
+					}
+				}
+
+				// noEmpty string-list (upsert key columns)
+				if (def.noEmpty && def.type === 'string-list' && Array.isArray(val)) {
+					for (const item of val) {
+						if (!item || !String(item).trim()) {
+							errors.push(`Copy ${side}: "${def.label || key}" has an empty entry — fill it in or delete it`);
+							break;
+						}
+					}
+				}
+
+				// copy-sp-parameters: parameter name cannot be empty
+				if (def.type === 'copy-sp-parameters' && val && typeof val === 'object' && !Array.isArray(val)) {
+					for (const k of Object.keys(val)) {
+						if (!k || !k.trim()) {
+							errors.push(`Copy ${side}: "${def.label || key}" has a parameter with an empty name — fill it in or delete it`);
+							break;
+						}
+					}
+				}
+			}
+		}
+	}
+
 	return errors;
 }
 

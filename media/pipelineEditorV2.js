@@ -1014,6 +1014,8 @@ function _buildFormPane(activity, fields, paneId, sharedFields) {
                     ? datasetList.filter(d => datasetTypeCategories[datasetContents[d]?.properties?.type ?? ''] === 'storage')
                     : def.datasetFilter === 'lookupCompatible'
                     ? datasetList.filter(d => !_lookupExcluded.has(datasetContents[d]?.properties?.type ?? ''))
+                    : (def.datasetFilter && typeof def.datasetFilter === 'object' && Array.isArray(def.datasetFilter.excludeTypes))
+                    ? datasetList.filter(d => !def.datasetFilter.excludeTypes.includes(datasetContents[d]?.properties?.type ?? ''))
                     : datasetList;
                 html += `<select class="form-select" data-key="${escHtml(key)}" data-field-type="dataset">`
                     + `<option value="">-- Select dataset --</option>`
@@ -1313,6 +1315,18 @@ function _parseCopyObjToForm(obj, typeConf, side) {
     return result;
 }
 
+// Apply field defaults from copyActivityConfig to the activity object for a given side.
+// Must be called before rendering config fields so that conditional visibility works from first paint.
+// Skips any field already set on the activity (only fills in undefined).
+function _applyCopyConfigDefaults(activity, typeConf, side) {
+    const fields = typeConf?.fields?.[side] || {};
+    for (const [key, def] of Object.entries(fields)) {
+        if (activity[key] === undefined && def.default !== undefined) {
+            activity[key] = def.default;
+        }
+    }
+}
+
 // Build the Source or Sink pane for a Copy activity:
 //   1. Schema-driven dataset picker (from sourceProperties / sinkProperties)
 //   2. Config-driven fields from copyActivityConfig.datasetTypes[type].fields.source|sink
@@ -1327,6 +1341,8 @@ function _buildCopyDatasetPane(activity, side) {
     const dsType = side === 'source' ? activity._sourceDatasetType : activity._sinkDatasetType;
     const typeConf = dsType ? copyActivityConfig.datasetTypes?.[dsType] : null;
     if (typeConf) {
+        // Apply config field defaults so conditionals (e.g. src_filePathType, src_namespaces) work on first render
+        _applyCopyConfigDefaults(activity, typeConf, side);
         const configFields = typeConf.fields?.[side] || {};
         html += `<div class="copy-config-section" data-copy-side="${escHtml(side)}">`;
         html += `<div class="copy-config-section-title">${escHtml(typeConf.name || dsType)} — ${side === 'source' ? 'Source' : 'Sink'} Settings</div>`;
@@ -1535,7 +1551,7 @@ function _wireCopyConfigFields(container, activity) {
             el.querySelectorAll('tbody tr').forEach(tr => {
                 const n = tr.querySelector('.addcol-name')?.value?.trim() || '';
                 const v = tr.querySelector('.addcol-value')?.value || '';
-                if (n) rows.push({ name: n, value: v });
+                rows.push({ name: n, value: v });
             });
             activity[key] = rows; markAsDirty();
         };
@@ -1548,6 +1564,7 @@ function _wireCopyConfigFields(container, activity) {
             tbody.appendChild(tr);
             tr.querySelector('.addcol-remove').addEventListener('click', () => { tr.remove(); syncModel(); });
             tr.querySelectorAll('input').forEach(i => i.addEventListener('input', syncModel));
+            syncModel();
         });
         el.querySelectorAll('.addcol-remove').forEach(btn => btn.addEventListener('click', () => { btn.closest('tr').remove(); syncModel(); }));
         el.querySelectorAll('input').forEach(i => i.addEventListener('input', syncModel));
@@ -1558,7 +1575,7 @@ function _wireCopyConfigFields(container, activity) {
         const key = el.dataset.strlistKey;
         if (!key) return;
         const syncModel = () => {
-            activity[key] = Array.from(el.querySelectorAll('.strlist-item')).map(i => i.value).filter(v => v.trim());
+            activity[key] = Array.from(el.querySelectorAll('.strlist-item')).map(i => i.value);
             markAsDirty();
         };
         el.querySelector('.strlist-add')?.addEventListener('click', () => {
@@ -1569,6 +1586,7 @@ function _wireCopyConfigFields(container, activity) {
             el.insertBefore(div, el.querySelector('.strlist-add'));
             div.querySelector('.strlist-remove').addEventListener('click', () => { div.remove(); syncModel(); });
             div.querySelector('.strlist-item').addEventListener('input', syncModel);
+            syncModel();
         });
         el.querySelectorAll('.strlist-remove').forEach(btn => btn.addEventListener('click', () => { btn.closest('.copy-strlist-row').remove(); syncModel(); }));
         el.querySelectorAll('.strlist-item').forEach(i => i.addEventListener('input', syncModel));
@@ -1585,7 +1603,7 @@ function _wireCopyConfigFields(container, activity) {
                 const n  = tr.querySelector('.spp-name')?.value || '';
                 const v  = tr.querySelector('.spp-value')?.value || '';
                 const t  = tr.querySelector('.spp-type')?.value || 'String';
-                if (n.trim()) result[n] = { value: v, type: t };
+                result[n] = { value: v, type: t };
             });
             activity[key] = result; markAsDirty();
         };
@@ -1600,6 +1618,7 @@ function _wireCopyConfigFields(container, activity) {
             tr.querySelector('.spp-remove').addEventListener('click', () => { tr.remove(); syncModel(); });
             tr.querySelectorAll('input,select').forEach(i => i.addEventListener('change', syncModel));
             tr.querySelectorAll('input').forEach(i => i.addEventListener('input', syncModel));
+            syncModel();
         });
         el.querySelectorAll('.spp-remove').forEach(btn => btn.addEventListener('click', () => { btn.closest('tr').remove(); syncModel(); }));
         el.querySelectorAll('input,select').forEach(i => { i.addEventListener('change', syncModel); i.addEventListener('input', syncModel); });
@@ -1614,7 +1633,7 @@ function _wireCopyConfigFields(container, activity) {
             el.querySelectorAll('tbody tr').forEach(tr => {
                 const col = tr.querySelector('.cmddef-col')?.value || '';
                 const val = tr.querySelector('.cmddef-val')?.value || '';
-                if (col.trim()) rows.push({ columnName: col, defaultValue: val });
+                rows.push({ columnName: col, defaultValue: val });
             });
             activity[key] = rows; markAsDirty();
         };
@@ -1627,6 +1646,7 @@ function _wireCopyConfigFields(container, activity) {
             tbody.appendChild(tr);
             tr.querySelector('.cmddef-remove').addEventListener('click', () => { tr.remove(); syncModel(); });
             tr.querySelectorAll('input').forEach(i => i.addEventListener('input', syncModel));
+            syncModel();
         });
         el.querySelectorAll('.cmddef-remove').forEach(btn => btn.addEventListener('click', () => { btn.closest('tr').remove(); syncModel(); }));
         el.querySelectorAll('input').forEach(i => i.addEventListener('input', syncModel));

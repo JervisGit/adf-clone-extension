@@ -927,12 +927,14 @@
             "type": "datetime",
             "label": "Start time (UTC)",
             "placeholder": "2/18/2026, 12:00:00 AM",
+            "conditional": { "field": "src_filePathType", "value": ["filePathInDataset", "prefix", "wildcardFilePath"] },
             "jsonPath": "storeSettings.modifiedDatetimeStart"
           },
           "src_modifiedDatetimeEnd": {
             "type": "datetime",
             "label": "End time (UTC)",
             "placeholder": "2/18/2026, 12:00:00 AM",
+            "conditional": { "field": "src_filePathType", "value": ["filePathInDataset", "prefix", "wildcardFilePath"] },
             "jsonPath": "storeSettings.modifiedDatetimeEnd"
           },
           "src_recursive": {
@@ -1072,12 +1074,14 @@
             "type": "datetime",
             "label": "Start time (UTC)",
             "placeholder": "2/18/2026, 12:00:00 AM",
+            "conditional": { "field": "src_filePathType", "value": ["filePathInDataset", "prefix", "wildcardFilePath"] },
             "jsonPath": "storeSettings.modifiedDatetimeStart"
           },
           "src_modifiedDatetimeEnd": {
             "type": "datetime",
             "label": "End time (UTC)",
             "placeholder": "2/18/2026, 12:00:00 AM",
+            "conditional": { "field": "src_filePathType", "value": ["filePathInDataset", "prefix", "wildcardFilePath"] },
             "jsonPath": "storeSettings.modifiedDatetimeEnd"
           },
           "src_recursive": {
@@ -1104,6 +1108,13 @@
             "label": "Max concurrent connections",
             "min": 1,
             "jsonPath": "storeSettings.maxConcurrentConnections"
+          },
+          "src_additionalColumns": {
+            "type": "additional-columns",
+            "label": "Additional columns",
+            "filterEmpty": "name",
+            "defaultRowValue": "$$FILEPATH",
+            "jsonPath": "additionalColumns"
           }
         },
         "sink": {
@@ -1213,12 +1224,14 @@
             "type": "datetime",
             "label": "Start time (UTC)",
             "placeholder": "2/18/2026, 12:00:00 AM",
+            "conditional": { "field": "src_filePathType", "value": ["filePathInDataset", "prefix", "wildcardFilePath"] },
             "jsonPath": "storeSettings.modifiedDatetimeStart"
           },
           "src_modifiedDatetimeEnd": {
             "type": "datetime",
             "label": "End time (UTC)",
             "placeholder": "2/18/2026, 12:00:00 AM",
+            "conditional": { "field": "src_filePathType", "value": ["filePathInDataset", "prefix", "wildcardFilePath"] },
             "jsonPath": "storeSettings.modifiedDatetimeEnd"
           },
           "src_recursive": {
@@ -1245,6 +1258,13 @@
             "label": "Max concurrent connections",
             "min": 1,
             "jsonPath": "storeSettings.maxConcurrentConnections"
+          },
+          "src_additionalColumns": {
+            "type": "additional-columns",
+            "label": "Additional columns",
+            "filterEmpty": "name",
+            "defaultRowValue": "$$FILEPATH",
+            "jsonPath": "additionalColumns"
           }
         },
         "sink": {
@@ -1353,12 +1373,14 @@
             "type": "datetime",
             "label": "Start time (UTC)",
             "placeholder": "2/18/2026, 12:00:00 AM",
+            "conditional": { "field": "src_filePathType", "value": ["filePathInDataset", "prefix", "wildcardFilePath"] },
             "jsonPath": "storeSettings.modifiedDatetimeStart"
           },
           "src_modifiedDatetimeEnd": {
             "type": "datetime",
             "label": "End time (UTC)",
             "placeholder": "2/18/2026, 12:00:00 AM",
+            "conditional": { "field": "src_filePathType", "value": ["filePathInDataset", "prefix", "wildcardFilePath"] },
             "jsonPath": "storeSettings.modifiedDatetimeEnd"
           },
           "src_recursive": {

@@ -319,7 +319,10 @@ function validateActivity(flat) {
 		for (const [key, def] of Object.entries(fields)) {
 			// Check required fields
 			if (def.required) {
-				const condOk = !def.conditional || isConditionMet(def.conditional, flat);
+				// Use requiredConditional (if present) to determine when the field is required,
+				// falling back to the display conditional otherwise.
+				const reqCond = def.requiredConditional ?? def.conditional;
+				const condOk = !reqCond || isConditionMet(reqCond, flat);
 				const nestedOk = !def.nestedConditional || isConditionMet(def.nestedConditional, flat);
 				if (condOk && nestedOk) {
 					const value = flat[key];

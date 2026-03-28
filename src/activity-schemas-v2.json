@@ -2109,6 +2109,11 @@
         "label": "Body",
         "multiline": true,
         "placeholder": "Enter request body...",
+        "required": true,
+        "requiredConditional": {
+          "field": "method",
+          "value": ["POST", "PUT"]
+        },
         "conditional": {
           "field": "method",
           "value": [
@@ -2471,6 +2476,7 @@
         "label": "Body",
         "multiline": true,
         "placeholder": "Enter request body...",
+        "required": true,
         "jsonPath": "typeProperties.body"
       },
       "timeout": {

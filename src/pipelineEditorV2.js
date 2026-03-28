@@ -306,6 +306,9 @@ class PipelineEditorV2Provider {
 							if (lsType === 'AzureKeyVault' && !kvLinkedServiceList.includes(ls.name)) {
 								kvLinkedServiceList.push(ls.name);
 							}
+							if (ls.name && !allLinkedServicesList.find(l => l.name === ls.name)) {
+								allLinkedServicesList.push({ name: ls.name, type: lsType || '' });
+							}
 						} catch { /* skip */ }
 					}
 				}

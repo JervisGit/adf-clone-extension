@@ -2154,6 +2154,34 @@ describe('WebActivity', () => {
         expect(engine.validateActivity(flat)).toHaveLength(0);
     });
 
+    test('validation: POST without body is an error', () => {
+        const flat = engine.deserializeActivity(base);
+        flat.method = 'POST';
+        flat.body = '';
+        expect(engine.validateActivity(flat).some(e => /body/i.test(e))).toBe(true);
+    });
+
+    test('validation: PUT without body is an error', () => {
+        const flat = engine.deserializeActivity(base);
+        flat.method = 'PUT';
+        flat.body = '';
+        expect(engine.validateActivity(flat).some(e => /body/i.test(e))).toBe(true);
+    });
+
+    test('validation: DELETE without body does not error', () => {
+        const flat = engine.deserializeActivity(base);
+        flat.method = 'DELETE';
+        flat.body = '';
+        expect(engine.validateActivity(flat).every(e => !/body/i.test(e))).toBe(true);
+    });
+
+    test('validation: POST with body passes', () => {
+        const flat = engine.deserializeActivity(base);
+        flat.method = 'POST';
+        flat.body = '{"key":"value"}';
+        expect(engine.validateActivity(flat)).toHaveLength(0);
+    });
+
     test('validation: Basic auth without username fails', () => {
         const raw = { ...base, typeProperties: { ...base.typeProperties, authentication: { type: 'Basic', password: 'pw' } } };
         const flat = engine.deserializeActivity(raw);
@@ -2408,7 +2436,7 @@ describe('WebHook', () => {
     const base = {
         name: 'Hook1', type: 'WebHook', dependsOn: [], userProperties: [],
         policy: { secureOutput: false, secureInput: false },
-        typeProperties: { url: 'https://callback.example.com', method: 'POST', timeout: '00:10:00' },
+        typeProperties: { url: 'https://callback.example.com', method: 'POST', timeout: '00:10:00', body: '{"key":"val"}' },
     };
 
     test('deserialize: reads url, method, timeout', () => {
@@ -2493,6 +2521,18 @@ describe('WebHook', () => {
 
     test('validation: valid activity passes', () => {
         const flat = engine.deserializeActivity(base);
+        expect(engine.validateActivity(flat)).toHaveLength(0);
+    });
+
+    test('validation: WebHook POST without body is an error', () => {
+        const flat = engine.deserializeActivity(base);
+        flat.body = '';
+        expect(engine.validateActivity(flat).some(e => /body/i.test(e))).toBe(true);
+    });
+
+    test('validation: WebHook POST with body passes', () => {
+        const flat = engine.deserializeActivity(base);
+        flat.body = '{"status":"ok"}';
         expect(engine.validateActivity(flat)).toHaveLength(0);
     });
 

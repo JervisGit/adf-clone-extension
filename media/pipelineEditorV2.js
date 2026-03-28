@@ -1193,8 +1193,9 @@ function _buildActivitiesTab(activity, schema) {
         const items = activity[key] || [];
         html += `<div style="font-weight:600;margin:8px 0 4px;font-size:12px;">${escHtml(def.label || key)}</div>`;
         if (def.type === 'switchCases') {
-            if (items.length === 0 && !activity.defaultActivities?.length) {
-                html += '<div class="empty-state" style="margin-bottom:8px;">No cases defined.</div>';
+            // Always show existing cases with Edit + Remove buttons
+            if (items.length === 0) {
+                html += '<div class="empty-state" style="margin-bottom:4px;">No cases yet.</div>';
             } else {
                 for (let i = 0; i < items.length; i++) {
                     const c = items[i];
@@ -1203,15 +1204,19 @@ function _buildActivitiesTab(activity, schema) {
                         <span class="container-activity-badge">Case: ${escHtml(String(c.value ?? ''))}</span>
                         <span class="container-branch-count">${count} activit${count === 1 ? 'y' : 'ies'}</span>
                         <button class="form-kv-add-btn enter-subcanvas-btn" data-branch-type="switchCase" data-case-index="${i}">Edit ▶</button>
+                        <button class="action-icon-btn switch-case-remove" data-case-index="${i}" title="Remove case">×</button>
                     </div>`;
                 }
-                const defCount = activity.defaultActivities?.length ?? 0;
-                html += `<div class="container-branch-row">
-                    <span class="container-activity-badge">Default</span>
-                    <span class="container-branch-count">${defCount} activit${defCount === 1 ? 'y' : 'ies'}</span>
-                    <button class="form-kv-add-btn enter-subcanvas-btn" data-branch-type="defaultActivities">Edit ▶</button>
-                </div>`;
             }
+            // Always show Add case button
+            html += `<button class="form-kv-add-btn switch-case-add" type="button" style="margin:4px 0 8px;">+ Add case</button>`;
+            // Always show Default branch Edit button
+            const defCount = activity.defaultActivities?.length ?? 0;
+            html += `<div class="container-branch-row" style="margin-top:4px;">
+                <span class="container-activity-badge">Default</span>
+                <span class="container-branch-count">${defCount} activit${defCount === 1 ? 'y' : 'ies'}</span>
+                <button class="form-kv-add-btn enter-subcanvas-btn" data-branch-type="defaultActivities">Edit ▶</button>
+            </div>`;
         } else {
             const count = items.length;
             html += `<div class="container-branch-row">
@@ -1236,6 +1241,70 @@ function _buildActivitiesTab(activity, schema) {
 // Wire the Edit ▶ buttons in the Activities tab to enter sub-canvas navigation.
 function _wireActivitiesTab(container, activity) {
     const BRANCH_LABELS = { activities: 'Activities', ifTrueActivities: 'True Branch', ifFalseActivities: 'False Branch', defaultActivities: 'Default' };
+
+    // Helper: re-render the Activities tab pane in-place.
+    // Works whether `container` is the panesContainer parent or the pane itself.
+    const _rerenderActivitiesPane = () => {
+        const schema = activitySchemas[activity.type];
+        const tabs = schema?.tabs || [];
+        const actIdx = tabs.indexOf('Activities');
+        if (actIdx < 0) return;
+        const targetId = `tab-v2-tab-${actIdx}`;
+        const pane = (container.id === targetId) ? container : container.querySelector(`#${targetId}`);
+        if (pane) {
+            pane.innerHTML = _buildActivitiesTab(activity, schema);
+            _wireActivitiesTab(pane, activity);
+        }
+        if (activity.isContainer) {
+            const infoEl = activity.element?.querySelector('[data-info-el]');
+            if (infoEl) activity._refreshContainerInfo(infoEl);
+        }
+    };
+
+    // Wire "+ Add case" button for Switch.
+    // prompt() is not available in VS Code webviews, so we use an inline input.
+    container.querySelector('.switch-case-add')?.addEventListener('click', (e) => {
+        if (container.querySelector('.switch-case-inline-add')) return; // already open
+        const btn = e.currentTarget;
+        const wrapper = document.createElement('div');
+        wrapper.className = 'switch-case-inline-add';
+        wrapper.style.cssText = 'display:flex;gap:4px;align-items:center;margin-bottom:4px;';
+        wrapper.innerHTML =
+            '<input class="switch-case-value-input" type="text" placeholder="Case value (e.g. A, B, 1)" style="flex:1;padding:2px 6px;background:var(--vscode-input-background);color:var(--vscode-input-foreground);border:1px solid var(--vscode-input-border,var(--vscode-focusBorder));border-radius:2px;" />' +
+            '<button class="form-kv-add-btn switch-case-confirm" type="button">Add</button>' +
+            '<button class="form-kv-add-btn switch-case-cancel" type="button">Cancel</button>';
+        btn.insertAdjacentElement('beforebegin', wrapper);
+        btn.style.display = 'none';
+        const input = wrapper.querySelector('.switch-case-value-input');
+        input.focus();
+        const doAdd = () => {
+            const val = input.value.trim();
+            if (!val) { input.focus(); return; }
+            if (!activity.cases) activity.cases = [];
+            activity.cases.push({ value: val, activities: [] });
+            markAsDirty();
+            _rerenderActivitiesPane();
+        };
+        const doCancel = () => { wrapper.remove(); btn.style.display = ''; };
+        wrapper.querySelector('.switch-case-confirm').addEventListener('click', doAdd);
+        wrapper.querySelector('.switch-case-cancel').addEventListener('click', doCancel);
+        input.addEventListener('keydown', ev => {
+            if (ev.key === 'Enter') doAdd();
+            else if (ev.key === 'Escape') doCancel();
+        });
+    });
+
+    // Wire Remove (×) buttons for Switch cases
+    container.querySelectorAll('.switch-case-remove').forEach(btn => {
+        const idx = parseInt(btn.dataset.caseIndex);
+        btn.addEventListener('click', () => {
+            if (!confirm(`Remove case "${activity.cases[idx]?.value ?? idx}"?`)) return;
+            activity.cases.splice(idx, 1);
+            markAsDirty();
+            _rerenderActivitiesPane();
+        });
+    });
+
     container.querySelectorAll('.enter-subcanvas-btn').forEach(btn => {
         const branchType = btn.dataset.branchType;
         const caseIdx = btn.dataset.caseIndex !== undefined ? parseInt(btn.dataset.caseIndex) : null;

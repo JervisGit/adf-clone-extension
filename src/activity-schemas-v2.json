@@ -820,7 +820,7 @@
         "label": "Expression",
         "required": true,
         "placeholder": "@equals(variables('myVar'), true)",
-        "helpText": "Boolean expression \u00e2\u20ac\u201d when true, the loop stops",
+        "helpText": "Boolean expression â€” when true, the loop stops",
         "jsonPath": "typeProperties.expression"
       },
       "timeout": {
@@ -2154,9 +2154,8 @@
         "required": true
       },
       "password": {
-        "type": "web-secret",
+        "type": "akv-secret",
         "label": "Password",
-        "placeholder": "Enter password or Azure Key Vault secret",
         "conditional": {
           "field": "authenticationType",
           "value": "Basic"
@@ -2181,9 +2180,8 @@
         "required": true
       },
       "pfx": {
-        "type": "web-secret",
+        "type": "akv-secret",
         "label": "Pfx",
-        "placeholder": "Select Azure Key Vault secret",
         "conditional": {
           "field": "authenticationType",
           "value": "ClientCertificate"
@@ -2193,9 +2191,8 @@
         "required": true
       },
       "pfxPassword": {
-        "type": "web-secret",
+        "type": "akv-secret",
         "label": "Password",
-        "placeholder": "Select Azure Key Vault secret",
         "conditional": {
           "field": "authenticationType",
           "value": "ClientCertificate"
@@ -2271,10 +2268,9 @@
         "uiOnly": true
       },
       "servicePrincipalKey": {
-        "type": "web-secret",
+        "type": "akv-secret",
         "label": "Service principal key",
         "required": true,
-        "placeholder": "Select Azure Key Vault secret",
         "conditional": {
           "field": "authenticationType",
           "value": "ServicePrincipal"
@@ -2287,9 +2283,8 @@
         "serializeAs": "webAuthentication"
       },
       "servicePrincipalCert": {
-        "type": "web-secret",
+        "type": "akv-secret",
         "label": "Service principal certificate",
-        "placeholder": "Select Azure Key Vault secret",
         "conditional": {
           "field": "authenticationType",
           "value": "ServicePrincipal"
@@ -2318,10 +2313,9 @@
         "serializeAs": "webAuthentication"
       },
       "credential": {
-        "type": "text",
+        "type": "web-credential",
         "label": "Credentials",
         "required": true,
-        "placeholder": "Select credential",
         "conditional": {
           "field": "authenticationType",
           "value": "ServicePrincipal"
@@ -2331,7 +2325,8 @@
           "value": "Credential"
         },
         "jsonPath": "typeProperties.authentication.credential",
-        "serializeAs": "webAuthentication"
+        "serializeAs": "webAuthentication",
+        "credentialFilter": "ServicePrincipal"
       },
       "credentialResource": {
         "type": "text",
@@ -2350,16 +2345,16 @@
         "serializeAs": "webAuthentication"
       },
       "credentialUserAssigned": {
-        "type": "text",
+        "type": "web-credential",
         "label": "Credentials",
         "required": true,
-        "placeholder": "Select credential",
         "conditional": {
           "field": "authenticationType",
           "value": "UserAssignedManagedIdentity"
         },
         "jsonPath": "typeProperties.authentication.credential",
-        "serializeAs": "webAuthentication"
+        "serializeAs": "webAuthentication",
+        "credentialFilter": "ManagedIdentity"
       },
       "headers": {
         "type": "web-headers",
@@ -2523,9 +2518,8 @@
         "required": true
       },
       "password": {
-        "type": "web-secret",
+        "type": "akv-secret",
         "label": "Password",
-        "placeholder": "Enter password or Azure Key Vault secret",
         "conditional": {
           "field": "authenticationType",
           "value": "Basic"
@@ -2550,9 +2544,8 @@
         "required": true
       },
       "pfx": {
-        "type": "web-secret",
+        "type": "akv-secret",
         "label": "Pfx",
-        "placeholder": "Select Azure Key Vault secret",
         "conditional": {
           "field": "authenticationType",
           "value": "ClientCertificate"
@@ -2562,9 +2555,8 @@
         "required": true
       },
       "pfxPassword": {
-        "type": "web-secret",
+        "type": "akv-secret",
         "label": "Password",
-        "placeholder": "Select Azure Key Vault secret",
         "conditional": {
           "field": "authenticationType",
           "value": "ClientCertificate"
@@ -2640,10 +2632,9 @@
         "uiOnly": true
       },
       "servicePrincipalKey": {
-        "type": "web-secret",
+        "type": "akv-secret",
         "label": "Service principal key",
         "required": true,
-        "placeholder": "Select Azure Key Vault secret",
         "conditional": {
           "field": "authenticationType",
           "value": "ServicePrincipal"
@@ -2656,9 +2647,8 @@
         "serializeAs": "webAuthentication"
       },
       "servicePrincipalCert": {
-        "type": "web-secret",
+        "type": "akv-secret",
         "label": "Service principal certificate",
-        "placeholder": "Select Azure Key Vault secret",
         "conditional": {
           "field": "authenticationType",
           "value": "ServicePrincipal"
@@ -2687,10 +2677,9 @@
         "serializeAs": "webAuthentication"
       },
       "credential": {
-        "type": "text",
+        "type": "web-credential",
         "label": "Credentials",
         "required": true,
-        "placeholder": "Select credential",
         "conditional": {
           "field": "authenticationType",
           "value": "ServicePrincipal"
@@ -2700,7 +2689,8 @@
           "value": "Credential"
         },
         "jsonPath": "typeProperties.authentication.credential",
-        "serializeAs": "webAuthentication"
+        "serializeAs": "webAuthentication",
+        "credentialFilter": "ServicePrincipal"
       },
       "credentialResource": {
         "type": "text",
@@ -2719,16 +2709,16 @@
         "serializeAs": "webAuthentication"
       },
       "credentialUserAssigned": {
-        "type": "text",
+        "type": "web-credential",
         "label": "Credentials",
         "required": true,
-        "placeholder": "Select credential",
         "conditional": {
           "field": "authenticationType",
           "value": "UserAssignedManagedIdentity"
         },
         "jsonPath": "typeProperties.authentication.credential",
-        "serializeAs": "webAuthentication"
+        "serializeAs": "webAuthentication",
+        "credentialFilter": "ManagedIdentity"
       }
     }
   }

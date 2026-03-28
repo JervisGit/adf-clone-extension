@@ -2215,6 +2215,110 @@ describe('WebActivity', () => {
         flat.headers = [{ name: 'Content-Type', value: 'application/json' }, { name: 'X-Custom', value: 'val' }];
         expect(engine.validateActivity(flat)).toHaveLength(0);
     });
+
+    // ── AKV secret fields ──────────────────────────────────────────────────────
+    const akvObj = { type: 'AzureKeyVaultSecret', store: { referenceName: 'AzureKeyVault1', type: 'LinkedServiceReference' }, secretName: 'my-secret' };
+    const akvObjWithVersion = { ...akvObj, secretVersion: 'abc123' };
+
+    test('deserialize: Basic auth preserves AKV object for password', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, authentication: { type: 'Basic', username: 'user', password: akvObj } } };
+        const flat = engine.deserializeActivity(raw);
+        expect(flat.password).toEqual(akvObj);
+    });
+
+    test('serialize: Basic auth writes AKV object for password', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, authentication: { type: 'Basic', username: 'user', password: akvObj } } };
+        const flat = engine.deserializeActivity(raw);
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.authentication.password).toEqual(akvObj);
+    });
+
+    test('serialize: Basic auth strips secretVersion "latest"', () => {
+        const flat = engine.deserializeActivity(base);
+        flat.authenticationType = 'Basic';
+        flat.username = 'user';
+        flat.password = { ...akvObj, secretVersion: 'latest' };
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.authentication.password.secretVersion).toBeUndefined();
+    });
+
+    test('serialize: Basic auth preserves real secretVersion', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, authentication: { type: 'Basic', username: 'user', password: akvObjWithVersion } } };
+        const out = engine.serializeActivity(engine.deserializeActivity(raw));
+        expect(out.typeProperties.authentication.password.secretVersion).toBe('abc123');
+    });
+
+    test('round-trip stable (Basic auth with AKV password)', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, authentication: { type: 'Basic', username: 'user', password: akvObj } } };
+        expect(stableFlat(roundTrip(raw))).toEqual(stableFlat(engine.deserializeActivity(raw)));
+    });
+
+    test('deserialize: ClientCertificate preserves AKV pfx and password', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, authentication: { type: 'ClientCertificate', pfx: akvObj, password: akvObj } } };
+        const flat = engine.deserializeActivity(raw);
+        expect(flat.pfx).toEqual(akvObj);
+        expect(flat.pfxPassword).toEqual(akvObj);
+    });
+
+    test('serialize: ClientCertificate writes AKV objects', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, authentication: { type: 'ClientCertificate', pfx: akvObj, password: akvObj } } };
+        const out = engine.serializeActivity(engine.deserializeActivity(raw));
+        expect(out.typeProperties.authentication.pfx).toEqual(akvObj);
+        expect(out.typeProperties.authentication.password).toEqual(akvObj);
+    });
+
+    test('round-trip stable (ClientCertificate with AKV)', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, authentication: { type: 'ClientCertificate', pfx: akvObj, password: akvObj } } };
+        expect(stableFlat(roundTrip(raw))).toEqual(stableFlat(engine.deserializeActivity(raw)));
+    });
+
+    test('deserialize: SP Inline preserves AKV key', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, authentication: { type: 'ServicePrincipal', userTenant: 'tenant1', username: 'spid', password: akvObj, resource: 'https://res' } } };
+        const flat = engine.deserializeActivity(raw);
+        expect(flat.servicePrincipalKey).toEqual(akvObj);
+    });
+
+    test('serialize: SP Inline writes AKV key', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, authentication: { type: 'ServicePrincipal', userTenant: 'tenant1', username: 'spid', password: akvObj, resource: 'https://res' } } };
+        const out = engine.serializeActivity(engine.deserializeActivity(raw));
+        expect(out.typeProperties.authentication.password).toEqual(akvObj);
+    });
+
+    test('deserialize: SP Inline cert preserves AKV cert', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, authentication: { type: 'ServicePrincipal', userTenant: 'tenant1', username: 'spid', pfx: akvObj, resource: 'https://res' } } };
+        const flat = engine.deserializeActivity(raw);
+        expect(flat.servicePrincipalCert).toEqual(akvObj);
+    });
+
+    test('serialize: SP Inline cert writes AKV cert as pfx', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, authentication: { type: 'ServicePrincipal', userTenant: 'tenant1', username: 'spid', pfx: akvObj, resource: 'https://res' } } };
+        const out = engine.serializeActivity(engine.deserializeActivity(raw));
+        expect(out.typeProperties.authentication.pfx).toEqual(akvObj);
+    });
+
+    test('validation: akv-secret with no store is an error', () => {
+        const flat = engine.deserializeActivity(base);
+        flat.authenticationType = 'Basic';
+        flat.username = 'user';
+        flat.password = { type: 'AzureKeyVaultSecret', store: { referenceName: '', type: 'LinkedServiceReference' }, secretName: 'pw' };
+        expect(engine.validateActivity(flat).some(e => /key vault/i.test(e))).toBe(true);
+    });
+
+    test('validation: akv-secret with no secretName is an error', () => {
+        const flat = engine.deserializeActivity(base);
+        flat.authenticationType = 'Basic';
+        flat.username = 'user';
+        flat.password = { type: 'AzureKeyVaultSecret', store: { referenceName: 'AzureKeyVault1', type: 'LinkedServiceReference' }, secretName: '' };
+        expect(engine.validateActivity(flat).some(e => /secret name/i.test(e))).toBe(true);
+    });
+
+    test('validation: valid AKV password passes', () => {
+        const flat = engine.deserializeActivity(base);
+        flat.authenticationType = 'Basic';
+        flat.username = 'user';
+        flat.password = akvObj;
+        expect(engine.validateActivity(flat)).toHaveLength(0);
+    });
 });
 
 // ─── WebHook ──────────────────────────────────────────────────────────────────
@@ -2321,5 +2425,58 @@ describe('WebHook', () => {
         const flat = engine.deserializeActivity(base);
         flat.headers = [{ name: 'Authorization', value: 'a' }, { name: 'Authorization', value: 'b' }];
         expect(engine.validateActivity(flat).some(e => /duplicate/i.test(e))).toBe(true);
+    });
+
+    // ── AKV secret fields ──────────────────────────────────────────────────────
+    const hookAkvObj = { type: 'AzureKeyVaultSecret', store: { referenceName: 'AzureKeyVault1', type: 'LinkedServiceReference' }, secretName: 'hook-secret' };
+
+    test('deserialize: WebHook Basic auth preserves AKV password', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, authentication: { type: 'Basic', username: 'user', password: hookAkvObj } } };
+        const flat = engine.deserializeActivity(raw);
+        expect(flat.password).toEqual(hookAkvObj);
+    });
+
+    test('serialize: WebHook Basic auth writes AKV password', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, authentication: { type: 'Basic', username: 'user', password: hookAkvObj } } };
+        const out = engine.serializeActivity(engine.deserializeActivity(raw));
+        expect(out.typeProperties.authentication.password).toEqual(hookAkvObj);
+    });
+
+    test('serialize: WebHook strips secretVersion "latest"', () => {
+        const flat = engine.deserializeActivity(base);
+        flat.authenticationType = 'Basic';
+        flat.username = 'user';
+        flat.password = { ...hookAkvObj, secretVersion: 'latest' };
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.authentication.password.secretVersion).toBeUndefined();
+    });
+
+    test('round-trip stable (WebHook Basic auth with AKV password)', () => {
+        const raw = { ...base, typeProperties: { ...base.typeProperties, authentication: { type: 'Basic', username: 'user', password: hookAkvObj } } };
+        expect(stableFlat(roundTrip(raw))).toEqual(stableFlat(engine.deserializeActivity(raw)));
+    });
+
+    test('validation: WebHook akv-secret missing store is an error', () => {
+        const flat = engine.deserializeActivity(base);
+        flat.authenticationType = 'Basic';
+        flat.username = 'user';
+        flat.password = { type: 'AzureKeyVaultSecret', store: { referenceName: '', type: 'LinkedServiceReference' }, secretName: 'pw' };
+        expect(engine.validateActivity(flat).some(e => /key vault/i.test(e))).toBe(true);
+    });
+
+    test('validation: WebHook akv-secret missing secretName is an error', () => {
+        const flat = engine.deserializeActivity(base);
+        flat.authenticationType = 'Basic';
+        flat.username = 'user';
+        flat.password = { type: 'AzureKeyVaultSecret', store: { referenceName: 'AzureKeyVault1', type: 'LinkedServiceReference' }, secretName: '' };
+        expect(engine.validateActivity(flat).some(e => /secret name/i.test(e))).toBe(true);
+    });
+
+    test('validation: WebHook valid AKV password passes', () => {
+        const flat = engine.deserializeActivity(base);
+        flat.authenticationType = 'Basic';
+        flat.username = 'user';
+        flat.password = hookAkvObj;
+        expect(engine.validateActivity(flat)).toHaveLength(0);
     });
 });

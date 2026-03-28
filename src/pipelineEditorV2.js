@@ -256,6 +256,8 @@ class PipelineEditorV2Provider {
 		let pipelineList = [];
 		let linkedServicesList = [];
 		let notebookList = [];
+		let kvLinkedServiceList = [];
+		let credentialList = [];
 
 		if (vscode.workspace.workspaceFolders?.length > 0) {
 			const workspaceRoot = vscode.workspace.workspaceFolders[0].uri.fsPath;
@@ -300,6 +302,9 @@ class PipelineEditorV2Provider {
 								!linkedServicesList.find(l => l.name === ls.name)) {
 								linkedServicesList.push({ name: ls.name, type: lsType });
 							}
+							if (lsType === 'AzureKeyVault' && !kvLinkedServiceList.includes(ls.name)) {
+								kvLinkedServiceList.push(ls.name);
+							}
 						} catch { /* skip */ }
 					}
 				}
@@ -309,6 +314,19 @@ class PipelineEditorV2Provider {
 					for (const file of fs.readdirSync(notebookDir).filter(f => f.endsWith('.json'))) {
 						const name = file.replace('.json', '');
 						if (!notebookList.includes(name)) notebookList.push(name);
+					}
+				}
+
+				const credentialDir = path.join(basePath, 'credential');
+				if (fs.existsSync(credentialDir)) {
+					for (const file of fs.readdirSync(credentialDir).filter(f => f.endsWith('.json'))) {
+						try {
+							const cred = JSON.parse(fs.readFileSync(path.join(credentialDir, file), 'utf8'));
+							const credType = cred.properties?.type;
+							if (credType && !credentialList.find(c => c.name === cred.name)) {
+								credentialList.push({ name: cred.name, type: credType });
+							}
+						} catch { /* skip */ }
 					}
 				}
 			}
@@ -323,7 +341,9 @@ class PipelineEditorV2Provider {
 			datasetContents,
 			pipelineList,
 			linkedServicesList,
-			notebookList
+			notebookList,
+			kvLinkedServiceList,
+			credentialList
 		});
 	}
 

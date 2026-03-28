@@ -33,6 +33,8 @@ let pipelineList = [];
 let datasetTypeCategories = {};
 let locationTypeToStoreSettings = {};
 let datasetTypeToFormatSettings = {};
+let kvLinkedServiceList = [];
+let credentialList = [];
 
 // Pipeline-level data
 let pipelineData = { name: '', description: '', annotations: [], parameters: {}, variables: {}, concurrency: 1 };
@@ -892,6 +894,7 @@ function showProperties(activity) {
         _wireScriptArrayFields(panesContainer, activity);
         _wireFieldLists(panesContainer, activity);
         _wireNotebookSelects(panesContainer, activity);
+        _wireAkvSecretFields(panesContainer, activity);
     } else {
         // Fallback read-only for not-yet-editable types
         tabsContainer.innerHTML = `
@@ -954,7 +957,7 @@ function _buildFormPane(activity, fields, paneId, sharedFields) {
         const nestedCond = def.nestedConditional ? `data-nested-cond-field="${escHtml(def.nestedConditional.field)}" data-nested-cond-value="${escHtml(Array.isArray(def.nestedConditional.value) ? def.nestedConditional.value.join(',') : def.nestedConditional.value)}"` : '';
         const excl = def.excludeConditional ? `data-cond-exclude-field="${escHtml(def.excludeConditional.field)}" data-cond-exclude-value="${escHtml(Array.isArray(def.excludeConditional.value) ? def.excludeConditional.value.join(',') : def.excludeConditional.value)}"` : '';
         const isBool = def.type === 'boolean';
-        const isBlock = isBool || def.multiline || def.type === 'keyvalue' || def.type === 'getmetadata-fieldlist' || def.type === 'script-array' || def.type === 'storedprocedure-parameters' || def.type === 'web-headers' || def.type === 'web-dataset-list' || def.type === 'web-linkedservice-list';
+        const isBlock = isBool || def.multiline || def.type === 'keyvalue' || def.type === 'getmetadata-fieldlist' || def.type === 'script-array' || def.type === 'storedprocedure-parameters' || def.type === 'web-headers' || def.type === 'web-dataset-list' || def.type === 'web-linkedservice-list' || def.type === 'akv-secret';
         html += `<div class="form-field${isBlock ? ' form-field--block' : ''}" data-field-key="${escHtml(key)}" ${cond} ${nestedCond} ${excl}>`;
         if (!isBool) {
             html += `<label class="form-label">${escHtml(def.label || key)}${def.required ? ' <span style="color:var(--vscode-errorForeground)">*</span>' : ''}</label>`;
@@ -1078,9 +1081,36 @@ function _buildFormPane(activity, fields, paneId, sharedFields) {
                 html += `</tbody></table><button class="form-kv-add-btn wh-add" type="button">+ Add header</button></div>`;
                 break;
             }
-            case 'web-secret': {
-                const secretVal = (val && typeof val === 'object') ? JSON.stringify(val) : String(val ?? '');
-                html += `<input type="text" class="form-input" data-key="${escHtml(key)}" data-field-type="web-secret" value="${escHtml(secretVal)}" placeholder="${escHtml(def.placeholder || '')}" />`;
+            case 'akv-secret': {
+                // AKV secret reference: KV linked service dropdown + secret name + version
+                const akv = (val && typeof val === 'object' && val.type === 'AzureKeyVaultSecret') ? val : null;
+                const akvStore = akv?.store?.referenceName ?? '';
+                const akvName = akv?.secretName ?? '';
+                const akvVer = akv?.secretVersion ?? '';
+                html += `<div class="form-akv-secret" data-akv-key="${escHtml(key)}">`;
+                html += `<div style="display:flex;gap:6px;margin-bottom:4px;"><label style="font-size:11px;flex:1;">Key Vault linked service</label></div>`;
+                html += `<select class="form-select akv-store" style="margin-bottom:4px;"><option value="">-- Select Key Vault --</option>`;
+                for (const kv of kvLinkedServiceList) {
+                    html += `<option value="${escHtml(kv)}"${kv === akvStore ? ' selected' : ''}>${escHtml(kv)}</option>`;
+                }
+                html += `</select>`;
+                html += `<div style="display:flex;gap:6px;">`;
+                html += `<input type="text" class="form-input akv-name" value="${escHtml(akvName)}" placeholder="Secret name" style="flex:1;" />`;
+                html += `<input type="text" class="form-input akv-version" value="${escHtml(akvVer)}" placeholder="Version (optional)" style="flex:0 0 130px;" />`;
+                html += `</div></div>`;
+                break;
+            }
+            case 'web-credential': {
+                // Credential reference dropdown filtered by credentialFilter
+                const filter = def.credentialFilter || '';
+                const currentCred = typeof val === 'string' ? val : '';
+                const filtered = credentialList.filter(c => !filter || c.type === filter);
+                html += `<select class="form-select" data-key="${escHtml(key)}" data-field-type="web-credential">`;
+                html += `<option value="">-- Select credential --</option>`;
+                for (const c of filtered) {
+                    html += `<option value="${escHtml(c.name)}"${c.name === currentCred ? ' selected' : ''}>${escHtml(c.name)}</option>`;
+                }
+                html += `</select>`;
                 break;
             }
             case 'web-dataset-list': {
@@ -1241,13 +1271,9 @@ function _wireFormInputs(container, activity) {
                 value = el.checked;
             } else if (tag === 'input' && el.type === 'number') {
                 value = el.value === '' ? '' : Number(el.value);
-            } else if (el.dataset.fieldType === 'web-secret') {
-                // Try to parse as JSON (AKV object); fall back to plain string
-                const raw = el.value.trim();
-                try {
-                    const parsed = JSON.parse(raw);
-                    value = (parsed && typeof parsed === 'object' && parsed.type === 'AzureKeyVaultSecret') ? parsed : raw;
-                } catch { value = raw; }
+            } else if (el.dataset.fieldType === 'web-credential') {
+                // Credential reference: store the plain name string
+                value = el.value || '';
             } else if (el.dataset.fieldType === 'expression') {
                 // Re-wrap into ADF Expression object
                 value = { value: el.value, type: 'Expression' };
@@ -1711,6 +1737,40 @@ function _wireWebRefLists(container, activity) {
     });
 }
 
+// ─── AKV secret field wiring ──────────────────────────────────────────────────
+function _wireAkvSecretFields(container, activity) {
+    container.querySelectorAll('.form-akv-secret').forEach(el => {
+        const key = el.dataset.akvKey;
+        if (!key) return;
+
+        const storeSelect = el.querySelector('.akv-store');
+        const nameInput = el.querySelector('.akv-name');
+        const versionInput = el.querySelector('.akv-version');
+
+        const sync = () => {
+            const store = storeSelect.value;
+            const secretName = nameInput.value.trim();
+            const secretVersion = versionInput.value.trim();
+            if (!store && !secretName) {
+                activity[key] = '';
+            } else {
+                const obj = {
+                    type: 'AzureKeyVaultSecret',
+                    store: { referenceName: store, type: 'LinkedServiceReference' },
+                    secretName: secretName,
+                };
+                if (secretVersion) obj.secretVersion = secretVersion;
+                activity[key] = obj;
+            }
+            markAsDirty();
+        };
+
+        storeSelect.addEventListener('change', sync);
+        nameInput.addEventListener('input', sync);
+        versionInput.addEventListener('input', sync);
+    });
+}
+
 // ─── Key-value field renderer ────────────────────────────────────────────────────
 // Used for SetVariable's "Pipeline return value" returnValues field.
 function _wireKvFields(container, activity) {
@@ -2140,6 +2200,8 @@ window.addEventListener('message', event => {
         datasetTypeToFormatSettings  = msg.activitySchemas?.__meta?.datasetTypeToFormatSettings  || {};
         window.linkedServicesList = msg.linkedServicesList || [];
         window.notebookList = msg.notebookList || [];
+        kvLinkedServiceList = msg.kvLinkedServiceList || [];
+        credentialList = msg.credentialList || [];
         buildSidebar();
         log('Schemas loaded. Activities config categories: ' + activitiesConfig.categories.length);
     }

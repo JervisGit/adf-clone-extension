@@ -342,6 +342,18 @@ function validateActivity(flat) {
 					}
 				}
 			}
+			// Check akv-secret: if an AKV object is present, validate store + secretName
+			if (def.type === 'akv-secret') {
+				const value = flat[key];
+				if (value && typeof value === 'object' && value.type === 'AzureKeyVaultSecret') {
+					if (!value.store?.referenceName) {
+						errors.push(`"${def.label || key}": Azure Key Vault linked service is required`);
+					}
+					if (!value.secretName?.trim()) {
+						errors.push(`"${def.label || key}": secret name is required`);
+					}
+				}
+			}
 			// Check script-array: each script must have non-empty text and valid parameters
 			if (def.type === 'script-array') {
 				const scripts = flat[key];
@@ -428,6 +440,14 @@ function isConditionMet(conditional, flat) {
 
 // ─── Transformer registry ─────────────────────────────────────────────────────
 // Each transformer is a pair: { serialize(flat, output), deserialize(raw, flat) }
+
+// Clean an AKV secret object for serialization: strip secretVersion if empty/'latest'
+function _cleanAkvSecret(val) {
+	if (!val || typeof val !== 'object' || val.type !== 'AzureKeyVaultSecret') return val;
+	const obj = { type: 'AzureKeyVaultSecret', store: val.store, secretName: val.secretName };
+	if (val.secretVersion && val.secretVersion !== 'latest') obj.secretVersion = val.secretVersion;
+	return obj;
+}
 // serialize: called after the main field loop — writes complex structures
 // deserialize: called after the main field reads — adjusts values for the canvas
 
@@ -610,6 +630,7 @@ const TRANSFORMERS = {
 
 	// ── 3. Web auth (WebActivity + WebHook) ───────────────────────────────────
 	// Disk: typeProperties.authentication.{type, username, password, ...}
+	// AKV secret fields are stored as { type: 'AzureKeyVaultSecret', store: { referenceName, type }, secretName, secretVersion? }
 	webAuthentication: {
 		serialize(flat, output) {
 			if (!flat.authenticationType || flat.authenticationType === 'None') return;
@@ -618,7 +639,7 @@ const TRANSFORMERS = {
 				case 'Basic': {
 					const auth = { type: 'Basic' };
 					if (flat.username) auth.username = flat.username;
-					if (flat.password) auth.password = flat.password;
+					if (flat.password) auth.password = _cleanAkvSecret(flat.password);
 					output.typeProperties.authentication = auth;
 					break;
 				}
@@ -637,8 +658,8 @@ const TRANSFORMERS = {
 				}
 				case 'ClientCertificate': {
 					const auth = { type: 'ClientCertificate' };
-					if (flat.pfx)         auth.pfx      = flat.pfx;
-					if (flat.pfxPassword) auth.password = flat.pfxPassword;
+					if (flat.pfx)         auth.pfx      = _cleanAkvSecret(flat.pfx);
+					if (flat.pfxPassword) auth.password = _cleanAkvSecret(flat.pfxPassword);
 					output.typeProperties.authentication = auth;
 					break;
 				}
@@ -655,8 +676,8 @@ const TRANSFORMERS = {
 						if (flat.tenant)             auth.userTenant  = flat.tenant;
 						if (flat.servicePrincipalId) auth.username    = flat.servicePrincipalId;
 						const useKey = flat.servicePrincipalCredentialType !== 'Service Principal Certificate';
-						if (useKey && flat.servicePrincipalKey)   auth.password = flat.servicePrincipalKey;
-						if (!useKey && flat.servicePrincipalCert) auth.pfx      = flat.servicePrincipalCert;
+						if (useKey && flat.servicePrincipalKey)   auth.password = _cleanAkvSecret(flat.servicePrincipalKey);
+						if (!useKey && flat.servicePrincipalCert) auth.pfx      = _cleanAkvSecret(flat.servicePrincipalCert);
 						if (flat.servicePrincipalResource) auth.resource = flat.servicePrincipalResource;
 						output.typeProperties.authentication = auth;
 					}

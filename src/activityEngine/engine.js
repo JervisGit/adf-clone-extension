@@ -507,6 +507,17 @@ function validateActivity(flat) {
 		}
 	}
 
+	// ── Container body validation ─────────────────────────────────────────────────
+	if (flat.type === 'ForEach' && (!flat.activities || flat.activities.length === 0)) {
+		errors.push('Activity "ForEach" must have at least one activity in its body. Please add activities in the Activities tab before saving.');
+	}
+	if (flat.type === 'Until' && (!flat.activities || flat.activities.length === 0)) {
+		errors.push('Activity "Until" must have at least one activity in its body. Please add activities in the Activities tab before saving.');
+	}
+	if (flat.type === 'Switch' && (!flat.cases || flat.cases.length === 0)) {
+		errors.push('Activity "Switch" must have at least one case. Please add a case in the Activities tab before saving.');
+	}
+
 	// ── Copy Activity: validate config-driven src_* / snk_* fields ──────────────
 	if (flat.type === 'Copy') {
 		const _isCopyCondMet = (cond, f) => {
@@ -578,7 +589,27 @@ function validateActivity(flat) {
 }
 
 // Returns { activityName: [errors] } for all activities that have errors.
-function validateActivityList(activities) {
+// ancestorTypes: array of container type strings from outermost to nearest parent.
+function validateActivityList(activities, ancestorTypes) {
+	ancestorTypes = ancestorTypes || [];
+
+	// Nesting restrictions (ADF rules, matching V1):
+	// ForEach: cannot contain ForEach, Until
+	// Until:   cannot contain Validation, ForEach, Until
+	// IfCondition: cannot contain IfCondition, ForEach, Until, Switch
+	// Switch:  cannot contain IfCondition, ForEach, Until, Switch
+	const RESTRICTED_BY = {
+		'ForEach':     new Set(['ForEach', 'Until']),
+		'Until':       new Set(['Validation', 'ForEach', 'Until']),
+		'IfCondition': new Set(['IfCondition', 'ForEach', 'Until', 'Switch']),
+		'Switch':      new Set(['IfCondition', 'ForEach', 'Until', 'Switch']),
+	};
+	// Union all ancestor restrictions (inherited nesting rules)
+	const inheritedRestrictions = new Set();
+	for (const t of ancestorTypes) {
+		for (const r of (RESTRICTED_BY[t] || [])) inheritedRestrictions.add(r);
+	}
+
 	const allErrors = {};
 	// Check for duplicate names
 	const nameCount = {};
@@ -587,16 +618,24 @@ function validateActivityList(activities) {
 		if (count > 1) allErrors[name] = [`Duplicate activity name "${name}" — each activity must have a unique name`];
 	}
 	for (const a of (activities || [])) {
+		// Nesting restriction check — block types forbidden by any ancestor container
+		if (inheritedRestrictions.has(a.type)) {
+			const nearestBlocker = ancestorTypes.slice().reverse().find(t => RESTRICTED_BY[t]?.has(a.type));
+			const key = a.name || String(a.id);
+			allErrors[key] = allErrors[key] || [];
+			allErrors[key].push(`"${a.type}" activity cannot be placed inside a "${nearestBlocker}" container`);
+		}
 		const errs = validateActivity(a);
-		if (errs.length) allErrors[a.name || String(a.id)] = errs;
+		if (errs.length) allErrors[a.name || String(a.id)] = (allErrors[a.name || String(a.id)] || []).concat(errs);
 		// Recurse into container children — always flat after deserialization
+		const childAncestors = [...ancestorTypes, a.type];
 		for (const key of ['activities', 'ifTrueActivities', 'ifFalseActivities', 'defaultActivities']) {
 			if (Array.isArray(a[key]) && a[key].length > 0)
-				Object.assign(allErrors, validateActivityList(a[key]));
+				Object.assign(allErrors, validateActivityList(a[key], childAncestors));
 		}
 		for (const c of (a.cases || [])) {
 			if (Array.isArray(c.activities) && c.activities.length > 0)
-				Object.assign(allErrors, validateActivityList(c.activities));
+				Object.assign(allErrors, validateActivityList(c.activities, childAncestors));
 		}
 	}
 	return allErrors;

@@ -547,6 +547,131 @@ describe('Container \u2014 recursive nested round-trip', () => {
     });
 });
 
+// ─── Container body validation ─────────────────────────────────────────────────
+
+describe('Container body validation', () => {
+    test('ForEach with empty activities is invalid', () => {
+        const flat = engine.deserializeActivity({
+            name: 'FE', type: 'ForEach', dependsOn: [], userProperties: [],
+            typeProperties: { items: { value: '@pipeline().parameters.arr', type: 'Expression' }, isSequential: false, activities: [] },
+        });
+        const errs = engine.validateActivity(flat);
+        expect(errs.some(e => e.includes('ForEach') && e.includes('Activities tab'))).toBe(true);
+    });
+
+    test('ForEach with activities is valid (body check passes)', () => {
+        const flat = engine.deserializeActivity({
+            name: 'FE', type: 'ForEach', dependsOn: [], userProperties: [],
+            typeProperties: {
+                items: { value: '@pipeline().parameters.arr', type: 'Expression' }, isSequential: false,
+                activities: [{ name: 'W', type: 'Wait', dependsOn: [], userProperties: [], typeProperties: { waitTimeInSeconds: 1 } }],
+            },
+        });
+        const errs = engine.validateActivity(flat);
+        expect(errs.some(e => e.includes('Activities tab'))).toBe(false);
+    });
+
+    test('Until with empty activities is invalid', () => {
+        const flat = engine.deserializeActivity({
+            name: 'Ul', type: 'Until', dependsOn: [], userProperties: [],
+            typeProperties: { expression: { value: '@equals(1,1)', type: 'Expression' }, activities: [] },
+        });
+        const errs = engine.validateActivity(flat);
+        expect(errs.some(e => e.includes('Until') && e.includes('Activities tab'))).toBe(true);
+    });
+
+    test('Switch with no cases is invalid', () => {
+        const flat = engine.deserializeActivity({
+            name: 'Sw', type: 'Switch', dependsOn: [], userProperties: [],
+            typeProperties: { on: { value: '@pipeline().parameters.ch', type: 'Expression' }, cases: [] },
+        });
+        const errs = engine.validateActivity(flat);
+        expect(errs.some(e => e.includes('Switch') && e.includes('Activities tab'))).toBe(true);
+    });
+
+    test('Switch with at least one case is valid (body check passes)', () => {
+        const flat = engine.deserializeActivity({
+            name: 'Sw', type: 'Switch', dependsOn: [], userProperties: [],
+            typeProperties: {
+                on: { value: '@pipeline().parameters.ch', type: 'Expression' },
+                cases: [{ value: 'A', activities: [{ name: 'W', type: 'Wait', dependsOn: [], userProperties: [], typeProperties: { waitTimeInSeconds: 1 } }] }],
+            },
+        });
+        const errs = engine.validateActivity(flat);
+        expect(errs.some(e => e.includes('Activities tab'))).toBe(false);
+    });
+});
+
+// ─── Nesting restriction validation ───────────────────────────────────────────
+
+describe('Nesting restriction validation', () => {
+    const makeWait = name => ({ name, type: 'Wait', dependsOn: [], userProperties: [], typeProperties: { waitTimeInSeconds: 1 } });
+    const makeForEach = (name, innerActivities) => ({
+        name, type: 'ForEach', dependsOn: [], userProperties: [],
+        typeProperties: { items: { value: '@arr', type: 'Expression' }, isSequential: false, activities: innerActivities },
+    });
+    const makeUntil = (name, innerActivities) => ({
+        name, type: 'Until', dependsOn: [], userProperties: [],
+        typeProperties: { expression: { value: '@equals(1,1)', type: 'Expression' }, activities: innerActivities },
+    });
+    const makeIfCond = (name, trueActs, falseActs) => ({
+        name, type: 'IfCondition', dependsOn: [], userProperties: [],
+        typeProperties: { expression: { value: '@equals(1,1)', type: 'Expression' }, ifTrueActivities: trueActs, ifFalseActivities: falseActs || [] },
+    });
+
+    test('ForEach cannot directly contain ForEach', () => {
+        const raw = makeForEach('Outer', [makeForEach('Inner', [makeWait('W')])]);
+        const errors = engine.validateActivityList([engine.deserializeActivity(raw)]);
+        expect(Object.keys(errors)).toContain('Inner');
+        expect(errors['Inner'].some(e => e.includes('ForEach') && e.includes('"ForEach"'))).toBe(true);
+    });
+
+    test('ForEach cannot directly contain Until', () => {
+        const raw = makeForEach('Outer', [makeUntil('Inner', [makeWait('W')])]);
+        const errors = engine.validateActivityList([engine.deserializeActivity(raw)]);
+        expect(Object.keys(errors)).toContain('Inner');
+    });
+
+    test('Until cannot contain Validation', () => {
+        const validationRaw = { name: 'V', type: 'Validation', dependsOn: [], userProperties: [],
+            typeProperties: { dataset: { referenceName: 'DS1', type: 'DatasetReference' }, timeout: '7.00:00:00', sleep: 10 } };
+        const raw = makeUntil('Ul', [validationRaw]);
+        const errors = engine.validateActivityList([engine.deserializeActivity(raw)]);
+        expect(Object.keys(errors)).toContain('V');
+        expect(errors['V'].some(e => e.includes('"Until"'))).toBe(true);
+    });
+
+    test('IfCondition cannot contain IfCondition', () => {
+        const raw = makeIfCond('Outer', [makeIfCond('Inner', [makeWait('W')])]);
+        const errors = engine.validateActivityList([engine.deserializeActivity(raw)]);
+        expect(Object.keys(errors)).toContain('Inner');
+    });
+
+    test('IfCondition cannot contain Switch', () => {
+        const switchRaw = { name: 'Sw', type: 'Switch', dependsOn: [], userProperties: [],
+            typeProperties: { on: { value: '@ch', type: 'Expression' }, cases: [{ value: 'A', activities: [makeWait('W')] }] } };
+        const raw = makeIfCond('If', [switchRaw]);
+        const errors = engine.validateActivityList([engine.deserializeActivity(raw)]);
+        expect(Object.keys(errors)).toContain('Sw');
+    });
+
+    test('restriction is inherited: Until inside ForEach blocks Validation inside Until', () => {
+        const validationRaw = { name: 'V', type: 'Validation', dependsOn: [], userProperties: [],
+            typeProperties: { dataset: { referenceName: 'DS1', type: 'DatasetReference' }, timeout: '7.00:00:00', sleep: 10 } };
+        const raw = makeForEach('FE', [makeUntil('Ul', [validationRaw])]);
+        const errors = engine.validateActivityList([engine.deserializeActivity(raw)]);
+        expect(Object.keys(errors)).toContain('V');
+    });
+
+    test('Wait inside ForEach is allowed', () => {
+        const raw = makeForEach('FE', [makeWait('W')]);
+        const errors = engine.validateActivityList([engine.deserializeActivity(raw)]);
+        expect(Object.keys(errors)).not.toContain('W');
+    });
+});
+
+// ─── Validation ───────────────────────────────────────────────────────────────
+
 describe('Validation', () => {
     const raw = {
         name: 'Val1',

@@ -214,6 +214,7 @@ function buildSidebar() {
         });
         item.addEventListener('dblclick', () => {
             const type = item.getAttribute('data-type');
+            if (item.dataset.restricted === 'true') return;
             const wrapper = document.getElementById('worldContainer');
             const a = new Activity(type, 100 + activities.length * 20, 100 + activities.length * 20, wrapper);
             activities.push(a);
@@ -619,6 +620,12 @@ function setupCanvasEvents() {
         e.preventDefault();
         const type = e.dataTransfer.getData('activityType');
         if (!type) return;
+        // Block drop of restricted types when inside a container
+        if (getRestrictedTypesForCurrentCanvas().has(type)) {
+            const parentType = canvasStack[canvasStack.length - 1]?.parentActivity?.type;
+            vscode.postMessage({ type: 'alert', text: `"${type}" cannot be placed inside a "${parentType}" container.` });
+            return;
+        }
         const pos = screenToWorld(e.clientX, e.clientY);
         const a = new Activity(type, pos.x - 90, pos.y - 28, worldEl);
         a.name = uniqueActivityName(a.name);
@@ -2679,6 +2686,43 @@ function computeLayout(flats, src) {
     return positions;
 }
 
+// ─── Nesting restrictions (mirrors ADF rules and V1 behaviour) ───────────────────────────
+const NESTING_RESTRICTIONS = {
+    'ForEach':     new Set(['ForEach', 'Until']),
+    'Until':       new Set(['Validation', 'ForEach', 'Until']),
+    'IfCondition': new Set(['IfCondition', 'ForEach', 'Until', 'Switch']),
+    'Switch':      new Set(['IfCondition', 'ForEach', 'Until', 'Switch']),
+};
+
+// Returns the set of activity types forbidden on the current canvas (union of all ancestor restrictions).
+function getRestrictedTypesForCurrentCanvas() {
+    const forbidden = new Set();
+    for (const frame of canvasStack) {
+        const parentType = frame.parentActivity?.type;
+        for (const t of (NESTING_RESTRICTIONS[parentType] || [])) forbidden.add(t);
+    }
+    return forbidden;
+}
+
+// Grey-out forbidden activity palette items and block dblclick-add for them.
+function updateSidebarRestrictions() {
+    const forbidden = getRestrictedTypesForCurrentCanvas();
+    document.querySelectorAll('.activity-item').forEach(item => {
+        const actType = item.getAttribute('data-type');
+        if (forbidden.has(actType)) {
+            item.style.opacity = '0.4';
+            item.style.cursor = 'not-allowed';
+            item.setAttribute('draggable', 'false');
+            item.dataset.restricted = 'true';
+        } else {
+            item.style.opacity = '';
+            item.style.cursor = '';
+            item.setAttribute('draggable', 'true');
+            delete item.dataset.restricted;
+        }
+    });
+}
+
 // ─── Sub-canvas navigation ────────────────────────────────────────────────────
 
 function renderBreadcrumb() {
@@ -2764,6 +2808,7 @@ function enterSubCanvas(flatNested, parentActivity, branchKey, caseIndex, label)
     connections = [];
     _loadActivitiesToCanvas(flatNested);
     renderBreadcrumb();
+    updateSidebarRestrictions();
     markAsDirty();
 }
 
@@ -2804,6 +2849,7 @@ function exitSubCanvas() {
     selectedActivity = frame.parentActivity;
     showProperties(frame.parentActivity);
     renderBreadcrumb();
+    updateSidebarRestrictions();
     draw();
 }
 

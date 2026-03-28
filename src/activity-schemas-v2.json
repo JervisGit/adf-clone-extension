@@ -1,4 +1,4 @@
-{
+﻿{
   "__meta": {
     "datasetTypeCategories": {
       "DelimitedText": "storage",
@@ -2279,6 +2279,10 @@
           "field": "servicePrincipalCredentialType",
           "value": "Service Principal Key"
         },
+        "excludeConditional": {
+          "field": "servicePrincipalAuthMethod",
+          "value": "Credential"
+        },
         "jsonPath": "typeProperties.authentication.servicePrincipalKey",
         "serializeAs": "webAuthentication"
       },
@@ -2292,6 +2296,10 @@
         "nestedConditional": {
           "field": "servicePrincipalCredentialType",
           "value": "Service Principal Certificate"
+        },
+        "excludeConditional": {
+          "field": "servicePrincipalAuthMethod",
+          "value": "Credential"
         },
         "jsonPath": "typeProperties.authentication.servicePrincipalCert",
         "serializeAs": "webAuthentication"
@@ -2643,6 +2651,10 @@
           "field": "servicePrincipalCredentialType",
           "value": "Service Principal Key"
         },
+        "excludeConditional": {
+          "field": "servicePrincipalAuthMethod",
+          "value": "Credential"
+        },
         "jsonPath": "typeProperties.authentication.servicePrincipalKey",
         "serializeAs": "webAuthentication"
       },
@@ -2656,6 +2668,10 @@
         "nestedConditional": {
           "field": "servicePrincipalCredentialType",
           "value": "Service Principal Certificate"
+        },
+        "excludeConditional": {
+          "field": "servicePrincipalAuthMethod",
+          "value": "Credential"
         },
         "jsonPath": "typeProperties.authentication.servicePrincipalCert",
         "serializeAs": "webAuthentication"

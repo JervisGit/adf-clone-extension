@@ -2319,6 +2319,32 @@ describe('WebActivity', () => {
         flat.password = akvObj;
         expect(engine.validateActivity(flat)).toHaveLength(0);
     });
+
+    test('validation: switching from Basic to MSI clears stale AKV password error', () => {
+        // Set up a partial AKV object (would fail Basic validation)
+        const flat = engine.deserializeActivity(base);
+        flat.authenticationType = 'Basic';
+        flat.username = 'user';
+        flat.password = { type: 'AzureKeyVaultSecret', store: { referenceName: 'AzureKeyVault1', type: 'LinkedServiceReference' }, secretName: '' };
+        // Confirm error appears under Basic
+        expect(engine.validateActivity(flat).some(e => /secret name/i.test(e))).toBe(true);
+        // Switch to MSI — password field is no longer conditional-visible
+        flat.authenticationType = 'MSI';
+        flat.resource = 'https://res';
+        expect(engine.validateActivity(flat)).toHaveLength(0);
+    });
+
+    test('validation: SP Credential mode does not require/validate servicePrincipalKey', () => {
+        const flat = engine.deserializeActivity(base);
+        flat.authenticationType = 'ServicePrincipal';
+        flat.servicePrincipalAuthMethod = 'Credential';
+        flat.credential = 'MyCred';
+        flat.credentialResource = 'https://res';
+        // Even with a bad AKV object in servicePrincipalKey, it should not error
+        // because servicePrincipalKey is excluded when authMethod is Credential
+        flat.servicePrincipalKey = { type: 'AzureKeyVaultSecret', store: { referenceName: '', type: 'LinkedServiceReference' }, secretName: '' };
+        expect(engine.validateActivity(flat)).toHaveLength(0);
+    });
 });
 
 // ─── WebHook ──────────────────────────────────────────────────────────────────

@@ -343,14 +343,20 @@ function validateActivity(flat) {
 				}
 			}
 			// Check akv-secret: if an AKV object is present, validate store + secretName
+			// Only validate when the field's conditional/nestedConditional are satisfied
 			if (def.type === 'akv-secret') {
-				const value = flat[key];
-				if (value && typeof value === 'object' && value.type === 'AzureKeyVaultSecret') {
-					if (!value.store?.referenceName) {
-						errors.push(`"${def.label || key}": Azure Key Vault linked service is required`);
-					}
-					if (!value.secretName?.trim()) {
-						errors.push(`"${def.label || key}": secret name is required`);
+				const condOk = !def.conditional || isConditionMet(def.conditional, flat);
+				const nestedOk = !def.nestedConditional || isConditionMet(def.nestedConditional, flat);
+				const notExcluded = !def.excludeConditional || !isConditionMet(def.excludeConditional, flat);
+				if (condOk && nestedOk && notExcluded) {
+					const value = flat[key];
+					if (value && typeof value === 'object' && value.type === 'AzureKeyVaultSecret') {
+						if (!value.store?.referenceName) {
+							errors.push(`"${def.label || key}": Azure Key Vault linked service is required`);
+						}
+						if (!value.secretName?.trim()) {
+							errors.push(`"${def.label || key}": secret name is required`);
+						}
 					}
 				}
 			}

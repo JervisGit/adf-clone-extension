@@ -12,7 +12,7 @@ const EDITABLE_TYPES = new Set(['Wait', 'Fail', 'SetVariable', 'AppendVariable',
     'ForEach', 'Until', 'IfCondition', 'Switch',
     'Lookup', 'Delete', 'Validation', 'GetMetadata',
     'SynapseNotebook', 'SparkJob', 'Script', 'SqlServerStoredProcedure',
-    'WebActivity', 'WebHook']);
+    'WebActivity', 'WebHook', 'Copy']);
 
 const vscode = acquireVsCodeApi();
 
@@ -864,6 +864,7 @@ function showProperties(activity) {
         // the user never touches a field.
         _applySchemaDefaults(activity, schema);
         _detectDatasetCategory(activity, schema);
+        if (activity.type === 'Copy') _detectCopyDatasetTypes(activity);
 
         // Build tabs from schema.tabs
         const tabs = schema.tabs || ['General', 'Settings'];
@@ -879,9 +880,9 @@ function showProperties(activity) {
                 : t === 'Settings'
                     ? _buildFormPane(activity, schema.typeProperties || {}, 'settings')
                     : t === 'Source'
-                        ? _buildFormPane(activity, schema.sourceProperties || {}, 'source')
+                        ? (activity.type === 'Copy' ? _buildCopyDatasetPane(activity, 'source') : _buildFormPane(activity, schema.sourceProperties || {}, 'source'))
                         : t === 'Sink'
-                            ? _buildFormPane(activity, schema.sinkProperties || {}, 'sink')
+                            ? (activity.type === 'Copy' ? _buildCopyDatasetPane(activity, 'sink') : _buildFormPane(activity, schema.sinkProperties || {}, 'sink'))
                             : t === 'Advanced'
                                 ? _buildFormPane(activity, schema.advancedProperties || {}, 'advanced')
                                 : t === 'Activities'
@@ -898,6 +899,7 @@ function showProperties(activity) {
         _wireFieldLists(panesContainer, activity);
         _wireNotebookSelects(panesContainer, activity);
         _wireAkvSecretFields(panesContainer, activity);
+        if (activity.type === 'Copy') _wireCopyConfigFields(panesContainer, activity);
     } else {
         // Fallback read-only for not-yet-editable types
         tabsContainer.innerHTML = `
@@ -1254,6 +1256,480 @@ function _detectDatasetCategory(activity, schema) {
     }
 }
 
+// ─── Copy Activity support ─────────────────────────────────────────────────────
+
+// Detect and cache _sourceDatasetType, _sinkDatasetType, _sourceLocationType,
+// _sinkLocationType for Copy activities and, on first open, parse the stashed
+// raw source/sink objects into flat src_*/snk_* form fields.
+function _detectCopyDatasetTypes(activity) {
+    const srcName = typeof activity.sourceDataset === 'object'
+        ? activity.sourceDataset?.referenceName : activity.sourceDataset;
+    const snkName = typeof activity.sinkDataset === 'object'
+        ? activity.sinkDataset?.referenceName : activity.sinkDataset;
+
+    if (srcName && datasetContents[srcName]) {
+        const props = datasetContents[srcName].properties || {};
+        activity._sourceDatasetType    = props.type || '';
+        activity._sourceLocationType   = props.typeProperties?.location?.type || '';
+    }
+    if (snkName && datasetContents[snkName]) {
+        const props = datasetContents[snkName].properties || {};
+        activity._sinkDatasetType  = props.type || '';
+        activity._sinkLocationType = props.typeProperties?.location?.type || '';
+    }
+
+    // On first open: parse raw source/sink objects → flat src_*/snk_* fields
+    if (activity._sourceObject && activity._sourceDatasetType && !activity._srcParsed) {
+        const typeConf = copyActivityConfig.datasetTypes?.[activity._sourceDatasetType];
+        if (typeConf) Object.assign(activity, _parseCopyObjToForm(activity._sourceObject, typeConf, 'source'));
+        activity._srcParsed = true;
+    }
+    if (activity._sinkObject && activity._sinkDatasetType && !activity._snkParsed) {
+        const typeConf = copyActivityConfig.datasetTypes?.[activity._sinkDatasetType];
+        if (typeConf) Object.assign(activity, _parseCopyObjToForm(activity._sinkObject, typeConf, 'sink'));
+        activity._snkParsed = true;
+    }
+}
+
+// Webview-side equivalent of parseCopySourceToForm / parseCopySinkToForm.
+// Reads jsonPath values from obj and returns a flat {fieldKey: value} map.
+function _parseCopyObjToForm(obj, typeConf, side) {
+    const result = {};
+    const fields = typeConf.fields?.[side] || {};
+    function _getByDotPath(o, path) {
+        let cur = o;
+        for (const seg of path.split('.')) {
+            if (cur == null) return undefined;
+            cur = cur[seg];
+        }
+        return cur;
+    }
+    for (const [fieldKey, fieldConf] of Object.entries(fields)) {
+        if (!fieldConf.jsonPath) continue;
+        const value = _getByDotPath(obj, fieldConf.jsonPath);
+        if (value !== undefined) result[fieldKey] = value;
+        else if (fieldConf.default !== undefined) result[fieldKey] = fieldConf.default;
+    }
+    return result;
+}
+
+// Build the Source or Sink pane for a Copy activity:
+//   1. Schema-driven dataset picker (from sourceProperties / sinkProperties)
+//   2. Config-driven fields from copyActivityConfig.datasetTypes[type].fields.source|sink
+function _buildCopyDatasetPane(activity, side) {
+    const schema = activitySchemas[activity.type] || {};
+    const schemaProps = side === 'source' ? (schema.sourceProperties || {}) : (schema.sinkProperties || {});
+    const paneId = side;
+    // Part 1: dataset picker (reuse _buildFormPane for the schema-driven part)
+    let html = _buildFormPane(activity, schemaProps, paneId);
+
+    // Part 2: config-driven fields (only when dataset type is known)
+    const dsType = side === 'source' ? activity._sourceDatasetType : activity._sinkDatasetType;
+    const typeConf = dsType ? copyActivityConfig.datasetTypes?.[dsType] : null;
+    if (typeConf) {
+        const configFields = typeConf.fields?.[side] || {};
+        html += `<div class="copy-config-section" data-copy-side="${escHtml(side)}">`;
+        html += `<div class="copy-config-section-title">${escHtml(typeConf.name || dsType)} — ${side === 'source' ? 'Source' : 'Sink'} Settings</div>`;
+        html += _buildCopyConfigFields(activity, configFields, paneId);
+        html += `</div>`;
+    } else if (!dsType) {
+        html += `<div class="form-help" style="margin-top:8px;">Select a dataset above to see ${side} settings.</div>`;
+    } else {
+        html += `<div class="form-help" style="margin-top:8px;">Dataset type "${escHtml(dsType)}" is not yet supported for Copy activity editing.</div>`;
+    }
+    return html;
+}
+
+// Build config-driven field HTML from a copyActivityConfig fields block.
+// Supports all copy-specific field types in addition to standard ones.
+function _buildCopyConfigFields(activity, fields, paneId) {
+    let html = '';
+    for (const [key, def] of Object.entries(fields)) {
+        if (!def.type) continue;
+        const val = activity[key] !== undefined ? activity[key] : (def.default !== undefined ? def.default : '');
+        // Build conditional attributes
+        const condAttr   = def.conditional
+            ? `data-cond-field="${escHtml(def.conditional.field)}" data-cond-value="${escHtml(Array.isArray(def.conditional.value) ? def.conditional.value.join(',') : String(def.conditional.value))}"${def.conditional.notEmpty ? ' data-cond-not-empty="true"' : ''}`
+            : '';
+        const nestedAttr = def.nestedConditional
+            ? `data-nested-cond-field="${escHtml(def.nestedConditional.field)}" data-nested-cond-value="${escHtml(Array.isArray(def.nestedConditional.value) ? def.nestedConditional.value.join(',') : String(def.nestedConditional.value))}"`
+            : '';
+        const condAllAttr = def.conditionalAll
+            ? `data-cond-all="${escHtml(JSON.stringify(def.conditionalAll))}"`
+            : '';
+        const isBool  = def.type === 'boolean';
+        const isBlock = isBool || def.type === 'additional-columns' || def.type === 'string-list'
+            || def.type === 'copy-sp-parameters' || def.type === 'copy-cmd-default-values'
+            || def.type === 'copy-cmd-additional-options' || def.type === 'namespace-prefixes'
+            || def.multiline;
+
+        html += `<div class="form-field${isBlock ? ' form-field--block' : ''}" data-field-key="${escHtml(key)}" ${condAttr} ${nestedAttr} ${condAllAttr}>`;
+        if (!isBool) {
+            html += `<label class="form-label">${escHtml(def.label || key)}${def.required ? ' <span style="color:var(--vscode-errorForeground)">*</span>' : ''}</label>`;
+        }
+
+        switch (def.type) {
+            case 'boolean':
+                html += `<label class="form-checkbox-label">${escHtml(def.label || key)}<input type="checkbox" class="form-checkbox" data-key="${escHtml(key)}" ${val ? 'checked' : ''} /></label>`;
+                break;
+            case 'radio': {
+                const radioOptions = def.options || [];
+                const radioValues  = def.optionValues || radioOptions;
+                html += `<div class="form-radio-group">`;
+                for (let ri = 0; ri < radioOptions.length; ri++) {
+                    const rv = radioValues[ri];
+                    const oc = def.optionConditionals?.[String(rv)];
+                    const ocAttr = oc ? ` data-cond-field="${escHtml(oc.field)}" data-cond-value="${escHtml(Array.isArray(oc.value) ? oc.value.join(',') : String(oc.value))}"` : '';
+                    const isDisabled = def.disabledOptionValues?.includes(rv) ? ' disabled' : '';
+                    html += `<label class="form-radio-label"${ocAttr}><input type="radio" name="${escHtml(paneId + '-' + key)}" value="${escHtml(String(rv))}" ${String(val) === String(rv) ? 'checked' : ''}${isDisabled} data-key="${escHtml(key)}" />${escHtml(String(radioOptions[ri]))}</label>`;
+                }
+                html += `</div>`;
+                break;
+            }
+            case 'select':
+                html += `<select class="form-select" data-key="${escHtml(key)}">`;
+                (def.options || []).forEach(opt => {
+                    const ov = def.optionValues ? def.optionValues[def.options.indexOf(opt)] : opt;
+                    html += `<option value="${escHtml(String(ov))}"${String(val) === String(ov) ? ' selected' : ''}>${escHtml(opt)}</option>`;
+                });
+                html += `</select>`;
+                break;
+            case 'number':
+                html += `<input type="number" class="form-input" data-key="${escHtml(key)}" value="${escHtml(String(val))}"${def.min != null ? ` min="${def.min}"` : ''}${def.max != null ? ` max="${def.max}"` : ''} placeholder="${escHtml(def.placeholder || '')}"${def.readonly ? ' readonly style="opacity:0.6;cursor:default;"' : ''} />`;
+                break;
+            case 'textarea':
+            case 'text':
+            case 'string':
+                if (def.multiline || def.type === 'textarea') {
+                    html += `<textarea class="form-textarea" data-key="${escHtml(key)}" rows="3" placeholder="${escHtml(def.placeholder || '')}">${escHtml(String(val))}</textarea>`;
+                } else {
+                    html += `<input type="text" class="form-input" data-key="${escHtml(key)}" value="${escHtml(String(val))}" placeholder="${escHtml(def.placeholder || '')}"${def.readonly ? ' readonly style="opacity:0.6;cursor:default;"' : ''} />`;
+                }
+                break;
+            case 'datetime': {
+                let dtVal = '';
+                if (val) dtVal = String(val).replace('Z', '').substring(0, 16);
+                html += `<input type="datetime-local" class="form-input" data-key="${escHtml(key)}" data-field-type="datetime" value="${escHtml(dtVal)}" />`;
+                break;
+            }
+            case 'additional-columns': {
+                const rows = Array.isArray(val) ? val : [];
+                const dfltRowVal = def.defaultRowValue || '';
+                html += `<div class="form-copy-addcol" data-addcol-key="${escHtml(key)}" data-addcol-default="${escHtml(dfltRowVal)}">`;
+                html += `<table class="form-kv-table"><thead><tr><th>Name</th><th>Value</th><th></th></tr></thead><tbody>`;
+                for (const row of rows) {
+                    html += `<tr>`
+                        + `<td><input type="text" class="form-input form-kv-cell addcol-name" value="${escHtml(row.name || '')}" placeholder="Column name" /></td>`
+                        + `<td><input type="text" class="form-input form-kv-cell addcol-value" value="${escHtml(row.value || dfltRowVal)}" placeholder="${escHtml(dfltRowVal || 'Value or expression')}" /></td>`
+                        + `<td><button class="action-icon-btn addcol-remove" type="button" title="Remove">×</button></td></tr>`;
+                }
+                html += `</tbody></table><button class="form-kv-add-btn addcol-add" type="button">+ Add column</button></div>`;
+                break;
+            }
+            case 'string-list': {
+                const items = Array.isArray(val) ? val : [];
+                html += `<div class="form-copy-strlist" data-strlist-key="${escHtml(key)}">`;
+                for (const item of items) {
+                    html += `<div class="copy-strlist-row" style="display:flex;gap:4px;margin-bottom:3px;">`
+                        + `<input type="text" class="form-input strlist-item" value="${escHtml(item || '')}" placeholder="Enter value" style="flex:1;" />`
+                        + `<button class="action-icon-btn strlist-remove" type="button" title="Remove">×</button></div>`;
+                }
+                html += `<button class="form-kv-add-btn strlist-add" type="button">+ Add</button></div>`;
+                break;
+            }
+            case 'copy-sp-parameters': {
+                const spParams = (val && typeof val === 'object' && !Array.isArray(val)) ? val : {};
+                const spTypes = 'String,Boolean,Datetime,Datetimeoffset,Decimal,Double,Guid,Int16,Int32,Int64,Single,Timespan,Byte[]';
+                html += `<div class="form-copy-spparams" data-spparams-key="${escHtml(key)}">`;
+                html += `<table class="form-kv-table"><thead><tr><th>Name</th><th>Value</th><th>Type</th><th></th></tr></thead><tbody>`;
+                for (const [pName, pDef] of Object.entries(spParams)) {
+                    const pVal  = (typeof pDef === 'object' && pDef !== null) ? (pDef.value ?? '') : pDef;
+                    const pType = (typeof pDef === 'object' && pDef !== null) ? (pDef.type ?? 'String') : 'String';
+                    html += `<tr>`
+                        + `<td><input type="text" class="form-input form-kv-cell spp-name" value="${escHtml(pName)}" placeholder="Param name" /></td>`
+                        + `<td><input type="text" class="form-input form-kv-cell spp-value" value="${escHtml(String(pVal))}" placeholder="Value" /></td>`
+                        + `<td><select class="form-select spp-type">${spTypes.split(',').map(t => `<option value="${escHtml(t)}"${t === pType ? ' selected' : ''}>${escHtml(t)}</option>`).join('')}</select></td>`
+                        + `<td><button class="action-icon-btn spp-remove" type="button" title="Remove">×</button></td></tr>`;
+                }
+                html += `</tbody></table><button class="form-kv-add-btn spp-add" type="button">+ Add parameter</button></div>`;
+                break;
+            }
+            case 'copy-cmd-default-values': {
+                const cmdDefs = Array.isArray(val) ? val : [];
+                html += `<div class="form-copy-cmddef" data-cmddef-key="${escHtml(key)}">`;
+                html += `<table class="form-kv-table"><thead><tr><th>Column name</th><th>Default value</th><th></th></tr></thead><tbody>`;
+                for (const row of cmdDefs) {
+                    html += `<tr>`
+                        + `<td><input type="text" class="form-input form-kv-cell cmddef-col" value="${escHtml(row.columnName || '')}" placeholder="Column name" /></td>`
+                        + `<td><input type="text" class="form-input form-kv-cell cmddef-val" value="${escHtml(row.defaultValue || '')}" placeholder="Default value" /></td>`
+                        + `<td><button class="action-icon-btn cmddef-remove" type="button" title="Remove">×</button></td></tr>`;
+                }
+                html += `</tbody></table><button class="form-kv-add-btn cmddef-add" type="button">+ Add</button></div>`;
+                break;
+            }
+            case 'copy-cmd-additional-options': {
+                const opts = (val && typeof val === 'object' && !Array.isArray(val)) ? val : {};
+                html += `<div class="form-copy-cmdopts" data-cmdopts-key="${escHtml(key)}">`;
+                html += `<table class="form-kv-table"><thead><tr><th>Key</th><th>Value</th><th></th></tr></thead><tbody>`;
+                for (const [k, v] of Object.entries(opts)) {
+                    html += `<tr>`
+                        + `<td><input type="text" class="form-input form-kv-cell cmdopt-key" value="${escHtml(k)}" placeholder="Key" /></td>`
+                        + `<td><input type="text" class="form-input form-kv-cell cmdopt-val" value="${escHtml(String(v || ''))}" placeholder="Value" /></td>`
+                        + `<td><button class="action-icon-btn cmdopt-remove" type="button" title="Remove">×</button></td></tr>`;
+                }
+                html += `</tbody></table><button class="form-kv-add-btn cmdopt-add" type="button">+ Add</button></div>`;
+                break;
+            }
+            case 'namespace-prefixes': {
+                const nsp = (val && typeof val === 'object' && !Array.isArray(val)) ? val : {};
+                html += `<div class="form-copy-nspfx" data-nspfx-key="${escHtml(key)}">`;
+                html += `<table class="form-kv-table"><thead><tr><th>Prefix</th><th>Namespace URI</th><th></th></tr></thead><tbody>`;
+                for (const [prefix, ns] of Object.entries(nsp)) {
+                    html += `<tr>`
+                        + `<td><input type="text" class="form-input form-kv-cell nspfx-prefix" value="${escHtml(prefix)}" placeholder="Prefix" /></td>`
+                        + `<td><input type="text" class="form-input form-kv-cell nspfx-ns" value="${escHtml(String(ns || ''))}" placeholder="Namespace URI" /></td>`
+                        + `<td><button class="action-icon-btn nspfx-remove" type="button" title="Remove">×</button></td></tr>`;
+                }
+                html += `</tbody></table><button class="form-kv-add-btn nspfx-add" type="button">+ Add</button></div>`;
+                break;
+            }
+            default:
+                html += `<input type="text" class="form-input" data-key="${escHtml(key)}" value="${escHtml(String(val))}" placeholder="${escHtml(def.placeholder || '')}" />`;
+                break;
+        }
+        if (def.helpText) html += `<div class="form-help">${escHtml(def.helpText)}</div>`;
+        html += `</div>`;
+    }
+    return html || '<div class="empty-state">No settings for this dataset type.</div>';
+}
+
+// Wire all Copy-config dynamic field types (additional-columns, string-list, etc.)
+// and standard inputs inside the Copy config sections.
+function _wireCopyConfigFields(container, activity) {
+    // 1. Standard inputs in copy-config sections (text, number, select, radio, boolean, datetime)
+    container.querySelectorAll('.copy-config-section input[data-key], .copy-config-section select[data-key], .copy-config-section textarea[data-key]').forEach(el => {
+        const key = el.dataset.key;
+        if (!key) return;
+        const tag  = el.tagName.toLowerCase();
+        const evt  = (tag === 'input' && (el.type === 'checkbox' || el.type === 'radio')) ? 'change'
+                   : tag === 'select' ? 'change' : 'input';
+        el.addEventListener(evt, () => {
+            let value;
+            if (tag === 'input' && el.type === 'checkbox') value = el.checked;
+            else if (tag === 'input' && el.type === 'number') value = el.value === '' ? '' : Number(el.value);
+            else if (el.dataset.fieldType === 'datetime') value = el.value ? el.value + ':00Z' : '';
+            else value = el.value;
+            activity[key] = value;
+            markAsDirty();
+            _applyCopyConditionals(container, activity);
+        });
+    });
+
+    // 2. additional-columns widgets
+    container.querySelectorAll('.form-copy-addcol').forEach(el => {
+        const key = el.dataset.addcolKey;
+        if (!key) return;
+        const dflt = el.dataset.addcolDefault || '';
+        const syncModel = () => {
+            const rows = [];
+            el.querySelectorAll('tbody tr').forEach(tr => {
+                const n = tr.querySelector('.addcol-name')?.value?.trim() || '';
+                const v = tr.querySelector('.addcol-value')?.value || '';
+                if (n) rows.push({ name: n, value: v });
+            });
+            activity[key] = rows; markAsDirty();
+        };
+        el.querySelector('.addcol-add')?.addEventListener('click', () => {
+            const tbody = el.querySelector('tbody');
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td><input type="text" class="form-input form-kv-cell addcol-name" placeholder="Column name" /></td>`
+                + `<td><input type="text" class="form-input form-kv-cell addcol-value" value="${escHtml(dflt)}" placeholder="${escHtml(dflt || 'Value or expression')}" /></td>`
+                + `<td><button class="action-icon-btn addcol-remove" type="button" title="Remove">×</button></td>`;
+            tbody.appendChild(tr);
+            tr.querySelector('.addcol-remove').addEventListener('click', () => { tr.remove(); syncModel(); });
+            tr.querySelectorAll('input').forEach(i => i.addEventListener('input', syncModel));
+        });
+        el.querySelectorAll('.addcol-remove').forEach(btn => btn.addEventListener('click', () => { btn.closest('tr').remove(); syncModel(); }));
+        el.querySelectorAll('input').forEach(i => i.addEventListener('input', syncModel));
+    });
+
+    // 3. string-list widgets
+    container.querySelectorAll('.form-copy-strlist').forEach(el => {
+        const key = el.dataset.strlistKey;
+        if (!key) return;
+        const syncModel = () => {
+            activity[key] = Array.from(el.querySelectorAll('.strlist-item')).map(i => i.value).filter(v => v.trim());
+            markAsDirty();
+        };
+        el.querySelector('.strlist-add')?.addEventListener('click', () => {
+            const div = document.createElement('div');
+            div.className = 'copy-strlist-row';
+            div.style.cssText = 'display:flex;gap:4px;margin-bottom:3px;';
+            div.innerHTML = `<input type="text" class="form-input strlist-item" placeholder="Enter value" style="flex:1;" /><button class="action-icon-btn strlist-remove" type="button" title="Remove">×</button>`;
+            el.insertBefore(div, el.querySelector('.strlist-add'));
+            div.querySelector('.strlist-remove').addEventListener('click', () => { div.remove(); syncModel(); });
+            div.querySelector('.strlist-item').addEventListener('input', syncModel);
+        });
+        el.querySelectorAll('.strlist-remove').forEach(btn => btn.addEventListener('click', () => { btn.closest('.copy-strlist-row').remove(); syncModel(); }));
+        el.querySelectorAll('.strlist-item').forEach(i => i.addEventListener('input', syncModel));
+    });
+
+    // 4. copy-sp-parameters widgets
+    container.querySelectorAll('.form-copy-spparams').forEach(el => {
+        const key = el.dataset.spparamsKey;
+        if (!key) return;
+        const spTypes = 'String,Boolean,Datetime,Datetimeoffset,Decimal,Double,Guid,Int16,Int32,Int64,Single,Timespan,Byte[]';
+        const syncModel = () => {
+            const result = {};
+            el.querySelectorAll('tbody tr').forEach(tr => {
+                const n  = tr.querySelector('.spp-name')?.value || '';
+                const v  = tr.querySelector('.spp-value')?.value || '';
+                const t  = tr.querySelector('.spp-type')?.value || 'String';
+                if (n.trim()) result[n] = { value: v, type: t };
+            });
+            activity[key] = result; markAsDirty();
+        };
+        el.querySelector('.spp-add')?.addEventListener('click', () => {
+            const tbody = el.querySelector('tbody');
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td><input type="text" class="form-input form-kv-cell spp-name" placeholder="Param name" /></td>`
+                + `<td><input type="text" class="form-input form-kv-cell spp-value" placeholder="Value" /></td>`
+                + `<td><select class="form-select spp-type">${spTypes.split(',').map(t => `<option value="${escHtml(t)}">${escHtml(t)}</option>`).join('')}</select></td>`
+                + `<td><button class="action-icon-btn spp-remove" type="button" title="Remove">×</button></td>`;
+            tbody.appendChild(tr);
+            tr.querySelector('.spp-remove').addEventListener('click', () => { tr.remove(); syncModel(); });
+            tr.querySelectorAll('input,select').forEach(i => i.addEventListener('change', syncModel));
+            tr.querySelectorAll('input').forEach(i => i.addEventListener('input', syncModel));
+        });
+        el.querySelectorAll('.spp-remove').forEach(btn => btn.addEventListener('click', () => { btn.closest('tr').remove(); syncModel(); }));
+        el.querySelectorAll('input,select').forEach(i => { i.addEventListener('change', syncModel); i.addEventListener('input', syncModel); });
+    });
+
+    // 5. copy-cmd-default-values widgets
+    container.querySelectorAll('.form-copy-cmddef').forEach(el => {
+        const key = el.dataset.cmddefKey;
+        if (!key) return;
+        const syncModel = () => {
+            const rows = [];
+            el.querySelectorAll('tbody tr').forEach(tr => {
+                const col = tr.querySelector('.cmddef-col')?.value || '';
+                const val = tr.querySelector('.cmddef-val')?.value || '';
+                if (col.trim()) rows.push({ columnName: col, defaultValue: val });
+            });
+            activity[key] = rows; markAsDirty();
+        };
+        el.querySelector('.cmddef-add')?.addEventListener('click', () => {
+            const tbody = el.querySelector('tbody');
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td><input type="text" class="form-input form-kv-cell cmddef-col" placeholder="Column name" /></td>`
+                + `<td><input type="text" class="form-input form-kv-cell cmddef-val" placeholder="Default value" /></td>`
+                + `<td><button class="action-icon-btn cmddef-remove" type="button" title="Remove">×</button></td>`;
+            tbody.appendChild(tr);
+            tr.querySelector('.cmddef-remove').addEventListener('click', () => { tr.remove(); syncModel(); });
+            tr.querySelectorAll('input').forEach(i => i.addEventListener('input', syncModel));
+        });
+        el.querySelectorAll('.cmddef-remove').forEach(btn => btn.addEventListener('click', () => { btn.closest('tr').remove(); syncModel(); }));
+        el.querySelectorAll('input').forEach(i => i.addEventListener('input', syncModel));
+    });
+
+    // 6. copy-cmd-additional-options widgets
+    container.querySelectorAll('.form-copy-cmdopts').forEach(el => {
+        const key = el.dataset.cmdoptsKey;
+        if (!key) return;
+        const syncModel = () => {
+            const result = {};
+            el.querySelectorAll('tbody tr').forEach(tr => {
+                const k = tr.querySelector('.cmdopt-key')?.value || '';
+                const v = tr.querySelector('.cmdopt-val')?.value || '';
+                if (k.trim()) result[k] = v;
+            });
+            activity[key] = result; markAsDirty();
+        };
+        el.querySelector('.cmdopt-add')?.addEventListener('click', () => {
+            const tbody = el.querySelector('tbody');
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td><input type="text" class="form-input form-kv-cell cmdopt-key" placeholder="Key" /></td>`
+                + `<td><input type="text" class="form-input form-kv-cell cmdopt-val" placeholder="Value" /></td>`
+                + `<td><button class="action-icon-btn cmdopt-remove" type="button" title="Remove">×</button></td>`;
+            tbody.appendChild(tr);
+            tr.querySelector('.cmdopt-remove').addEventListener('click', () => { tr.remove(); syncModel(); });
+            tr.querySelectorAll('input').forEach(i => i.addEventListener('input', syncModel));
+        });
+        el.querySelectorAll('.cmdopt-remove').forEach(btn => btn.addEventListener('click', () => { btn.closest('tr').remove(); syncModel(); }));
+        el.querySelectorAll('input').forEach(i => i.addEventListener('input', syncModel));
+    });
+
+    // 7. namespace-prefixes widgets
+    container.querySelectorAll('.form-copy-nspfx').forEach(el => {
+        const key = el.dataset.nspfxKey;
+        if (!key) return;
+        const syncModel = () => {
+            const result = {};
+            el.querySelectorAll('tbody tr').forEach(tr => {
+                const p  = tr.querySelector('.nspfx-prefix')?.value || '';
+                const ns = tr.querySelector('.nspfx-ns')?.value || '';
+                if (p.trim()) result[p] = ns;
+            });
+            activity[key] = result; markAsDirty();
+        };
+        el.querySelector('.nspfx-add')?.addEventListener('click', () => {
+            const tbody = el.querySelector('tbody');
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td><input type="text" class="form-input form-kv-cell nspfx-prefix" placeholder="Prefix" /></td>`
+                + `<td><input type="text" class="form-input form-kv-cell nspfx-ns" placeholder="Namespace URI" /></td>`
+                + `<td><button class="action-icon-btn nspfx-remove" type="button" title="Remove">×</button></td>`;
+            tbody.appendChild(tr);
+            tr.querySelector('.nspfx-remove').addEventListener('click', () => { tr.remove(); syncModel(); });
+            tr.querySelectorAll('input').forEach(i => i.addEventListener('input', syncModel));
+        });
+        el.querySelectorAll('.nspfx-remove').forEach(btn => btn.addEventListener('click', () => { btn.closest('tr').remove(); syncModel(); }));
+        el.querySelectorAll('input').forEach(i => i.addEventListener('input', syncModel));
+    });
+
+    // Apply initial conditional visibility for copy config fields
+    _applyCopyConditionals(container, activity);
+}
+
+// Apply conditional visibility rules for copy config section fields.
+// Extends _applyConditionals with conditionalAll and notEmpty support.
+function _applyCopyConditionals(container, activity) {
+    // Standard conditionals (including notEmpty)
+    container.querySelectorAll('.copy-config-section .form-field[data-cond-field]').forEach(el => {
+        const field    = el.dataset.condField;
+        const allowed  = el.dataset.condValue.split(',');
+        const notEmpty = el.dataset.condNotEmpty === 'true';
+        const cur      = activity[field];
+        let visible;
+        if (notEmpty) {
+            visible = cur !== undefined && cur !== null && cur !== '';
+        } else {
+            visible = allowed.includes(String(cur ?? ''));
+        }
+        if (visible && el.dataset.nestedCondField) {
+            const nField   = el.dataset.nestedCondField;
+            const nAllowed = el.dataset.nestedCondValue.split(',');
+            if (!nAllowed.includes(String(activity[nField] ?? ''))) visible = false;
+        }
+        el.style.display = visible ? '' : 'none';
+    });
+    // conditionalAll (AND logic)
+    container.querySelectorAll('.copy-config-section .form-field[data-cond-all]').forEach(el => {
+        let conditions;
+        try { conditions = JSON.parse(el.dataset.condAll); } catch { conditions = []; }
+        const visible = conditions.every(c => {
+            const v = activity[c.field];
+            return Array.isArray(c.value) ? c.value.includes(v) : v === c.value;
+        });
+        el.style.display = visible ? '' : 'none';
+    });
+    // Radio option visibility (optionConditionals)
+    container.querySelectorAll('.copy-config-section .form-radio-label[data-cond-field]').forEach(el => {
+        const field   = el.dataset.condField;
+        const allowed = el.dataset.condValue.split(',');
+        el.style.display = allowed.includes(String(activity[field] ?? '')) ? '' : 'none';
+    });
+}
+
 // Wire form inputs in a container to write back to the activity object.
 // Also handles conditional visibility.
 function _wireFormInputs(container, activity) {
@@ -1293,6 +1769,40 @@ function _wireFormInputs(container, activity) {
                 const locType = el.value ? (datasetContents[el.value]?.properties?.typeProperties?.location?.type ?? '') : '';
                 activity._storeSettingsType = locationTypeToStoreSettings[locType] ?? '';
                 activity._formatSettingsType = datasetTypeToFormatSettings[dsType] ?? '';
+                // Copy activity: also update _sourceDatasetType / _sinkDatasetType and re-render the config section
+                if (activity.type === 'Copy') {
+                    if (key === 'sourceDataset') {
+                        // Reset stale src_* fields from previous dataset type
+                        const prevSrcType = activity._sourceDatasetType;
+                        if (prevSrcType && prevSrcType !== dsType) {
+                            const prevConf = copyActivityConfig.datasetTypes?.[prevSrcType];
+                            if (prevConf) for (const fk of Object.keys(prevConf.fields?.source || {})) delete activity[fk];
+                        }
+                        activity._sourceDatasetType  = dsType;
+                        activity._sourceLocationType = locType;
+                        activity._srcParsed = false;
+                        activity._sourceObject = null;
+                    } else if (key === 'sinkDataset') {
+                        const prevSnkType = activity._sinkDatasetType;
+                        if (prevSnkType && prevSnkType !== dsType) {
+                            const prevConf = copyActivityConfig.datasetTypes?.[prevSnkType];
+                            if (prevConf) for (const fk of Object.keys(prevConf.fields?.sink || {})) delete activity[fk];
+                        }
+                        activity._sinkDatasetType  = dsType;
+                        activity._sinkLocationType = locType;
+                        activity._snkParsed = false;
+                        activity._sinkObject = null;
+                    }
+                    // Re-render the Source or Sink pane with the new config section
+                    const side = key === 'sourceDataset' ? 'source' : 'sink';
+                    const paneEl = el.closest('.config-tab-pane');
+                    if (paneEl) {
+                        paneEl.innerHTML = _buildCopyDatasetPane(activity, side);
+                        _wireFormInputs(paneEl, activity);
+                        _wireCopyConfigFields(paneEl, activity);
+                        return; // value already set in activity below; skip duplicate set
+                    }
+                }
                 // When switching away from sql, reset sql-specific fields that would leave stale conditionals
                 if (activity._datasetCategory !== 'sql') {
                     activity.partitionOption = 'None';

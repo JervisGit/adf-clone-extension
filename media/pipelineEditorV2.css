@@ -779,3 +779,19 @@ input[type="datetime-local"].form-input {
 .form-fieldlist-row .form-fieldlist-custom {
     flex: 1;
 }
+
+/* ─── Copy Activity — config section ────────────────────────────────────────── */
+.copy-config-section {
+    margin-top: 12px;
+    border-top: 1px solid var(--vscode-panel-border);
+    padding-top: 8px;
+}
+
+.copy-config-section-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--vscode-descriptionForeground);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 6px;
+}

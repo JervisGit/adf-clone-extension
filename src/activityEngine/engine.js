@@ -13,6 +13,8 @@
 // the field layout on disk differs from the flat canvas representation.
 
 const allSchemas = require('../activity-schemas-v2.json');
+const copyActivityConfig = require('../copy-activity-config.json');
+const { buildCopySource, buildCopySink } = require('../copyActivityUtils');
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 module.exports = {
@@ -38,7 +40,7 @@ const SUPPORTED_TYPES = new Set([
 	'SynapseNotebook', 'SparkJob',
 	'Script', 'SqlServerStoredProcedure',
 	'WebActivity', 'WebHook',
-	// 'Copy' — added in a later step
+	'Copy',
 ]);
 
 function isActivityTypeSupported(type) {
@@ -137,6 +139,20 @@ function deserializeActivity(raw) {
 
 	// Run deserialize transformers for fields needing adjustment after direct path reads
 	runDeserializeTransformers(raw, schema, flat);
+
+	// ── Copy Activity: stash raw source/sink objects and pass-through translator/staging ──
+	// The webview resolves _sourceDatasetType/_sinkDatasetType via datasetContents, then
+	// calls parseCopyXxxToForm to populate src_*/snk_* fields for editing.
+	if (raw.type === 'Copy') {
+		const tp = raw.typeProperties || {};
+		if (tp.source) flat._sourceObject = tp.source;
+		if (tp.sink)   flat._sinkObject   = tp.sink;
+		// Pass through translator and staging as opaque blobs — serializer writes them back
+		if (tp.translator)       flat._copyTranslator   = tp.translator;
+		if (tp.enableStaging !== undefined) flat._copyEnableStaging = tp.enableStaging;
+		if (tp.stagingSettings)  flat._copyStagingSettings = tp.stagingSettings;
+		if (tp.logSettings)      flat._copyLogSettings = tp.logSettings;
+	}
 
 	// Default state to Activated when not written in JSON (e.g. TestVariables-style pipelines)
 	if (!flat.state) flat.state = 'Activated';
@@ -238,6 +254,56 @@ function serializeActivity(flat) {
 
 	// Run serialize transformers last — they overwrite specific fields as needed
 	runSerializeTransformers(flat, schema, output);
+
+	// ── Copy Activity: build typeProperties.source / .sink via config-driven utilities ──
+	if (flat.type === 'Copy') {
+		if (!output.typeProperties) output.typeProperties = {};
+		const tp = output.typeProperties;
+
+		// Source
+		const srcType = flat._sourceDatasetType;
+		const srcTypeConf = srcType ? copyActivityConfig.datasetTypes?.[srcType] : null;
+		if (srcTypeConf) {
+			const src = buildCopySource(flat, srcTypeConf, flat._sourceLocationType ?? null, flat._sourceObject ?? null);
+			if (src) tp.source = src;
+			// XML: copy namespacePrefixPairs → formatSettings.namespacePrefixes
+			if (srcType === 'Xml' && flat.namespacePrefixPairs && Object.keys(flat.namespacePrefixPairs).length > 0) {
+				if (tp.source?.formatSettings) tp.source.formatSettings.namespacePrefixes = flat.namespacePrefixPairs;
+			}
+		} else if (flat._sourceObject) {
+			tp.source = JSON.parse(JSON.stringify(flat._sourceObject));
+		}
+
+		// Sink
+		const snkType = flat._sinkDatasetType;
+		const snkTypeConf = snkType ? copyActivityConfig.datasetTypes?.[snkType] : null;
+		if (snkTypeConf) {
+			const snk = buildCopySink(flat, snkTypeConf, flat._sinkLocationType ?? null, flat._sinkObject ?? null);
+			if (snk) {
+				tp.sink = snk;
+				// AzureSqlDWTable: writeBehavior is a constant driven by copyMethod (not written by buildCopySink)
+				if (snkType === 'AzureSqlDWTable') {
+					const cm = flat['snk_copyMethod'];
+					if (cm === 'BulkInsert') tp.sink.writeBehavior = 'Insert';
+					else if (cm === 'Upsert') tp.sink.writeBehavior = 'Upsert';
+				}
+			}
+		} else if (flat._sinkObject) {
+			tp.sink = JSON.parse(JSON.stringify(flat._sinkObject));
+		}
+
+		// Translator: prefer explicitly stored translator, else use copyDefaults
+		if (flat._copyTranslator) {
+			tp.translator = flat._copyTranslator;
+		} else if (!tp.translator) {
+			const defTranslator = copyActivityConfig.copyDefaults?.typeProperties?.translator;
+			if (defTranslator && !(srcTypeConf?.noTranslator)) tp.translator = JSON.parse(JSON.stringify(defTranslator));
+		}
+		// Staging pass-through
+		if (flat._copyEnableStaging !== undefined) tp.enableStaging = flat._copyEnableStaging;
+		if (flat._copyStagingSettings)             tp.stagingSettings = flat._copyStagingSettings;
+		if (flat._copyLogSettings)                 tp.logSettings = flat._copyLogSettings;
+	}
 
 	// Trim empty wrapper objects produced by setByPath
 	if (output.policy      && Object.keys(output.policy).length      === 0) delete output.policy;

@@ -2601,3 +2601,231 @@ describe('WebHook', () => {
         expect(engine.validateActivity(flat)).toHaveLength(0);
     });
 });
+
+// ─── Copy Activity ─────────────────────────────────────────────────────────────
+
+describe('Copy — isActivityTypeSupported', () => {
+    test('Copy is supported', () => {
+        expect(engine.isActivityTypeSupported('Copy')).toBe(true);
+    });
+});
+
+describe('Copy — AzureSqlTable source/sink', () => {
+    const raw = {
+        name: 'CopySQL',
+        type: 'Copy',
+        dependsOn: [],
+        userProperties: [],
+        inputs:  [{ referenceName: 'SrcDS', type: 'DatasetReference' }],
+        outputs: [{ referenceName: 'SnkDS', type: 'DatasetReference' }],
+        typeProperties: {
+            source: {
+                type: 'AzureSqlSource',
+                sqlReaderQuery: 'SELECT * FROM dbo.Orders',
+                queryTimeout: '02:00:00',
+                isolationLevel: 'ReadCommitted',
+                partitionOption: 'None',
+            },
+            sink: {
+                type: 'AzureSqlSink',
+                writeBehavior: 'insert',
+                sqlWriterUseTableLock: false,
+                disableMetricsCollection: false,
+            },
+            translator: { type: 'TabularTranslator', typeConversion: true },
+            enableStaging: false,
+            dataIntegrationUnits: 8,
+            parallelCopies: 2,
+            enableSkipIncompatibleRow: false,
+        },
+        policy: { timeout: '0.12:00:00', retry: 0 },
+    };
+
+    test('deserialize: dataset refs extracted', () => {
+        const flat = engine.deserializeActivity(raw);
+        expect(flat.sourceDataset).toBe('SrcDS');
+        expect(flat.sinkDataset).toBe('SnkDS');
+    });
+
+    test('deserialize: _sourceObject/_sinkObject stashed', () => {
+        const flat = engine.deserializeActivity(raw);
+        expect(flat._sourceObject).toEqual(raw.typeProperties.source);
+        expect(flat._sinkObject).toEqual(raw.typeProperties.sink);
+    });
+
+    test('deserialize: translator pass-through', () => {
+        const flat = engine.deserializeActivity(raw);
+        expect(flat._copyTranslator).toEqual(raw.typeProperties.translator);
+        expect(flat._copyEnableStaging).toBe(false);
+    });
+
+    test('deserialize: typeProperties fields read (dataIntegrationUnits)', () => {
+        const flat = engine.deserializeActivity(raw);
+        expect(flat.dataIntegrationUnits).toBe(8);
+        expect(flat.parallelCopies).toBe(2);
+    });
+
+    test('serialize: inputs/outputs written from sourceDataset/sinkDataset', () => {
+        const flat = engine.deserializeActivity(raw);
+        // Set dataset types as webview would
+        flat._sourceDatasetType = 'AzureSqlTable';
+        flat._sinkDatasetType   = 'AzureSqlTable';
+        flat['src_useQuery']    = 'Query';
+        flat['src_sqlReaderQuery'] = 'SELECT * FROM dbo.Orders';
+        flat['src_queryTimeout']   = '02:00:00';
+        flat['snk_writeBehavior']  = 'insert';
+        flat['snk_sqlWriterUseTableLock'] = false;
+        flat['snk_disableMetricsCollection'] = false;
+        const out = engine.serializeActivity(flat);
+        expect(out.inputs[0].referenceName).toBe('SrcDS');
+        expect(out.outputs[0].referenceName).toBe('SnkDS');
+    });
+
+    test('serialize: source object written with correct type', () => {
+        const flat = engine.deserializeActivity(raw);
+        flat._sourceDatasetType = 'AzureSqlTable';
+        flat._sinkDatasetType   = 'AzureSqlTable';
+        flat['src_useQuery']       = 'Query';
+        flat['src_sqlReaderQuery'] = 'SELECT 1';
+        flat['snk_writeBehavior']  = 'insert';
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.source.type).toBe('AzureSqlSource');
+        expect(out.typeProperties.source.sqlReaderQuery).toBe('SELECT 1');
+    });
+
+    test('serialize: sink object written with correct type', () => {
+        const flat = engine.deserializeActivity(raw);
+        flat._sourceDatasetType   = 'AzureSqlTable';
+        flat._sinkDatasetType     = 'AzureSqlTable';
+        flat['src_useQuery']      = 'Table';
+        flat['snk_writeBehavior'] = 'insert';
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.sink.type).toBe('AzureSqlSink');
+    });
+
+    test('serialize: translator pass-through preserved', () => {
+        const flat = engine.deserializeActivity(raw);
+        flat._sourceDatasetType = 'AzureSqlTable';
+        flat._sinkDatasetType   = 'AzureSqlTable';
+        flat['src_useQuery']    = 'Table';
+        flat['snk_writeBehavior'] = 'insert';
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.translator).toEqual(raw.typeProperties.translator);
+    });
+
+    test('serialize: dataIntegrationUnits written', () => {
+        const flat = engine.deserializeActivity(raw);
+        flat._sourceDatasetType = 'AzureSqlTable';
+        flat._sinkDatasetType   = 'AzureSqlTable';
+        flat['snk_writeBehavior'] = 'insert';
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.dataIntegrationUnits).toBe(8);
+        expect(out.typeProperties.parallelCopies).toBe(2);
+    });
+
+    test('validation: missing sourceDataset is an error', () => {
+        const flat = engine.deserializeActivity(raw);
+        flat.sourceDataset = '';
+        const errs = engine.validateActivity(flat);
+        expect(errs.some(e => /source dataset/i.test(e))).toBe(true);
+    });
+
+    test('validation: missing sinkDataset is an error', () => {
+        const flat = engine.deserializeActivity(raw);
+        flat.sinkDataset = '';
+        const errs = engine.validateActivity(flat);
+        expect(errs.some(e => /sink dataset/i.test(e))).toBe(true);
+    });
+
+    test('validation: valid activity has no errors', () => {
+        const flat = engine.deserializeActivity(raw);
+        expect(engine.validateActivity(flat)).toHaveLength(0);
+    });
+});
+
+describe('Copy — Parquet source/sink (storage type)', () => {
+    const raw = {
+        name: 'CopyParquet',
+        type: 'Copy',
+        dependsOn: [],
+        userProperties: [],
+        inputs:  [{ referenceName: 'ParquetSrc', type: 'DatasetReference' }],
+        outputs: [{ referenceName: 'ParquetSnk', type: 'DatasetReference' }],
+        typeProperties: {
+            source: {
+                type: 'ParquetSource',
+                storeSettings: {
+                    type: 'AzureBlobFSReadSettings',
+                    recursive: true,
+                    enablePartitionDiscovery: false,
+                },
+                formatSettings: { type: 'ParquetReadSettings' },
+            },
+            sink: {
+                type: 'ParquetSink',
+                storeSettings: { type: 'AzureBlobFSWriteSettings' },
+                formatSettings: { type: 'ParquetWriteSettings' },
+            },
+            translator: { type: 'TabularTranslator' },
+        },
+    };
+
+    test('deserialize: _sourceObject stashed', () => {
+        const flat = engine.deserializeActivity(raw);
+        expect(flat._sourceObject.type).toBe('ParquetSource');
+        expect(flat._sinkObject.type).toBe('ParquetSink');
+    });
+
+    test('serialize: source/sink written when _sourceDatasetType set', () => {
+        const flat = engine.deserializeActivity(raw);
+        flat._sourceDatasetType  = 'Parquet';
+        flat._sinkDatasetType    = 'Parquet';
+        flat._sourceLocationType = 'AzureBlobFSLocation';
+        flat._sinkLocationType   = 'AzureBlobFSLocation';
+        flat['src_filePathType'] = 'filePathInDataset';
+        flat['src_recursive']    = true;
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.source.type).toBe('ParquetSource');
+        expect(out.typeProperties.source.storeSettings.type).toBe('AzureBlobFSReadSettings');
+        expect(out.typeProperties.sink.type).toBe('ParquetSink');
+        expect(out.typeProperties.sink.storeSettings.type).toBe('AzureBlobFSWriteSettings');
+    });
+
+    test('serialize: falls back to _sourceObject when no _sourceDatasetType', () => {
+        const flat = engine.deserializeActivity(raw);
+        // No _sourceDatasetType set — should use _sourceObject as-is
+        flat._sinkDatasetType = 'Parquet';
+        flat._sinkLocationType = 'AzureBlobFSLocation';
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.source).toEqual(raw.typeProperties.source);
+    });
+});
+
+describe('Copy — AzureSqlDWTable sink writeBehavior', () => {
+    test('serialize: BulkInsert → writeBehavior Insert', () => {
+        const flat = {
+            id: 1, type: 'Copy', name: 'CopyDW',
+            sourceDataset: 'SrcDS', sinkDataset: 'SnkDS',
+            _sourceDatasetType: 'AzureSqlDWTable',
+            _sinkDatasetType: 'AzureSqlDWTable',
+            'snk_copyMethod': 'BulkInsert',
+            dependsOn: [], userProperties: [],
+        };
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.sink.writeBehavior).toBe('Insert');
+    });
+
+    test('serialize: Upsert → writeBehavior Upsert', () => {
+        const flat = {
+            id: 1, type: 'Copy', name: 'CopyDW',
+            sourceDataset: 'SrcDS', sinkDataset: 'SnkDS',
+            _sourceDatasetType: 'AzureSqlDWTable',
+            _sinkDatasetType: 'AzureSqlDWTable',
+            'snk_copyMethod': 'Upsert',
+            dependsOn: [], userProperties: [],
+        };
+        const out = engine.serializeActivity(flat);
+        expect(out.typeProperties.sink.writeBehavior).toBe('Upsert');
+    });
+});
+

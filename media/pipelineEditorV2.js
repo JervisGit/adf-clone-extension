@@ -1008,7 +1008,7 @@ function _buildFormPane(activity, fields, paneId, sharedFields) {
             case 'validation-dataset':
             case 'getmetadata-dataset':
             case 'dataset': {
-                const currentDs = val?.referenceName ?? '';
+                const currentDs = (typeof val === 'string') ? val : (val?.referenceName ?? '');
                 const _lookupExcluded = new Set((activitySchemas?.__meta?.lookupExcludedTypes) || ['Binary', 'Iceberg', 'Excel']);
                 const filteredDs = def.datasetFilter === 'storageOnly'
                     ? datasetList.filter(d => datasetTypeCategories[datasetContents[d]?.properties?.type ?? ''] === 'storage')
@@ -1760,8 +1760,12 @@ function _wireFormInputs(container, activity) {
                 // Re-wrap into ADF PipelineReference object
                 value = el.value ? { referenceName: el.value, type: 'PipelineReference' } : null;
             } else if (el.dataset.fieldType === 'dataset') {
-                // Re-wrap into ADF DatasetReference object
-                value = el.value ? { referenceName: el.value, type: 'DatasetReference' } : null;
+                // Copy activities store sourceDataset/sinkDataset as plain strings (engine uses string directly).
+                // All other dataset fields use the full DatasetReference object.
+                const isCopyDataset = activity.type === 'Copy' && (key === 'sourceDataset' || key === 'sinkDataset');
+                value = isCopyDataset
+                    ? (el.value || null)
+                    : (el.value ? { referenceName: el.value, type: 'DatasetReference' } : null);
                 // Update _datasetCategory/_datasetType so conditional fields show/hide correctly
                 const dsType = el.value ? (datasetContents[el.value]?.properties?.type ?? '') : '';
                 activity._datasetCategory = datasetTypeCategories[dsType] ?? '';
@@ -1797,10 +1801,12 @@ function _wireFormInputs(container, activity) {
                     const side = key === 'sourceDataset' ? 'source' : 'sink';
                     const paneEl = el.closest('.config-tab-pane');
                     if (paneEl) {
+                        activity[key] = value; // must set before re-render so picker shows selection
+                        markAsDirty();
                         paneEl.innerHTML = _buildCopyDatasetPane(activity, side);
                         _wireFormInputs(paneEl, activity);
                         _wireCopyConfigFields(paneEl, activity);
-                        return; // value already set in activity below; skip duplicate set
+                        return;
                     }
                 }
                 // When switching away from sql, reset sql-specific fields that would leave stale conditionals

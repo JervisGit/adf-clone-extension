@@ -159,16 +159,22 @@ function deserializeActivity(raw) {
 	// Map Inactive → Deactivated so UI radio shows "Deactivated" label
 	if (flat.state === 'Inactive') flat.state = 'Deactivated';
 
-	// Container children — preserved as raw JSON arrays until per-container editing is implemented
+	// Container children — recursively deserialized into flat objects
 	for (const group of ['typeProperties']) {
 		const fields = schema[group];
 		if (!fields) continue;
 		for (const [key, def] of Object.entries(fields)) {
 			if (def.type === 'containerActivities') {
-				flat[key] = getByPath(raw, def.jsonPath) || [];
+				flat[key] = deserializeActivityList(getByPath(raw, def.jsonPath) || []);
 			} else if (def.type === 'switchCases') {
-				flat[key] = getByPath(raw, def.jsonPath) || [];
-				flat.defaultActivities = getByPath(raw, 'typeProperties.defaultActivities') || [];
+				const rawCases = getByPath(raw, def.jsonPath) || [];
+				flat[key] = rawCases.map(c => ({
+					value: c.value,
+					activities: deserializeActivityList(c.activities || []),
+				}));
+				flat.defaultActivities = deserializeActivityList(
+					getByPath(raw, 'typeProperties.defaultActivities') || []
+				);
 			}
 		}
 	}
@@ -243,12 +249,15 @@ function serializeActivity(flat) {
 		if (!fields) continue;
 		for (const [key, def] of Object.entries(fields)) {
 			if (def.type === 'containerActivities') {
-				// Preserve raw array as-is (nested editing is a future step)
-				setByPath(output, def.jsonPath, flat[key] || []);
+				setByPath(output, def.jsonPath, serializeActivityList(flat[key] || []));
 			} else if (def.type === 'switchCases') {
-				setByPath(output, def.jsonPath, flat[key] || []);
+				const serializedCases = (flat[key] || []).map(c => ({
+					value: c.value,
+					activities: serializeActivityList(c.activities || []),
+				}));
+				setByPath(output, def.jsonPath, serializedCases);
 				if (flat.defaultActivities?.length) {
-					setByPath(output, 'typeProperties.defaultActivities', flat.defaultActivities);
+					setByPath(output, 'typeProperties.defaultActivities', serializeActivityList(flat.defaultActivities));
 				}
 			}
 		}
@@ -580,15 +589,14 @@ function validateActivityList(activities) {
 	for (const a of (activities || [])) {
 		const errs = validateActivity(a);
 		if (errs.length) allErrors[a.name || String(a.id)] = errs;
-		// Recurse into container children only when they are already deserialized (flat format).
-		// Raw ADF JSON arrays still have typeProperties — skip those to avoid false validation errors.
+		// Recurse into container children — always flat after deserialization
 		for (const key of ['activities', 'ifTrueActivities', 'ifFalseActivities', 'defaultActivities']) {
-			if (Array.isArray(a[key]) && a[key].length > 0 && a[key][0].type && !a[key][0].typeProperties) {
+			if (Array.isArray(a[key]) && a[key].length > 0)
 				Object.assign(allErrors, validateActivityList(a[key]));
-			}
 		}
 		for (const c of (a.cases || [])) {
-			if (Array.isArray(c.activities)) Object.assign(allErrors, validateActivityList(c.activities));
+			if (Array.isArray(c.activities) && c.activities.length > 0)
+				Object.assign(allErrors, validateActivityList(c.activities));
 		}
 	}
 	return allErrors;

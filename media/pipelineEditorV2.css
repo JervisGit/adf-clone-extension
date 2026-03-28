@@ -760,6 +760,26 @@ input[type="datetime-local"].form-input {
     white-space: nowrap;
 }
 
+/* Sub-canvas navigation - breadcrumb */
+.bc-link {
+    cursor: pointer;
+    color: var(--vscode-textLink-foreground);
+}
+.bc-link:hover { text-decoration: underline; }
+
+/* Sub-canvas navigation - branch rows in Activities tab */
+.container-branch-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 0;
+}
+.container-branch-count {
+    flex: 1;
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+}
+
 .form-fieldlist-dynamic {
     display: flex;
     flex-direction: column;

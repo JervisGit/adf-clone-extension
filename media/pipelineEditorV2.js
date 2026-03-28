@@ -22,6 +22,8 @@ let connections = [];
 let selectedActivity = null;
 let isDirty = false;
 let currentFilePath = null;
+// Sub-canvas navigation stack. Each frame: { activities, connections, parentActivity, branchKey, caseIndex, breadcrumbLabel }
+let canvasStack = [];
 
 // Schemas populated via initSchemas message
 let activitiesConfig = { categories: [] };
@@ -708,7 +710,8 @@ function setupToolbarButtons() {
     saveBtn.addEventListener('click', () => {
         saveBtn.disabled = true;
         saveBtn.textContent = 'Saving…';
-        const saveData = activities.map(toSaveData);        vscode.postMessage({
+        const saveData = getSavePayload();
+        vscode.postMessage({
             type: 'savePipeline',
             pipelineData,
             activities: saveData,
@@ -900,6 +903,7 @@ function showProperties(activity) {
         _wireNotebookSelects(panesContainer, activity);
         _wireAkvSecretFields(panesContainer, activity);
         if (activity.type === 'Copy') _wireCopyConfigFields(panesContainer, activity);
+        _wireActivitiesTab(panesContainer, activity);
     } else {
         // Fallback read-only for not-yet-editable types
         tabsContainer.innerHTML = `
@@ -1168,45 +1172,80 @@ function _buildFormPane(activity, fields, paneId, sharedFields) {
     return html || '<div class="empty-state">No fields.</div>';
 }
 
-// Render the Activities tab for container types — shows a read-only list of nested activity names.
+// Render the Activities tab for container types — shows nested activity lists with Edit buttons.
 function _buildActivitiesTab(activity, schema) {
     const containerFields = Object.entries(schema.typeProperties || {})
         .filter(([, def]) => def.type === 'containerActivities' || def.type === 'switchCases');
 
     if (containerFields.length === 0) return '<div class="empty-state">No nested activities.</div>';
 
+    const BRANCH_LABELS = { activities: 'Activities', ifTrueActivities: 'True Branch', ifFalseActivities: 'False Branch', defaultActivities: 'Default' };
+
     let html = '';
     for (const [key, def] of containerFields) {
         const items = activity[key] || [];
         html += `<div style="font-weight:600;margin:8px 0 4px;font-size:12px;">${escHtml(def.label || key)}</div>`;
         if (def.type === 'switchCases') {
-            // Switch cases: each item has {value, activities[]}
             if (items.length === 0 && !activity.defaultActivities?.length) {
                 html += '<div class="empty-state" style="margin-bottom:8px;">No cases defined.</div>';
             } else {
-                html += '<div class="container-activity-list">';
-                for (const c of items) {
-                    html += `<div class="container-activity-item"><span class="container-activity-badge">Case: ${escHtml(String(c.value ?? ''))}</span> — ${c.activities?.length ?? 0} activit${(c.activities?.length ?? 0) === 1 ? 'y' : 'ies'}</div>`;
+                for (let i = 0; i < items.length; i++) {
+                    const c = items[i];
+                    const count = c.activities?.length ?? 0;
+                    html += `<div class="container-branch-row">
+                        <span class="container-activity-badge">Case: ${escHtml(String(c.value ?? ''))}</span>
+                        <span class="container-branch-count">${count} activit${count === 1 ? 'y' : 'ies'}</span>
+                        <button class="form-kv-add-btn enter-subcanvas-btn" data-branch-type="switchCase" data-case-index="${i}">Edit ▶</button>
+                    </div>`;
                 }
-                if (activity.defaultActivities?.length) {
-                    html += `<div class="container-activity-item"><span class="container-activity-badge">Default</span> — ${activity.defaultActivities.length} activit${activity.defaultActivities.length === 1 ? 'y' : 'ies'}</div>`;
-                }
-                html += '</div>';
+                const defCount = activity.defaultActivities?.length ?? 0;
+                html += `<div class="container-branch-row">
+                    <span class="container-activity-badge">Default</span>
+                    <span class="container-branch-count">${defCount} activit${defCount === 1 ? 'y' : 'ies'}</span>
+                    <button class="form-kv-add-btn enter-subcanvas-btn" data-branch-type="defaultActivities">Edit ▶</button>
+                </div>`;
             }
         } else {
-            if (items.length === 0) {
-                html += '<div class="empty-state" style="margin-bottom:8px;">No activities.</div>';
-            } else {
-                html += '<div class="container-activity-list">';
+            const count = items.length;
+            html += `<div class="container-branch-row">
+                <span class="container-branch-count">${count} activit${count === 1 ? 'y' : 'ies'}</span>
+                <button class="form-kv-add-btn enter-subcanvas-btn" data-branch-type="${escHtml(key)}"
+                    title="Edit ${escHtml(BRANCH_LABELS[key] || key)}">Edit ▶</button>
+            </div>`;
+            if (items.length > 0) {
+                html += '<div class="container-activity-list" style="margin-top:4px;">';
                 for (const a of items) {
                     html += `<div class="container-activity-item"><span class="container-activity-badge">${escHtml(a.type || '?')}</span> ${escHtml(a.name || '(unnamed)')}</div>`;
                 }
                 html += '</div>';
+            } else {
+                html += '<div class="empty-state" style="margin-top:4px;">No activities yet.</div>';
             }
         }
     }
-    html += `<div class="form-help" style="margin-top:8px;">Inner canvas editing coming in a future step.</div>`;
     return html;
+}
+
+// Wire the Edit ▶ buttons in the Activities tab to enter sub-canvas navigation.
+function _wireActivitiesTab(container, activity) {
+    const BRANCH_LABELS = { activities: 'Activities', ifTrueActivities: 'True Branch', ifFalseActivities: 'False Branch', defaultActivities: 'Default' };
+    container.querySelectorAll('.enter-subcanvas-btn').forEach(btn => {
+        const branchType = btn.dataset.branchType;
+        const caseIdx = btn.dataset.caseIndex !== undefined ? parseInt(btn.dataset.caseIndex) : null;
+        btn.addEventListener('click', () => {
+            let flatNested, branchKey, branchLabel;
+            if (branchType === 'switchCase') {
+                flatNested  = activity.cases[caseIdx]?.activities || [];
+                branchKey   = null;
+                branchLabel = `Case: ${escHtml(String(activity.cases[caseIdx]?.value ?? ''))}`;
+            } else {
+                flatNested  = activity[branchType] || [];
+                branchKey   = branchType;
+                branchLabel = BRANCH_LABELS[branchType] || branchType;
+            }
+            enterSubCanvas(flatNested, activity, branchKey, caseIdx, `${activity.name} › ${branchLabel}`);
+        });
+    });
 }
 
 // Apply schema defaults to the activity model for any undefined fields.
@@ -2640,6 +2679,152 @@ function computeLayout(flats, src) {
     return positions;
 }
 
+// ─── Sub-canvas navigation ────────────────────────────────────────────────────
+
+function renderBreadcrumb() {
+    const bc = document.getElementById('breadcrumb');
+    if (!bc) return;
+    if (canvasStack.length === 0) {
+        bc.innerHTML = `<span style="font-weight:600;">${escHtml(pipelineData.name || 'Pipeline')}</span>`;
+        return;
+    }
+    let html = `<span class="bc-link" data-depth="-1">${escHtml(pipelineData.name || 'Pipeline')}</span>`;
+    for (let i = 0; i < canvasStack.length; i++) {
+        html += ' &rsaquo;&nbsp;';
+        if (i < canvasStack.length - 1) {
+            html += `<span class="bc-link" data-depth="${i}">${escHtml(canvasStack[i].breadcrumbLabel)}</span>`;
+        } else {
+            html += `<strong>${escHtml(canvasStack[i].breadcrumbLabel)}</strong>`;
+        }
+    }
+    bc.innerHTML = html;
+    bc.querySelectorAll('.bc-link').forEach(el => {
+        el.addEventListener('click', () => {
+            const depth = parseInt(el.dataset.depth);
+            if (depth === -1) { while (canvasStack.length > 0) exitSubCanvas(); }
+            else              { while (canvasStack.length > depth + 1) exitSubCanvas(); }
+        });
+    });
+}
+
+// Load a flat activity array onto the canvas, replacing whatever is there.
+// Does not touch pipelineData. Used for sub-canvas navigation.
+function _loadActivitiesToCanvas(flatActivities) {
+    activities.forEach(a => a.remove());
+    activities = [];
+    connections = [];
+
+    const wrapper = document.getElementById('worldContainer');
+    const activityMap = new Map();
+    const positions = computeLayout(flatActivities, flatActivities);
+
+    flatActivities.forEach((flat, index) => {
+        const pos = positions.get(flat.name) || { x: 80 + (index % 4) * 240, y: 80 + Math.floor(index / 4) * 160 };
+        const a = new Activity(flat.type, pos.x, pos.y, wrapper);
+        for (const key of Object.keys(flat)) {
+            if (key === 'id') continue;
+            a[key] = flat[key];
+        }
+        a.refreshNameLabel();
+        a.refreshState();
+        if (a.isContainer) {
+            const infoEl = a.element?.querySelector('[data-info-el]');
+            if (infoEl) a._refreshContainerInfo(infoEl);
+        }
+        activities.push(a);
+        activityMap.set(a.name, a);
+    });
+
+    flatActivities.forEach(flat => {
+        if (!flat.dependsOn?.length) return;
+        const toActivity = activityMap.get(flat.name);
+        if (!toActivity) return;
+        flat.dependsOn.forEach(dep => {
+            const fromActivity = activityMap.get(dep.activity);
+            if (fromActivity)
+                connections.push(new Connection(fromActivity, toActivity, dep.dependencyConditions?.[0] || 'Succeeded'));
+        });
+    });
+
+    selectedActivity = null;
+    showProperties(null);
+    draw();
+    setTimeout(fitToScreen, 0);
+}
+
+// Enter a sub-canvas to edit nested activities of a container.
+function enterSubCanvas(flatNested, parentActivity, branchKey, caseIndex, label) {
+    const wrapper = document.getElementById('worldContainer');
+    // Detach current Activity elements from DOM (preserves the Activity instances in memory)
+    for (const a of activities) {
+        if (a.element.parentNode === wrapper) wrapper.removeChild(a.element);
+    }
+    canvasStack.push({ activities: [...activities], connections: [...connections], parentActivity, branchKey, caseIndex, breadcrumbLabel: label });
+    activities = [];
+    connections = [];
+    _loadActivitiesToCanvas(flatNested);
+    renderBreadcrumb();
+    markAsDirty();
+}
+
+// Exit the current sub-canvas, syncing changes back to the parent and restoring the outer canvas.
+function exitSubCanvas() {
+    if (!canvasStack.length) return;
+
+    // Serialize current inner canvas and write back to parent
+    const innerFlats = activities.map(toSaveData);
+    const frame = canvasStack[canvasStack.length - 1];
+    if (frame.caseIndex != null) {
+        frame.parentActivity.cases[frame.caseIndex].activities = innerFlats;
+    } else {
+        frame.parentActivity[frame.branchKey] = innerFlats;
+    }
+
+    // Destroy sub-canvas Activity DOM elements
+    activities.forEach(a => a.remove());
+    activities = [];
+    connections = [];
+
+    canvasStack.pop();
+
+    // Restore outer canvas Activity elements
+    const wrapper = document.getElementById('worldContainer');
+    for (const a of frame.activities) {
+        activities.push(a);
+        wrapper.appendChild(a.element);
+    }
+    for (const c of frame.connections) connections.push(c);
+
+    // Refresh container info badge on the parent activity
+    if (frame.parentActivity?.isContainer) {
+        const infoEl = frame.parentActivity.element?.querySelector('[data-info-el]');
+        if (infoEl) frame.parentActivity._refreshContainerInfo(infoEl);
+    }
+
+    selectedActivity = frame.parentActivity;
+    showProperties(frame.parentActivity);
+    renderBreadcrumb();
+    draw();
+}
+
+// Build the save payload, syncing all sub-canvas levels up first without changing navigation state.
+function getSavePayload() {
+    if (canvasStack.length === 0) return activities.map(toSaveData);
+
+    // Walk from innermost to outermost, writing each level back to its parent
+    let innerFlats = activities.map(toSaveData);
+    for (let i = canvasStack.length - 1; i >= 0; i--) {
+        const frame = canvasStack[i];
+        if (frame.caseIndex != null) {
+            frame.parentActivity.cases[frame.caseIndex].activities = innerFlats;
+        } else {
+            frame.parentActivity[frame.branchKey] = innerFlats;
+        }
+        innerFlats = frame.activities.map(toSaveData);
+    }
+    return innerFlats;
+}
+
 function loadPipelineFromJson(pipelineJson, flatActivities) {
     try {
         activities.forEach(a => a.remove());
@@ -2717,6 +2902,7 @@ function loadPipelineFromJson(pipelineJson, flatActivities) {
 
         isDirty = false;
         vscode.postMessage({ type: 'contentChanged', isDirty: false });
+        renderBreadcrumb();
     } catch (err) {
         log('Error loading pipeline: ' + err.message);
     }

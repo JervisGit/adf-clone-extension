@@ -9,7 +9,7 @@
 //   - Round-trip:          deserialize(serialize(deserialize(raw))) === deserialize(raw)
 //   - validateActivity:    required-field checking
 //   - setVariableReturnValues transformer: all value types incl. Array, Boolean
-//   - Nested container arrays are preserved as-is (inner editing deferred)
+//   - Nested container activities are recursively deserialized/serialized
 
 const engine = require('../activityEngine/engine');
 
@@ -22,9 +22,15 @@ function roundTrip(raw) {
     return engine.deserializeActivity(serialized);
 }
 
-/** Strip volatile id/canvas-only fields before comparing two flat objects. */
+/** Strip volatile id/canvas-only fields before comparing two flat objects (recursive for nested activities). */
 function stableFlat(flat) {
     const { id, element, container, color, isContainer, x, y, width, height, ...rest } = flat;
+    for (const key of ['activities', 'ifTrueActivities', 'ifFalseActivities', 'defaultActivities']) {
+        if (Array.isArray(rest[key])) rest[key] = rest[key].map(stableFlat);
+    }
+    if (Array.isArray(rest.cases)) {
+        rest.cases = rest.cases.map(c => ({ ...c, activities: (c.activities || []).map(stableFlat) }));
+    }
     return rest;
 }
 
@@ -330,11 +336,13 @@ describe('ForEach', () => {
         expect(flat.batchCount).toBe(10);
     });
 
-    test('nested activities array is preserved as raw JSON', () => {
+    test('nested activities are deserialized into flat objects', () => {
         const flat = engine.deserializeActivity(raw);
         expect(Array.isArray(flat.activities)).toBe(true);
         expect(flat.activities[0].name).toBe('InnerWait');
         expect(flat.activities[0].type).toBe('Wait');
+        expect(flat.activities[0].waitTimeInSeconds).toBe(1);
+        expect(flat.activities[0].typeProperties).toBeUndefined();
     });
 
     test('serialize writes nested activities back unchanged', () => {
@@ -402,9 +410,11 @@ describe('IfCondition', () => {
         expect(flat.expression).toEqual({ value: '@equals(1, 1)', type: 'Expression' });
     });
 
-    test('ifTrueActivities preserved as raw JSON', () => {
+    test('ifTrueActivities are deserialized into flat objects', () => {
         const flat = engine.deserializeActivity(raw);
         expect(flat.ifTrueActivities[0].name).toBe('TrueWait');
+        expect(flat.ifTrueActivities[0].waitTimeInSeconds).toBe(1);
+        expect(flat.ifTrueActivities[0].typeProperties).toBeUndefined();
     });
 
     test('serialize writes both branches back', () => {
@@ -443,16 +453,20 @@ describe('Switch', () => {
         expect(flat.on).toEqual({ value: '@pipeline().parameters.channel', type: 'Expression' });
     });
 
-    test('cases preserved as raw JSON', () => {
+    test('cases activities are deserialized into flat objects', () => {
         const flat = engine.deserializeActivity(raw);
         expect(flat.cases).toHaveLength(2);
         expect(flat.cases[0].value).toBe('A');
         expect(flat.cases[0].activities[0].name).toBe('WaitA');
+        expect(flat.cases[0].activities[0].waitTimeInSeconds).toBe(1);
+        expect(flat.cases[0].activities[0].typeProperties).toBeUndefined();
     });
 
-    test('defaultActivities preserved as raw JSON', () => {
+    test('defaultActivities are deserialized into flat objects', () => {
         const flat = engine.deserializeActivity(raw);
         expect(flat.defaultActivities[0].name).toBe('WaitDefault');
+        expect(flat.defaultActivities[0].waitTimeInSeconds).toBe(2);
+        expect(flat.defaultActivities[0].typeProperties).toBeUndefined();
     });
 
     test('serialize writes cases and defaultActivities back', () => {
@@ -466,7 +480,72 @@ describe('Switch', () => {
     });
 });
 
-// ─── Validation ───────────────────────────────────────────────────────────────
+// ─── Container: recursive round-trip (3 levels deep) ──────────────────────────
+
+describe('Container \u2014 recursive nested round-trip', () => {
+    const deep = {
+        name: 'ForEach1',
+        type: 'ForEach',
+        dependsOn: [],
+        userProperties: [],
+        typeProperties: {
+            items: { value: '@pipeline().parameters.items', type: 'Expression' },
+            isSequential: true,
+            activities: [
+                {
+                    name: 'Until1',
+                    type: 'Until',
+                    dependsOn: [],
+                    userProperties: [],
+                    typeProperties: {
+                        expression: { value: "@equals(variables('done'), true)", type: 'Expression' },
+                        timeout: '0.01:00:00',
+                        activities: [
+                            {
+                                name: 'InnerWait',
+                                type: 'Wait',
+                                dependsOn: [],
+                                userProperties: [],
+                                typeProperties: { waitTimeInSeconds: 3 },
+                            },
+                        ],
+                    },
+                },
+            ],
+        },
+    };
+
+    test('3-level deserialization: ForEach > Until > Wait', () => {
+        const flat = engine.deserializeActivity(deep);
+        expect(flat.type).toBe('ForEach');
+        const until = flat.activities[0];
+        expect(until.type).toBe('Until');
+        expect(until.typeProperties).toBeUndefined();
+        const wait = until.activities[0];
+        expect(wait.type).toBe('Wait');
+        expect(wait.waitTimeInSeconds).toBe(3);
+        expect(wait.typeProperties).toBeUndefined();
+    });
+
+    test('3-level serialize writes correct ADF JSON structure', () => {
+        const out = engine.serializeActivity(engine.deserializeActivity(deep));
+        expect(out.typeProperties.activities[0].name).toBe('Until1');
+        expect(out.typeProperties.activities[0].typeProperties.activities[0].name).toBe('InnerWait');
+        expect(out.typeProperties.activities[0].typeProperties.activities[0].typeProperties.waitTimeInSeconds).toBe(3);
+    });
+
+    test('3-level round-trip is stable', () => {
+        expect(stableFlat(roundTrip(deep))).toEqual(stableFlat(engine.deserializeActivity(deep)));
+    });
+
+    test('validateActivityList recurses 3 levels and catches inner error', () => {
+        const flat = engine.deserializeActivity(deep);
+        // Inject a validation error 3 levels deep
+        flat.activities[0].activities[0].waitTimeInSeconds = undefined;
+        const errors = engine.validateActivityList([flat]);
+        expect(Object.keys(errors)).toContain('InnerWait');
+    });
+});
 
 describe('Validation', () => {
     const raw = {

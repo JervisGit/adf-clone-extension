@@ -823,7 +823,7 @@
         "label": "Expression",
         "required": true,
         "placeholder": "@equals(variables('myVar'), true)",
-        "helpText": "Boolean expression â€” when true, the loop stops",
+        "helpText": "Boolean expression, when true, the loop stops",
         "jsonPath": "typeProperties.expression"
       },
       "timeout": {

@@ -65,12 +65,13 @@ function markAsDirty() {
         vscode.postMessage({ type: 'contentChanged', isDirty: true });
     }
     // Always cache current state so extension can save-on-close
+    const _topConns = canvasStack.length > 0 ? canvasStack[0].connections : connections;
     vscode.postMessage({
         type: 'cacheState',
         data: {
             pipelineData,
-            activities: activities.map(toSaveData),
-            connections: connections.map(c => ({ fromName: c.from.name, toName: c.to.name, condition: c.condition })),
+            activities: getSavePayload(),
+            connections: _topConns.map(c => ({ fromName: c.from.name, toName: c.to.name, condition: c.condition })),
         },
     });
 }
@@ -83,6 +84,21 @@ function markAsClean() {
 // Strip canvas-only / non-serializable properties before sending to extension host for save
 // Note: _datasetCategory and _datasetType are intentionally NOT stripped — the engine needs them
 // to evaluate conditional field rules during serialization.
+
+// Embed dependsOn into a flat activity list from a Connection list (webview Connection objects).
+// This mirrors what engine.js attachDependsOn does, but works on webview Connection instances
+// (which have .from/.to Activity references instead of just name strings).
+function embedDependsOn(flatList, conns) {
+    return flatList.map(a => ({
+        ...a,
+        dependsOn: (conns || [])
+            .filter(c => (c.to?.name ?? c.toName) === a.name)
+            .map(c => ({
+                activity: c.from?.name ?? c.fromName,
+                dependencyConditions: [c.condition || 'Succeeded'],
+            })),
+    }));
+}
 const CANVAS_ONLY_KEYS = new Set(['element', 'container', 'color', 'isContainer', 'x', 'y', 'width', 'height', 'id']);
 function toSaveData(a) {
     const obj = {};
@@ -718,11 +734,13 @@ function setupToolbarButtons() {
         saveBtn.disabled = true;
         saveBtn.textContent = 'Saving…';
         const saveData = getSavePayload();
+        // If inside a sub-canvas, the root-level connections are in canvasStack[0].connections.
+        const topLevelConns = canvasStack.length > 0 ? canvasStack[0].connections : connections;
         vscode.postMessage({
             type: 'savePipeline',
             pipelineData,
             activities: saveData,
-            connections: connections.map(c => ({
+            connections: topLevelConns.map(c => ({
                 fromName: c.from.name,
                 toName:   c.to.name,
                 condition: c.condition,
@@ -2923,11 +2941,13 @@ function exitSubCanvas() {
 }
 
 // Build the save payload, syncing all sub-canvas levels up first without changing navigation state.
+// Also embeds dependsOn from each level's connections so nested activity dependencies are preserved.
 function getSavePayload() {
     if (canvasStack.length === 0) return activities.map(toSaveData);
 
-    // Walk from innermost to outermost, writing each level back to its parent
-    let innerFlats = activities.map(toSaveData);
+    // Apply the innermost canvas's connections to its activities.
+    // serializePipeline's attachDependsOn handles the root level — we handle everything below it.
+    let innerFlats = embedDependsOn(activities.map(toSaveData), connections);
     for (let i = canvasStack.length - 1; i >= 0; i--) {
         const frame = canvasStack[i];
         if (frame.caseIndex != null) {
@@ -2935,7 +2955,13 @@ function getSavePayload() {
         } else {
             frame.parentActivity[frame.branchKey] = innerFlats;
         }
-        innerFlats = frame.activities.map(toSaveData);
+        // For intermediate stack frames embed their stored connections.
+        // For the root frame (i === 0), serializePipeline's attachDependsOn handles it.
+        if (i > 0) {
+            innerFlats = embedDependsOn(frame.activities.map(toSaveData), frame.connections);
+        } else {
+            innerFlats = frame.activities.map(toSaveData);
+        }
     }
     return innerFlats;
 }

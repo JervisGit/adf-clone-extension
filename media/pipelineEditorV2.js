@@ -48,6 +48,8 @@ let isDragging = false;
 let draggedActivity = null;
 let dragOffset = { x: 0, y: 0 };
 let connectionStart = null;
+let selectedConnection = null;  // connection selected for deletion
+let hoveredConnection = null;   // connection under the mouse cursor
 let isPanning = false;
 let panStart = { x: 0, y: 0, scrollLeft: 0, scrollTop: 0 };
 let scale = 1;
@@ -137,17 +139,15 @@ function fitToScreen() {
     const sidebarEl  = document.querySelector('.sidebar');
     const propsEl    = document.getElementById('propertiesPanel');
     const toolbarEl  = document.querySelector('.toolbar');
-    const bannerEl   = document.querySelector('.v2-banner');
     const configEl   = document.querySelector('.config-panel');
 
     const sidebarW = sidebarEl ? sidebarEl.offsetWidth : 250;
     const propsW   = (propsEl && !propsEl.classList.contains('collapsed')) ? (propsEl.offsetWidth || 300) : 0;
     const toolbarH = toolbarEl ? toolbarEl.offsetHeight : 48;
-    const bannerH  = bannerEl  ? bannerEl.offsetHeight  : 27;
     const configH  = configEl  ? configEl.offsetHeight  : 40;
 
     const vW = window.innerWidth  - sidebarW - propsW;
-    const vH = window.innerHeight - bannerH - toolbarH - configH;
+    const vH = window.innerHeight - toolbarH - configH;
 
     if (vW < 80 || vH < 40) {
         log(`fitToScreen: retrying (vW=${vW} vH=${vH})`);
@@ -299,9 +299,11 @@ function draw() {
     if (!ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     drawGrid();
-    connections.forEach(conn => conn.draw(ctx));
+    connections.forEach(conn => {
+        const highlight = conn === selectedConnection || conn === hoveredConnection;
+        conn.draw(ctx, highlight);
+    });
 
-    // Highlight selected activity connection points (canvas-drawn overlay)
     // Activity boxes are DOM elements; canvas only draws connections + grid.
 }
 
@@ -580,11 +582,11 @@ class Connection {
         this.condition = condition;
     }
 
-    draw(ctx) {
+    // Compute the three segments of this connection's orthogonal path.
+    _getSegments() {
         const fc = { x: this.from.x + this.from.width / 2, y: this.from.y + this.from.height / 2 };
         const tc = { x: this.to.x   + this.to.width   / 2, y: this.to.y   + this.to.height   / 2 };
         const dx = tc.x - fc.x, dy = tc.y - fc.y;
-
         let start, end;
         if (Math.abs(dx) > Math.abs(dy)) {
             start = this.from.getConnectionPoint(dx > 0 ? 'right' : 'left');
@@ -593,34 +595,77 @@ class Connection {
             start = this.from.getConnectionPoint(dy > 0 ? 'bottom' : 'top');
             end   = this.to.getConnectionPoint(dy > 0 ? 'top' : 'bottom');
         }
+        const snap = v => Math.floor(v) + 0.5;
+        const sx = snap(start.x), sy = snap(start.y), ex = snap(end.x), ey = snap(end.y);
+        const dx2 = ex - sx, dy2 = ey - sy;
+        if (Math.abs(dx2) > Math.abs(dy2)) {
+            const mx = sx + dx2 / 2;
+            return [[sx,sy,mx,sy],[mx,sy,mx,ey],[mx,ey,ex,ey]];
+        } else {
+            const my = sy + dy2 / 2;
+            return [[sx,sy,sx,my],[sx,my,ex,my],[ex,my,ex,ey]];
+        }
+    }
+
+    // Returns true if world-space point (wx, wy) is within `thresh` pixels of any segment.
+    hitTest(wx, wy, thresh = 6) {
+        for (const [x1,y1,x2,y2] of this._getSegments()) {
+            const dx = x2 - x1, dy = y2 - y1;
+            const lenSq = dx*dx + dy*dy;
+            if (lenSq === 0) continue;
+            const t = Math.max(0, Math.min(1, ((wx-x1)*dx + (wy-y1)*dy) / lenSq));
+            const nearX = x1 + t*dx, nearY = y1 + t*dy;
+            if ((wx - nearX)**2 + (wy - nearY)**2 <= thresh*thresh) return true;
+        }
+        return false;
+    }
+
+    draw(ctx, highlight = false) {
+        const segs = this._getSegments();
+        const [[sx,sy],,,[ex,ey]] = [segs[0], segs[1], segs[2], [segs[2][2], segs[2][3]]];
+        const [,,,finalEx] = segs[2]; // ex, ey from last segment end
+        const _ex = segs[2][2], _ey = segs[2][3];
+        const _sx = segs[0][0], _sy = segs[0][1];
 
         const colors = { Succeeded: '#107c10', Failed: '#d13438', Skipped: '#ffa500', Completed: '#0078d4' };
         const color = colors[this.condition] || '#107c10';
-        const snap = v => Math.floor(v) + 0.5;
-        const sx = snap(start.x), sy = snap(start.y), ex = snap(end.x), ey = snap(end.y);
 
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 1.5;
+        // Draw a wider transparent hit zone when highlighted so selection feels intentional
+        if (highlight) {
+            ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+            ctx.lineWidth = 10;
+            ctx.beginPath();
+            for (let i = 0; i < segs.length; i++) {
+                const [x1,y1,x2,y2] = segs[i];
+                if (i === 0) ctx.moveTo(x1, y1); else ctx.lineTo(x1, y1);
+                ctx.lineTo(x2, y2);
+            }
+            ctx.stroke();
+        }
+
+        ctx.strokeStyle = highlight ? '#ffffff' : color;
+        ctx.lineWidth = highlight ? 2.5 : 1.5;
         ctx.beginPath();
-        if (Math.abs(dx) > Math.abs(dy)) {
-            const mx = sx + (ex - sx) / 2;
-            ctx.moveTo(sx, sy); ctx.lineTo(mx, sy); ctx.lineTo(mx, ey); ctx.lineTo(ex, ey);
-        } else {
-            const my = sy + (ey - sy) / 2;
-            ctx.moveTo(sx, sy); ctx.lineTo(sx, my); ctx.lineTo(ex, my); ctx.lineTo(ex, ey);
+        for (let i = 0; i < segs.length; i++) {
+            const [x1,y1,x2,y2] = segs[i];
+            if (i === 0) ctx.moveTo(x1, y1); else ctx.lineTo(x1, y1);
+            ctx.lineTo(x2, y2);
         }
         ctx.stroke();
 
-        // Arrowhead
+        // Arrowhead at end of last segment
+        const fc = { x: this.from.x + this.from.width / 2, y: this.from.y + this.from.height / 2 };
+        const tc = { x: this.to.x   + this.to.width   / 2, y: this.to.y   + this.to.height   / 2 };
+        const dx = tc.x - fc.x, dy = tc.y - fc.y;
         const arrowAngle = Math.abs(dx) > Math.abs(dy)
             ? (dx > 0 ? 0 : Math.PI)
             : (dy > 0 ? Math.PI / 2 : -Math.PI / 2);
         const s = 7;
-        ctx.fillStyle = color;
+        ctx.fillStyle = highlight ? '#ffffff' : color;
         ctx.beginPath();
-        ctx.moveTo(ex, ey);
-        ctx.lineTo(ex - s * Math.cos(arrowAngle - Math.PI / 6), ey - s * Math.sin(arrowAngle - Math.PI / 6));
-        ctx.lineTo(ex - s * Math.cos(arrowAngle + Math.PI / 6), ey - s * Math.sin(arrowAngle + Math.PI / 6));
+        ctx.moveTo(_ex, _ey);
+        ctx.lineTo(_ex - s * Math.cos(arrowAngle - Math.PI / 6), _ey - s * Math.sin(arrowAngle - Math.PI / 6));
+        ctx.lineTo(_ex - s * Math.cos(arrowAngle + Math.PI / 6), _ey - s * Math.sin(arrowAngle + Math.PI / 6));
         ctx.closePath();
         ctx.fill();
     }
@@ -659,11 +704,20 @@ function setupCanvasEvents() {
             selectedActivity = null;
             activities.forEach(a => a.element?.classList.remove('selected'));
             showProperties(null);
-            draw();
-            isPanning = true;
-            panStart = { x: e.clientX, y: e.clientY, tx, ty };
-            wrapper.style.cursor = 'grabbing';
-            e.preventDefault();
+
+            // Check if clicking near a connection arrow
+            const pos = screenToWorld(e.clientX, e.clientY);
+            const hit = connections.find(c => c.hitTest(pos.x, pos.y)) || null;
+            if (hit !== selectedConnection) {
+                selectedConnection = hit;
+                requestDraw();
+            }
+            if (!hit) {
+                isPanning = true;
+                panStart = { x: e.clientX, y: e.clientY, tx, ty };
+                wrapper.style.cursor = 'grabbing';
+                e.preventDefault();
+            }
         }
     });
 
@@ -697,6 +751,17 @@ function setupCanvasEvents() {
             ctx.lineTo(pos.x, pos.y);
             ctx.stroke();
             ctx.setLineDash([]);
+            return;
+        }
+        // Update hovered connection for cursor feedback
+        if (!isDragging) {
+            const pos = screenToWorld(e.clientX, e.clientY);
+            const hit = connections.find(c => c.hitTest(pos.x, pos.y)) || null;
+            if (hit !== hoveredConnection) {
+                hoveredConnection = hit;
+                wrapper.style.cursor = hit ? 'pointer' : '';
+                requestDraw();
+            }
         }
     });
 
@@ -793,6 +858,41 @@ function setupContextMenu() {
                 draw();
             }
         });
+    });
+
+    // Right-click on canvas: delete hovered connection
+    document.getElementById('canvasWrapper').addEventListener('contextmenu', e => {
+        const pos = screenToWorld(e.clientX, e.clientY);
+        const hit = connections.find(c => c.hitTest(pos.x, pos.y));
+        if (!hit) return;  // let activity right-click context menu handle its own case
+        e.preventDefault();
+        e.stopPropagation();
+        const menu = document.createElement('div');
+        menu.style.cssText = `position:fixed;left:${e.clientX}px;top:${e.clientY}px;background:var(--vscode-menu-background);border:1px solid var(--vscode-menu-border);border-radius:3px;padding:4px 0;z-index:10000;box-shadow:0 2px 8px rgba(0,0,0,0.3);min-width:170px;`;
+        menu.innerHTML = `<div class="conn-ctx-item" style="padding:6px 14px;font-size:12px;cursor:pointer;color:var(--vscode-menu-foreground);">Delete dependency (${hit.condition})</div>`;
+        document.body.appendChild(menu);
+        const removeMenu = () => { if (menu.parentNode) menu.parentNode.removeChild(menu); };
+        menu.querySelector('.conn-ctx-item').addEventListener('click', () => {
+            connections = connections.filter(c => c !== hit);
+            if (selectedConnection === hit) selectedConnection = null;
+            if (hoveredConnection === hit) hoveredConnection = null;
+            markAsDirty();
+            draw();
+            removeMenu();
+        });
+        document.addEventListener('click', removeMenu, { once: true });
+        document.addEventListener('keydown', e2 => { if (e2.key === 'Escape') removeMenu(); }, { once: true });
+    });
+
+    // Delete key removes selected connection (when no activity is selected)
+    document.addEventListener('keydown', e => {
+        if ((e.key === 'Delete' || e.key === 'Backspace') && selectedConnection && !selectedActivity) {
+            connections = connections.filter(c => c !== selectedConnection);
+            selectedConnection = null;
+            hoveredConnection = null;
+            markAsDirty();
+            draw();
+        }
     });
 }
 

@@ -190,7 +190,7 @@ function toggleConfig() {
     panel.classList.toggle('minimized');
     const isMin = panel.classList.contains('minimized');
     btn.textContent = isMin ? '«' : '»';
-    container.style.height = isMin ? 'calc(100vh - 27px - 40px)' : 'calc(100vh - 27px - 250px)';
+    container.style.height = isMin ? 'calc(100vh - 40px)' : 'calc(100vh - 250px)';
     // Re-fit after panel animates
     setTimeout(fitToScreen, 220);
 }
@@ -970,6 +970,7 @@ function showProperties(activity) {
             markAsDirty();
         });
 
+        _renderPipelineParamsVars();
         // Restore first pipeline tab as active
         const firstTab = document.querySelector('.pipeline-tab');
         if (firstTab) firstTab.click();
@@ -1015,7 +1016,9 @@ function showProperties(activity) {
                                 ? _buildFormPane(activity, schema.advancedProperties || {}, 'advanced')
                                 : t === 'Activities'
                                     ? _buildActivitiesTab(activity, schema)
-                                    : `<div class="empty-state">Not yet implemented.</div>`;
+                                    : t === 'User Properties'
+                                        ? '<div class="form-user-props-container"></div>'
+                                        : `<div class="empty-state">Not yet implemented.</div>`;
             return `<div class="config-tab-pane${i === 0 ? ' active' : ''}" id="tab-v2-tab-${i}" style="display:${i === 0 ? 'block' : 'none'}">${html}</div>`;
         }).join('');
         // Wire all inputs to write back to the activity and mark dirty
@@ -1029,6 +1032,7 @@ function showProperties(activity) {
         _wireAkvSecretFields(panesContainer, activity);
         if (activity.type === 'Copy') _wireCopyConfigFields(panesContainer, activity);
         _wireActivitiesTab(panesContainer, activity);
+        _wireUserPropertiesTab(panesContainer, activity);
     } else {
         // Fallback read-only for not-yet-editable types
         tabsContainer.innerHTML = `
@@ -1354,6 +1358,134 @@ function _buildActivitiesTab(activity, schema) {
         }
     }
     return html;
+}
+
+// ─── Pipeline params / variables / settings ──────────────────────────────────
+function _renderPipelineParamsVars() {
+    _renderPipelineItemsTable(
+        document.getElementById('parametersList'),
+        pipelineData.parameters,
+        ['String', 'Int', 'Float', 'Bool', 'Array', 'Object', 'SecureString']
+    );
+    _renderPipelineItemsTable(
+        document.getElementById('variablesList'),
+        pipelineData.variables,
+        ['String', 'Bool', 'Array']
+    );
+    const concInput = document.getElementById('concurrencyInput');
+    concInput.disabled = false;
+    concInput.value = pipelineData.concurrency || 1;
+    concInput.onchange = () => { pipelineData.concurrency = Math.max(1, parseInt(concInput.value) || 1); markAsDirty(); };
+}
+
+function _renderPipelineItemsTable(containerEl, dataObj, typeOptions) {
+    containerEl.innerHTML = '';
+    const table = document.createElement('table');
+    table.className = 'form-kv-table';
+    table.innerHTML = '<thead><tr><th>Name</th><th>Type</th><th>Default Value</th><th></th></tr></thead>';
+    const tbody = document.createElement('tbody');
+    table.appendChild(tbody);
+    containerEl.appendChild(table);
+
+    const addRow = (name, item) => {
+        const tr = document.createElement('tr');
+        tr.dataset.paramName = name;
+        const nameIn = document.createElement('input');
+        nameIn.type = 'text'; nameIn.className = 'form-input form-kv-cell';
+        nameIn.value = name; nameIn.placeholder = 'Name';
+        const typeSel = document.createElement('select');
+        typeSel.className = 'form-select form-kv-cell';
+        typeOptions.forEach(t => {
+            const opt = document.createElement('option');
+            opt.value = t; opt.textContent = t;
+            if (t === (item.type || typeOptions[0])) opt.selected = true;
+            typeSel.appendChild(opt);
+        });
+        const valIn = document.createElement('input');
+        valIn.type = 'text'; valIn.className = 'form-input form-kv-cell';
+        valIn.value = item.defaultValue ?? ''; valIn.placeholder = 'Default value';
+        const sync = () => {
+            const oldName = tr.dataset.paramName;
+            const newName = nameIn.value.trim();
+            if (oldName !== newName && oldName) delete dataObj[oldName];
+            if (newName) dataObj[newName] = { type: typeSel.value, defaultValue: valIn.value };
+            tr.dataset.paramName = newName;
+            markAsDirty();
+        };
+        nameIn.addEventListener('input', sync);
+        typeSel.addEventListener('change', sync);
+        valIn.addEventListener('input', sync);
+        const del = document.createElement('button');
+        del.className = 'action-icon-btn'; del.textContent = '\u00d7';
+        del.addEventListener('click', () => { delete dataObj[tr.dataset.paramName]; tr.remove(); markAsDirty(); });
+        [nameIn, typeSel, valIn, del].forEach(cell => {
+            const td = document.createElement('td'); td.appendChild(cell); tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+    };
+
+    for (const [name, item] of Object.entries(dataObj)) addRow(name, item);
+
+    const addBtn = document.createElement('button');
+    addBtn.className = 'form-kv-add-btn'; addBtn.textContent = '+ Add';
+    addBtn.addEventListener('click', () => {
+        const base = 'param';
+        let n = base, i = 1;
+        while (n in dataObj) n = base + i++;
+        dataObj[n] = { type: typeOptions[0], defaultValue: '' };
+        markAsDirty();
+        _renderPipelineItemsTable(containerEl, dataObj, typeOptions);
+    });
+    containerEl.appendChild(addBtn);
+}
+
+// ─── User Properties tab ──────────────────────────────────────────────────────
+function _wireUserPropertiesTab(container, activity) {
+    const el = container.querySelector('.form-user-props-container');
+    if (!el) return;
+    if (!Array.isArray(activity.userProperties)) activity.userProperties = [];
+
+    const render = () => {
+        el.innerHTML = '';
+        const table = document.createElement('table');
+        table.className = 'form-kv-table';
+        table.innerHTML = '<thead><tr><th>Name</th><th>Value</th><th></th></tr></thead>';
+        const tbody = document.createElement('tbody');
+        table.appendChild(tbody);
+        el.appendChild(table);
+
+        activity.userProperties.forEach((prop, i) => {
+            const tr = document.createElement('tr');
+            const nameIn = document.createElement('input');
+            nameIn.type = 'text'; nameIn.className = 'form-input form-kv-cell';
+            nameIn.value = prop.name ?? ''; nameIn.placeholder = 'Name';
+            const valIn = document.createElement('input');
+            valIn.type = 'text'; valIn.className = 'form-input form-kv-cell';
+            valIn.value = (typeof prop.value === 'object' ? prop.value?.value : prop.value) ?? '';
+            valIn.placeholder = 'Value or @{expression}';
+            nameIn.addEventListener('input', () => { activity.userProperties[i].name = nameIn.value; markAsDirty(); });
+            valIn.addEventListener('input', () => {
+                activity.userProperties[i].value = valIn.value;
+                markAsDirty();
+            });
+            const del = document.createElement('button');
+            del.className = 'action-icon-btn'; del.textContent = '\u00d7';
+            del.addEventListener('click', () => { activity.userProperties.splice(i, 1); markAsDirty(); render(); });
+            [nameIn, valIn, del].forEach(cell => {
+                const td = document.createElement('td'); td.appendChild(cell); tr.appendChild(td);
+            });
+            tbody.appendChild(tr);
+        });
+
+        const addBtn = document.createElement('button');
+        addBtn.className = 'form-kv-add-btn'; addBtn.textContent = '+ Add';
+        addBtn.addEventListener('click', () => {
+            activity.userProperties.push({ name: '', value: '' });
+            markAsDirty(); render();
+        });
+        el.appendChild(addBtn);
+    };
+    render();
 }
 
 // Wire the Edit ▶ buttons in the Activities tab to enter sub-canvas navigation.

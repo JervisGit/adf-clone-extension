@@ -10,13 +10,13 @@
 | Step 4 | ✅ Done | Editable + saving for Wait, Fail, SetVariable (incl. pipeline return value kv), AppendVariable. Blocking validation on save. |
 | Step 5 | ✅ Done | ExecutePipeline (pipeline-ref select), Filter (expression fields). Pipeline variable select for SetVariable/AppendVariable. |
 | Step 6 | ✅ Done | Containers: ForEach, Until, IfCondition, Switch — editable expression/settings fields, Activities tab shows nested activity list (inner canvas editing deferred). |
-| Step 6.5 | ✅ Done | Unit tests (Jest) for `engine.js` — 48 tests covering deserialize/serialize round-trips for all types done so far (Steps 1–6), `setVariableReturnValues` transformer (incl. Array/Boolean), `validateActivity` required-field checks. Run with `npm run test:engine`. Nested activity round-trips (ForEach→Until→ForEach) deferred to Step 11.5. |
+| Step 6.5 | ✅ Done | Unit tests (Jest) for `engine.js` — 332 tests covering deserialize/serialize round-trips for all supported types, `setVariableReturnValues` transformer, `validateActivity`, nesting restriction validation, nested variable auto-population. Run with `npm run test:engine`. |
 | Step 7 | ✅ Done | Lookup, Delete, Validation, GetMetadata — dataset `<select>` from datasetList, GetMetadata field list checkboxes, Delete source path options, Source tab rendering. |
-| Step 8 | ✅ Done | SynapseNotebook, SparkJob — engine transformers, schema, UI editable, 176 engine tests passing |
-| Step 9 | ✅ Done | Script, SqlServerStoredProcedure — schema, UI editable (script-array, linked-service select, storedprocedure-parameters), 176 engine tests passing |
-| Step 10 | ✅ Done | WebActivity, WebHook — auth transformer (webAuthentication fixed: SP Inline/Credential/UAMI/ClientCert), webHeaders transformer, nestedConditional in validate/UI, web-secret/web-headers/web-dataset-list/web-linkedservice-list field renderers, 241 engine tests passing |
+| Step 8 | ✅ Done | SynapseNotebook, SparkJob — engine transformers, schema, UI editable. |
+| Step 9 | ✅ Done | Script, SqlServerStoredProcedure — schema, UI editable (script-array, linked-service select, storedprocedure-parameters). |
+| Step 10 | ✅ Done | WebActivity, WebHook — auth transformer (SP Inline/Credential/UAMI/ClientCert), webHeaders transformer, nestedConditional in validate/UI, web-secret/web-headers/web-dataset-list/web-linkedservice-list field renderers. |
 | Step 11 | 🔲 | Copy — last; uses copy-activity-config.json |
-| Step 11.5 | 🔲 | Container inner canvas editing — ForEach, Until, IfCondition, Switch render their nested activities on a sub-canvas. Enables nested activity round-trip tests from Step 6.5. |
+| Step 11.5 | ✅ Done | Container inner canvas — ForEach, Until, IfCondition, Switch render nested activities on a sub-canvas with breadcrumb navigation (`canvasStack`). Nesting restrictions (palette greyout + drop/add blocking). Container body validation (ForEach/Until ≥1 activity, Switch ≥1 case). Switch case add/remove UI. Nested `dependsOn` correctly embedded on save. Nested `SetVariable`/`AppendVariable` auto-populate pipeline-level `variables`. |
 | Step 12 | 🔲 | V2 becomes default, V1 removed |
 
 ---

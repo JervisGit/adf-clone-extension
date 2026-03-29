@@ -791,10 +791,10 @@ function showConnectionConditionDialog(fromActivity, toActivity, x, y) {
     dialog.style.cssText = `position:fixed;left:${x}px;top:${y}px;background:var(--vscode-menu-background);border:1px solid var(--vscode-menu-border);border-radius:4px;padding:8px;z-index:10000;box-shadow:0 2px 8px rgba(0,0,0,0.3);min-width:150px;`;
     dialog.innerHTML = `
         <div style="font-size:12px;font-weight:600;margin-bottom:8px;">Dependency Condition</div>
-        <button data-c="Succeeded" style="width:100%;margin:2px 0;padding:5px;background:#107c10;color:white;border:none;border-radius:2px;cursor:pointer;">✓ Succeeded</button>
-        <button data-c="Failed"    style="width:100%;margin:2px 0;padding:5px;background:#d13438;color:white;border:none;border-radius:2px;cursor:pointer;">✗ Failed</button>
-        <button data-c="Completed" style="width:100%;margin:2px 0;padding:5px;background:#0078d4;color:white;border:none;border-radius:2px;cursor:pointer;">⊙ Completed</button>
-        <button data-c="Skipped"   style="width:100%;margin:2px 0;padding:5px;background:#ffa500;color:white;border:none;border-radius:2px;cursor:pointer;">⊘ Skipped</button>`;
+        <button data-c="Succeeded" style="width:100%;margin:2px 0;padding:5px;background:#107c10;color:white;border:none;border-radius:2px;cursor:pointer;">Succeeded</button>
+        <button data-c="Failed"    style="width:100%;margin:2px 0;padding:5px;background:#d13438;color:white;border:none;border-radius:2px;cursor:pointer;">Failed</button>
+        <button data-c="Completed" style="width:100%;margin:2px 0;padding:5px;background:#0078d4;color:white;border:none;border-radius:2px;cursor:pointer;">Completed</button>
+        <button data-c="Skipped"   style="width:100%;margin:2px 0;padding:5px;background:#ffa500;color:white;border:none;border-radius:2px;cursor:pointer;">Skipped</button>`;
     document.body.appendChild(dialog);
 
     dialog.querySelectorAll('button').forEach(btn => {

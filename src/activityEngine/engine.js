@@ -336,10 +336,25 @@ function serializeActivityList(activities) {
 function serializePipeline(pipelineData, activities, connections) {
 	const withDeps = attachDependsOn(activities, connections);
 
+	// Recursively yield every flat activity at every nesting level.
+	function* allActivities(list) {
+		for (const a of (list || [])) {
+			yield a;
+			// ForEach / Until / IfCondition body
+			for (const key of ['activities', 'ifTrueActivities', 'ifFalseActivities', 'defaultActivities']) {
+				if (Array.isArray(a[key])) yield* allActivities(a[key]);
+			}
+			// Switch cases
+			if (Array.isArray(a.cases)) {
+				for (const c of a.cases) yield* allActivities(c.activities);
+			}
+		}
+	}
+
 	// Auto-populate pipeline variables from SetVariable / AppendVariable activities.
 	// Only adds entries that don't already exist — never removes or overwrites.
 	const pipelineVars = { ...(pipelineData.variables || {}) };
-	for (const a of withDeps) {
+	for (const a of allActivities(withDeps)) {
 		if (a.type === 'AppendVariable' && a.variableName && !(a.variableName in pipelineVars)) {
 			pipelineVars[a.variableName] = { type: 'Array' };
 		} else if (a.type === 'SetVariable' && a.variableName

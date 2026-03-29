@@ -3120,3 +3120,79 @@ describe('Copy — validate: sp-parameters empty name blocked', () => {
     });
 });
 
+// ─── serializePipeline — nested variable auto-population ──────────────────────
+
+describe('serializePipeline — nested variable auto-population', () => {
+    const pipelineData = { name: 'TestPipeline', variables: {}, parameters: {}, annotations: [], concurrency: 1 };
+
+    test('top-level AppendVariable declares pipeline variable', () => {
+        const flat = engine.deserializeActivity({
+            name: 'Av1', type: 'AppendVariable', dependsOn: [], userProperties: [],
+            typeProperties: { variableName: 'myArr', value: 'x' },
+        });
+        const json = engine.serializePipeline(pipelineData, [flat], []);
+        expect(json.properties.variables).toEqual({ myArr: { type: 'Array' } });
+    });
+
+    test('AppendVariable inside Switch case declares pipeline variable', () => {
+        const switchFlat = engine.deserializeActivity({
+            name: 'Sw1', type: 'Switch', dependsOn: [], userProperties: [],
+            typeProperties: {
+                on: { value: 'a', type: 'Expression' },
+                cases: [{
+                    value: 'one',
+                    activities: [{
+                        name: 'Av1', type: 'AppendVariable', dependsOn: [], userProperties: [],
+                        typeProperties: { variableName: 'nestedArr', value: 'v' },
+                    }],
+                }],
+            },
+        });
+        const json = engine.serializePipeline(pipelineData, [switchFlat], []);
+        expect(json.properties.variables).toHaveProperty('nestedArr');
+        expect(json.properties.variables.nestedArr).toEqual({ type: 'Array' });
+    });
+
+    test('SetVariable inside ForEach body declares pipeline variable', () => {
+        const forEachFlat = engine.deserializeActivity({
+            name: 'Fe1', type: 'ForEach', dependsOn: [], userProperties: [],
+            typeProperties: {
+                items: { value: '@variables("x")', type: 'Expression' },
+                activities: [{
+                    name: 'Sv1', type: 'SetVariable', dependsOn: [], userProperties: [],
+                    typeProperties: { variableName: 'innerVar', value: { value: '1', type: 'Expression' } },
+                }],
+            },
+        });
+        const json = engine.serializePipeline(pipelineData, [forEachFlat], []);
+        expect(json.properties.variables).toHaveProperty('innerVar');
+    });
+
+    test('AppendVariable in Switch default branch declares pipeline variable', () => {
+        const switchFlat = engine.deserializeActivity({
+            name: 'Sw2', type: 'Switch', dependsOn: [], userProperties: [],
+            typeProperties: {
+                on: { value: 'b', type: 'Expression' },
+                cases: [],
+                defaultActivities: [{
+                    name: 'Av2', type: 'AppendVariable', dependsOn: [], userProperties: [],
+                    typeProperties: { variableName: 'defaultArr', value: 'z' },
+                }],
+            },
+        });
+        const json = engine.serializePipeline(pipelineData, [switchFlat], []);
+        expect(json.properties.variables).toHaveProperty('defaultArr');
+        expect(json.properties.variables.defaultArr).toEqual({ type: 'Array' });
+    });
+
+    test('existing pipeline variable is not overwritten', () => {
+        const pdWithVar = { ...pipelineData, variables: { myArr: { type: 'String', defaultValue: 'hi' } } };
+        const flat = engine.deserializeActivity({
+            name: 'Av3', type: 'AppendVariable', dependsOn: [], userProperties: [],
+            typeProperties: { variableName: 'myArr', value: 'x' },
+        });
+        const json = engine.serializePipeline(pdWithVar, [flat], []);
+        expect(json.properties.variables.myArr).toEqual({ type: 'String', defaultValue: 'hi' });
+    });
+});
+

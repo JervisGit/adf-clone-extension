@@ -1,5 +1,4 @@
 const vscode = require('vscode');
-const { PipelineEditorProvider } = require('./pipelineEditor');
 const { PipelineEditorV2Provider } = require('./pipelineEditorV2');
 const { TriggerEditorProvider } = require('./triggerEditor');
 const { DatasetEditorProvider } = require('./datasetEditor');
@@ -18,16 +17,13 @@ function activate(context) {
 	// Sync JSON "name" field when a pipeline file is renamed via the file explorer
 	registerRenameHandler(context);
 
-	// Register the pipeline editor provider
-	const editorProvider = new PipelineEditorProvider(context);
+	// Register the pipeline editor provider (V2)
+	const editorV2Provider = new PipelineEditorV2Provider(context);
 	context.subscriptions.push(
 		vscode.commands.registerCommand('adf-pipeline-clone.openPipeline', () => {
-			editorProvider.createOrShow();
+			editorV2Provider.createOrShow();
 		})
 	);
-
-	// Register the V2 pipeline editor provider (parallel view, save disabled)
-	const editorV2Provider = new PipelineEditorV2Provider(context);
 	context.subscriptions.push(
 		vscode.commands.registerCommand('adf-pipeline-clone.openPipelineV2', () => {
 			editorV2Provider.createOrShow();
@@ -75,10 +71,12 @@ function activate(context) {
 		})
 	);
 
-	// Register command to add activities
+	// Register command to open pipeline file
 	context.subscriptions.push(
-		vscode.commands.registerCommand('adf-pipeline-clone.addActivity', (activityType) => {
-			editorProvider.addActivity(activityType);
+		vscode.commands.registerCommand('adf-pipeline-clone.openPipelineFile', (item) => {
+			if (item && item.filePath) {
+				editorV2Provider.loadPipelineFile(item.filePath);
+			}
 		})
 	);
 
@@ -89,18 +87,6 @@ function activate(context) {
 		showCollapseAll: true
 	});
 	context.subscriptions.push(pipelineTreeView);
-
-	// Dataset tree provider no longer needed as a separate view
-	// Datasets are now shown in the main pipelines view
-
-	// Register command to open pipeline file
-	context.subscriptions.push(
-		vscode.commands.registerCommand('adf-pipeline-clone.openPipelineFile', (item) => {
-			if (item && item.filePath) {
-				editorProvider.loadPipelineFile(item.filePath);
-			}
-		})
-	);
 
 	// Register refresh command for pipeline files
 	context.subscriptions.push(
@@ -227,7 +213,7 @@ function activate(context) {
 				
 				fs.writeFileSync(filePath, JSON.stringify(pipelineTemplate, null, 2));
 				pipelineTreeProvider.refresh();
-				editorProvider.loadPipelineFile(filePath);
+				   editorV2Provider.loadPipelineFile(filePath);
 			}
 		})
 	);

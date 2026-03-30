@@ -15,9 +15,10 @@
 | Step 8 | ✅ Done | SynapseNotebook, SparkJob — engine transformers, schema, UI editable. |
 | Step 9 | ✅ Done | Script, SqlServerStoredProcedure — schema, UI editable (script-array, linked-service select, storedprocedure-parameters). |
 | Step 10 | ✅ Done | WebActivity, WebHook — auth transformer (SP Inline/Credential/UAMI/ClientCert), webHeaders transformer, nestedConditional in validate/UI, web-secret/web-headers/web-dataset-list/web-linkedservice-list field renderers. |
-| Step 11 | 🔲 | Copy — last; uses copy-activity-config.json |
+| Step 10.5 | ✅ Done | Pipeline parameters, variables, settings (concurrency) — editable bottom panel. Activity User Properties tab — editable name/value array on every activity. Connection deletion — hover highlight, click-to-select, Delete key, right-click context menu. Preview banner removed. |
+| Step 11 | ✅ Done | Copy — uses copy-activity-config.json |
 | Step 11.5 | ✅ Done | Container inner canvas — ForEach, Until, IfCondition, Switch render nested activities on a sub-canvas with breadcrumb navigation (`canvasStack`). Nesting restrictions (palette greyout + drop/add blocking). Container body validation (ForEach/Until ≥1 activity, Switch ≥1 case). Switch case add/remove UI. Nested `dependsOn` correctly embedded on save. Nested `SetVariable`/`AppendVariable` auto-populate pipeline-level `variables`. |
-| Step 12 | 🔲 | V2 becomes default, V1 removed |
+| Step 12 | ✅ Done | V2 is now the default editor. `openPipelineFile` (tree item click) and `openPipeline` command both route to V2. `(Preview)` labels removed. `pipelineEditor.js` (V1) archived to `archive/` folder. |
 
 ---
 

@@ -56,13 +56,13 @@
       },
       {
         "command": "adf-pipeline-clone.openPipelineV2",
-        "title": "Synapse: Open Pipeline Editor V2 (Preview)",
+        "title": "Synapse: Open Pipeline Editor",
         "category": "Pipeline",
-        "icon": "$(beaker)"
+        "icon": "$(edit)"
       },
       {
         "command": "adf-pipeline-clone.openPipelineFileV2",
-        "title": "Open in Pipeline Editor V2 (Preview)"
+        "title": "Open Pipeline Editor"
       },
       {
         "command": "adf-pipeline-clone.openDataset",
@@ -210,11 +210,6 @@
           "command": "adf-pipeline-clone.createTrigger",
           "when": "view == adf-pipelines && viewItem == folder-trigger",
           "group": "inline"
-        },
-        {
-          "command": "adf-pipeline-clone.openPipelineFileV2",
-          "when": "view == adf-pipelines && viewItem == pipeline",
-          "group": "1_open"
         },
         {
           "command": "adf-pipeline-clone.requestPipelineRun",

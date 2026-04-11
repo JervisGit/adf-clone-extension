@@ -70,18 +70,37 @@ body {
     padding: 20px;
     background: var(--vscode-editor-background);
     border-bottom: 1px solid var(--vscode-panel-border);
+    position: relative;
 }
 
 .canvas-container {
+    position: relative;
+    /* width and height set inline from computed layout */
+    min-width: 400px;
+    min-height: 160px;
+}
+
+.canvas-container.canvas-empty {
     display: flex;
-    flex-wrap: wrap;
-    gap: 16px;
-    align-items: flex-start;
+    align-items: center;
+    width: auto;
+    height: auto;
+    color: var(--vscode-descriptionForeground);
+    font-size: 13px;
+}
+
+/* SVG arrow overlay */
+.dep-svg {
+    position: absolute;
+    top: 0; left: 0;
+    pointer-events: none;
+    overflow: visible;
 }
 
 /* ── Activity box (matches pipelineRunViewer style) ─────────────────────── */
 .activity-box {
-    width: 180px;
+    width: 190px;
+    position: absolute;   /* laid out by computed x/y from topological layout */
     background: #f0f0f0;
     border: 1px solid #c8c8c8;
     border-radius: 3px;
@@ -304,3 +323,116 @@ body {
 }
 .run-summary-item { display: flex; gap: 5px; }
 .run-summary-label { font-weight: 600; }
+
+/* ── Popover ──────────────────────────────────────────────────────────────── */
+#popover-root {
+    pointer-events: none;
+}
+
+.popover-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+}
+.popover-overlay.active {
+    pointer-events: all;
+}
+
+.popover-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+}
+
+.popover-card {
+    position: relative;
+    z-index: 1;
+    width: 520px;
+    max-width: 90vw;
+    max-height: 65vh;
+    background: var(--vscode-editor-background);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 4px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: popoverIn .12s ease-out;
+}
+@keyframes popoverIn {
+    from { transform: scale(0.95) translateY(8px); opacity: 0; }
+    to   { transform: scale(1)    translateY(0);   opacity: 1; }
+}
+
+.popover-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: var(--vscode-sideBar-background);
+    border-bottom: 1px solid var(--vscode-panel-border);
+    flex-shrink: 0;
+}
+.popover-title {
+    font-size: 13px;
+    font-weight: 600;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.popover-close {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+    color: var(--vscode-foreground);
+    opacity: 0.65;
+    padding: 0 2px;
+}
+.popover-close:hover { opacity: 1; }
+
+.popover-tabs {
+    display: flex;
+    gap: 0;
+    background: var(--vscode-sideBar-background);
+    border-bottom: 1px solid var(--vscode-panel-border);
+    padding: 0 10px;
+    flex-shrink: 0;
+}
+.popover-tab {
+    padding: 7px 14px;
+    font-size: 12px;
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    color: var(--vscode-foreground);
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+}
+.popover-tab.active { border-bottom-color: #0078d4; color: #0078d4; font-weight: 600; }
+.popover-tab:hover:not(.active) { background: var(--vscode-list-hoverBackground); }
+
+.popover-body {
+    flex: 1;
+    overflow: auto;
+    padding: 14px 16px;
+}
+.popover-json {
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    white-space: pre;
+    margin: 0;
+    color: var(--vscode-editor-foreground);
+}
+
+/* Button label tweak — show ↑ arrow to indicate popover */
+#btn-view-output, #btn-view-error, #btn-view-details {
+    font-size: 11px;
+}

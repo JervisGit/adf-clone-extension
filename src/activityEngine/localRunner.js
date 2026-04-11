@@ -528,14 +528,21 @@ const HANDLER_REGISTRY = {
         try { return JSON.parse(responseText); } catch { return { response: responseText }; }
     },
 
-    // ── SynapseNotebook (Livy session) ────────────────────────────────────────
+    // ── SynapseNotebook (Livy session, batch-style: single statement) ──────────
+    // All code cells are concatenated into one statement so the notebook runs
+    // end-to-end without per-cell round-trips ("run and done" semantics).
     async synapseNotebookHandler(activity) {
-        const tp          = activity.typeProperties || {};
+        const tp           = activity.typeProperties || {};
         const notebookName = tp.notebook?.referenceName ?? tp.notebookPath;
-        const sparkPool    = tp.sparkPool?.referenceName ?? tp.sparkPool;
+        const sparkPool    = tp.sparkPool?.referenceName
+            ?? tp.sparkPool
+            ?? _loadSynapseWorkspaceConfig(this.workspaceRoot).defaultSparkPool;
 
         if (!notebookName) throw new Error('SynapseNotebook: missing notebook.referenceName in typeProperties');
-        if (!sparkPool)    throw new Error('SynapseNotebook: missing sparkPool.referenceName in typeProperties');
+        if (!sparkPool)    throw new Error(
+            'SynapseNotebook: no Spark pool specified. Set sparkPool on the activity or ' +
+            '"defaultSparkPool" in synapse-local-run.json.'
+        );
 
         const wsConfig = _loadSynapseWorkspaceConfig(this.workspaceRoot);
         if (!wsConfig.synapseEndpoint) {
@@ -548,12 +555,30 @@ const HANDLER_REGISTRY = {
         // Read notebook JSON from workspace
         const nbFile = path.join(this.workspaceRoot, 'notebook', `${notebookName}.json`);
         if (!fs.existsSync(nbFile)) {
-            throw new Error(`SynapseNotebook: notebook file "${notebookName}.json" not found in workspace notebook/ folder`);
+            throw new Error(`SynapseNotebook: "${notebookName}.json" not found in workspace notebook/ folder`);
         }
         const nb    = JSON.parse(fs.readFileSync(nbFile, 'utf8'));
         const cells = nb.properties?.cells ?? nb.cells ?? [];
         const lang  = nb.properties?.metadata?.language_info?.name ?? 'python';
         const kind  = NOTEBOOK_LANG_TO_KIND[lang] ?? 'pyspark';
+
+        // Build parameter injection preamble
+        const params    = tp.parameters ?? {};
+        const paramCode = Object.keys(params).length > 0
+            ? Object.entries(params)
+                .map(([k, v]) => `${k} = ${JSON.stringify(this._eval(v?.value ?? v, {}))}`)
+                .join('\n') + '\n'
+            : '';
+
+        // Collapse ALL code cells into one statement (batch-style)
+        const codeCells = cells.filter(c => (c.cell_type ?? c.cellType) === 'code');
+        const cellBodies = codeCells.map(c =>
+            Array.isArray(c.source) ? c.source.join('') : (c.source ?? ''));
+        const fullScript = paramCode + cellBodies.join('\n\n');
+
+        if (!fullScript.trim()) {
+            return { notebookName, kind, note: 'No code cells to execute.' };
+        }
 
         const livyCfg = runConfig.synapseWorkspace;
         const client  = new SynapseClient(wsConfig.synapseEndpoint);
@@ -576,35 +601,23 @@ const HANDLER_REGISTRY = {
                 })
             );
 
-            // Inject parameter overrides as a prepended code cell
-            const params = tp.parameters ?? {};
-            if (Object.keys(params).length > 0) {
-                const paramLines = Object.entries(params)
-                    .map(([k, v]) => `${k} = ${JSON.stringify(this._eval(v?.value ?? v, {}))}`)
-                    .join('\n');
-                const paramStmt = await client.submitStatement(sparkPool, apiVer, sessionId, paramLines, kind);
-                await client.waitForStatement(sparkPool, apiVer, sessionId, paramStmt.id, livyCfg.statementPollIntervalMs);
+            // Submit once — all cells as a single statement
+            const stmt   = await client.submitStatement(sparkPool, apiVer, sessionId, fullScript, kind);
+            const result = await client.waitForStatement(
+                sparkPool, apiVer, sessionId, stmt.id, livyCfg.statementPollIntervalMs
+            );
+
+            if (result.output?.status === 'error') {
+                const trace = result.output.traceback?.join('\n') ?? '';
+                throw new Error(result.output.evalue ?? 'Notebook execution error' + (trace ? '\n' + trace : ''));
             }
 
-            // Execute each code cell sequentially
-            const codeCells = cells.filter(c => (c.cell_type ?? c.cellType) === 'code');
-            for (let i = 0; i < codeCells.length; i++) {
-                if (this._cancelled) break;
-                const src = Array.isArray(codeCells[i].source)
-                    ? codeCells[i].source.join('')
-                    : (codeCells[i].source ?? '');
-                if (!src.trim()) continue;
-
-                const stmt   = await client.submitStatement(sparkPool, apiVer, sessionId, src, kind);
-                const result = await client.waitForStatement(sparkPool, apiVer, sessionId, stmt.id, livyCfg.statementPollIntervalMs);
-                if (result.output?.status === 'error') {
-                    throw new Error(result.output.evalue ?? `Notebook cell ${i + 1} execution error`);
-                }
-            }
-
-            return { notebookName, sessionId, kind, cellsExecuted: codeCells.length };
+            return {
+                notebookName, sessionId, kind,
+                cellsExecuted: codeCells.length,
+                output: result.output?.text ?? result.output?.data ?? null,
+            };
         } finally {
-            // Always clean up the session (best effort)
             await client.deleteSession(sparkPool, apiVer, sessionId).catch(() => {});
         }
     },

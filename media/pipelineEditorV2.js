@@ -47,6 +47,7 @@ let canvas, ctx;
 let isDragging = false;
 let draggedActivity = null;
 let dragOffset = { x: 0, y: 0 };
+let connectionDragPos = null; // latest mouse world-pos during connection drag
 let connectionStart = null;
 let selectedConnection = null;  // connection selected for deletion
 let hoveredConnection = null;   // connection under the mouse cursor
@@ -288,10 +289,32 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ─── Canvas ────────────────────────────────────────────────────────────────────
+// Offscreen grid cache — rebuilt only when canvas is resized
+let gridCache = null;
+let gridCacheSize = 0;
+
+function buildGridCache(size) {
+    const off = document.createElement('canvas');
+    off.width  = size;
+    off.height = size;
+    const octx = off.getContext('2d');
+    const gridSize = 20;
+    octx.strokeStyle = 'rgba(128,128,128,0.1)';
+    octx.lineWidth = 1;
+    // Batch all lines into two paths — vastly fewer ctx.stroke() calls
+    octx.beginPath();
+    for (let x = 0; x < size; x += gridSize) { octx.moveTo(x, 0); octx.lineTo(x, size); }
+    for (let y = 0; y < size; y += gridSize) { octx.moveTo(0, y); octx.lineTo(size, y); }
+    octx.stroke();
+    return off;
+}
+
 function resizeCanvas() {
     if (!canvas) return;
     canvas.width = 4000;
     canvas.height = 4000;
+    gridCache     = buildGridCache(4000);
+    gridCacheSize = 4000;
     draw();
 }
 
@@ -320,14 +343,13 @@ function requestDraw() {
 }
 
 function drawGrid() {
-    const gridSize = 20;
-    ctx.strokeStyle = 'rgba(128,128,128,0.1)';
-    ctx.lineWidth = 1;
-    for (let x = 0; x < canvas.width; x += gridSize) {
-        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
-    }
-    for (let y = 0; y < canvas.height; y += gridSize) {
-        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+    // Use cached offscreen bitmap — a single drawImage instead of 400 stroke() calls
+    if (gridCache) {
+        ctx.drawImage(gridCache, 0, 0);
+    } else {
+        // Fallback: build once inline (should not normally happen)
+        gridCache = buildGridCache(canvas.width);
+        ctx.drawImage(gridCache, 0, 0);
     }
 }
 
@@ -742,15 +764,27 @@ function setupCanvasEvents() {
         }
         if (connectionStart) {
             const pos = screenToWorld(e.clientX, e.clientY);
-            draw();
-            ctx.strokeStyle = '#0078d4';
-            ctx.lineWidth = 2;
-            ctx.setLineDash([5, 5]);
-            ctx.beginPath();
-            ctx.moveTo(connectionStart.x, connectionStart.y);
-            ctx.lineTo(pos.x, pos.y);
-            ctx.stroke();
-            ctx.setLineDash([]);
+            // Throttle with rAF — store latest mouse pos, redraw once per frame
+            connectionDragPos = pos;
+            if (!needsRedraw) {
+                needsRedraw = true;
+                if (animationFrameId) cancelAnimationFrame(animationFrameId);
+                animationFrameId = requestAnimationFrame(() => {
+                    draw();
+                    if (connectionDragPos) {
+                        ctx.strokeStyle = '#0078d4';
+                        ctx.lineWidth = 2;
+                        ctx.setLineDash([5, 5]);
+                        ctx.beginPath();
+                        ctx.moveTo(connectionStart.x, connectionStart.y);
+                        ctx.lineTo(connectionDragPos.x, connectionDragPos.y);
+                        ctx.stroke();
+                        ctx.setLineDash([]);
+                    }
+                    needsRedraw = false;
+                    animationFrameId = null;
+                });
+            }
             return;
         }
         // Update hovered connection for cursor feedback
@@ -780,6 +814,7 @@ function setupCanvasEvents() {
                 }
             }
             connectionStart = null;
+            connectionDragPos = null;
             canvas.style.cursor = 'default';
         }
         if (isDragging) {

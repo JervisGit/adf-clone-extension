@@ -8,6 +8,7 @@ const vscode = require('vscode');
 const path   = require('path');
 const fs     = require('fs');
 const { LocalPipelineRunner } = require('./activityEngine/localRunner');
+const { validatePipeline }    = require('./activityEngine/engine');
 
 class LocalRunPanel {
     static panels = new Map(); // Map<runId, vscode.WebviewPanel>
@@ -40,21 +41,46 @@ class LocalRunPanel {
 
         const pipelineName = pipelineJson?.name ?? path.basename(filePath, '.json');
         const paramDefs    = pipelineJson?.properties?.parameters ?? {};
+        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath;
+
+        // ── Validation gate ────────────────────────────────────────────────────
+        const valResult = validatePipeline(pipelineJson, workspaceRoot);
+        const pipelineErrorCount  = valResult.pipelineErrors?.length ?? 0;
+        const activityErrorCount  = Object.values(valResult.activityErrors ?? {})
+            .reduce((n, errs) => n + errs.length, 0);
+        const totalErrors = pipelineErrorCount + activityErrorCount;
+
+        if (totalErrors > 0) {
+            const choice = await vscode.window.showWarningMessage(
+                `"${pipelineName}" has ${totalErrors} validation error${totalErrors !== 1 ? 's' : ''}. Running it may produce unexpected results.`,
+                { modal: true },
+                'Run Anyway',
+                'Cancel'
+            );
+            if (choice !== 'Run Anyway') return;
+        }
+        // ── End validation gate ────────────────────────────────────────────────
 
         // Prompt user for parameters
         const parameters = await promptParameters(pipelineName, paramDefs);
         if (parameters === null) return; // user cancelled
 
-        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath;
         const runner = new LocalPipelineRunner(pipelineJson, parameters, workspaceRoot);
 
-        this._openPanel(runner, pipelineName);
+        // Extract a lightweight activity summary for the webview canvas layout
+        const pipelineActivities = (pipelineJson?.properties?.activities ?? []).map(a => ({
+            name:      a.name,
+            type:      a.type,
+            dependsOn: (a.dependsOn ?? []).map(d => ({ activity: d.activity })),
+        }));
+
+        this._openPanel(runner, pipelineName, pipelineActivities);
         // runner.run() is called by the panel once the webview sends 'ready'
     }
 
     // ─── WebView panel ────────────────────────────────────────────────────────
 
-    _openPanel(runner, pipelineName) {
+    _openPanel(runner, pipelineName, pipelineActivities) {
         const panel = vscode.window.createWebviewPanel(
             'localRunViewer',
             `▶ ${pipelineName}`,
@@ -69,7 +95,7 @@ class LocalRunPanel {
         }, null, this.context.subscriptions);
 
         // Deliver initial (empty) HTML immediately so the panel is visible
-        panel.webview.html = this._getHtml(panel.webview, pipelineName, runner.runId);
+        panel.webview.html = this._getHtml(panel.webview, pipelineName, runner.runId, pipelineActivities);
 
         // Forward runner events to the webview
         runner.on('activityUpdate', (update) => {
@@ -89,20 +115,11 @@ class LocalRunPanel {
                 case 'cancel':
                     runner.cancel();
                     break;
-                case 'showDetails':
-                    _showJson(msg.activity, 'details');
-                    break;
-                case 'showOutput':
-                    _showJson(msg.activity?.output, 'output');
-                    break;
-                case 'showError':
-                    _showJson(msg.activity?.error, 'error');
-                    break;
             }
         }, undefined, this.context.subscriptions);
     }
 
-    _getHtml(webview, pipelineName, runId) {
+    _getHtml(webview, pipelineName, runId, pipelineActivities) {
         const mediaUri = (name) => webview.asWebviewUri(
             vscode.Uri.joinPath(this.context.extensionUri, 'media', name)
         );
@@ -122,10 +139,12 @@ class LocalRunPanel {
 </head>
 <body>
     <script>
-        var PIPELINE_NAME = ${JSON.stringify(pipelineName)};
-        var RUN_ID        = ${JSON.stringify(runId)};
+        var PIPELINE_NAME       = ${JSON.stringify(pipelineName)};
+        var RUN_ID              = ${JSON.stringify(runId)};
+        var PIPELINE_ACTIVITIES = ${JSON.stringify(pipelineActivities)};
     </script>
     <div id="app"></div>
+    <div id="popover-root"></div>
     <script src="${jsUri}"></script>
 </body>
 </html>`;
@@ -187,12 +206,6 @@ async function promptParameters(pipelineName, paramDefs) {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-async function _showJson(data, _label) {
-    const content = data === null || data === undefined ? '(empty)' : JSON.stringify(data, null, 2);
-    const doc = await vscode.workspace.openTextDocument({ content, language: 'json' });
-    await vscode.window.showTextDocument(doc, { preview: true });
-}
 
 function _escHtml(s) {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');

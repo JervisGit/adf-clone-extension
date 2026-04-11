@@ -175,6 +175,19 @@ function evalExpr(expr, context) {
         }
     }
 
+    // ── Bare identifier: @varName shorthand for @variables('varName') ─────────
+    // ADF allows `@myVar` as a shorthand when it matches a pipeline variable.
+    // We also check parameters as a fallback (useful for `@param` shorthand).
+    {
+        const identMatch = /^[A-Za-z_]\w*$/.exec(expr);
+        if (identMatch) {
+            const vars   = context.variables   || {};
+            const params = context.parameters  || {};
+            if (vars.hasOwnProperty(expr))   return vars[expr];
+            if (params.hasOwnProperty(expr)) return params[expr];
+        }
+    }
+
     throw new Error(`Unsupported expression: "${expr}"`);
 }
 

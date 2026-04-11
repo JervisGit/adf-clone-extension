@@ -1,0 +1,149 @@
+{
+  "_comment": "Config-driven local pipeline runner. Add/change entries here to control how each activity type is executed locally without modifying runner source code.",
+
+  "runLimits": {
+    "maxForEachItems": 100,
+    "maxUntilIterations": 1000,
+    "maxRunDurationMs": 3600000,
+    "waitMaxSeconds": 300
+  },
+
+  "expressionEvaluator": {
+    "enabledFunctions": [
+      "concat", "string", "int", "float", "bool", "json", "array", "createArray",
+      "union", "intersection", "contains", "length", "first", "last", "take", "skip", "range",
+      "not", "and", "or", "equals", "if", "greater", "greaterOrEquals", "less", "lessOrEquals",
+      "add", "sub", "mul", "div", "mod", "min", "max",
+      "trim", "ltrim", "rtrim", "replace", "split", "join", "substring", "toLower", "toUpper",
+      "startsWith", "endsWith", "indexOf",
+      "coalesce", "empty", "null",
+      "formatDateTime", "addSeconds", "addMinutes", "addHours", "addDays",
+      "utcNow", "ticks", "subtractFromTime", "dateAdd",
+      "convertFromUtc", "convertToUtc", "getFutureTime", "getPastTime",
+      "base64", "base64ToString", "base64ToBinary",
+      "guid", "newGuid",
+      "encodeUriComponent", "decodeUriComponent", "uriComponent", "uriComponentToString"
+    ]
+  },
+
+  "activityRunners": {
+    "Wait": {
+      "handler": "waitHandler",
+      "supportsCancel": true,
+      "description": "Waits for the specified duration (in seconds)"
+    },
+    "Fail": {
+      "handler": "failHandler",
+      "supportsCancel": false,
+      "description": "Fails the pipeline with a custom message and error code"
+    },
+    "SetVariable": {
+      "handler": "setVariableHandler",
+      "supportsCancel": false,
+      "description": "Sets a pipeline variable to the evaluated value"
+    },
+    "AppendVariable": {
+      "handler": "appendVariableHandler",
+      "supportsCancel": false,
+      "description": "Appends a value to an array pipeline variable"
+    },
+    "Filter": {
+      "handler": "filterHandler",
+      "supportsCancel": false,
+      "description": "Evaluates each item in the input array against the condition expression"
+    },
+    "ForEach": {
+      "handler": "forEachHandler",
+      "supportsCancel": true,
+      "description": "Iterates over each item in the evaluated items expression and runs child activities"
+    },
+    "Until": {
+      "handler": "untilHandler",
+      "supportsCancel": true,
+      "description": "Repeats child activities until the expression evaluates to true, or the timeout is reached"
+    },
+    "IfCondition": {
+      "handler": "ifConditionHandler",
+      "supportsCancel": true,
+      "description": "Branches to the true or false activity set based on the evaluated boolean expression"
+    },
+    "Switch": {
+      "handler": "switchHandler",
+      "supportsCancel": true,
+      "description": "Branches to the matching case (or default) based on the evaluated on-expression"
+    },
+    "ExecutePipeline": {
+      "handler": "executePipelineHandler",
+      "supportsCancel": true,
+      "description": "Resolves and executes another pipeline in this workspace with the given parameters"
+    },
+    "WebActivity": {
+      "handler": "webActivityHandler",
+      "supportsCancel": true,
+      "description": "Makes an HTTP call using the developer's local network and identity (no MSI)"
+    },
+    "SynapseNotebook": {
+      "handler": "notSupportedHandler",
+      "supportsCancel": false,
+      "notSupportedReason": "SynapseNotebook requires a live Synapse Spark pool connection. Not supported in local run mode."
+    },
+    "SparkJob": {
+      "handler": "notSupportedHandler",
+      "supportsCancel": false,
+      "notSupportedReason": "SparkJob requires a live Synapse Spark pool connection. Not supported in local run mode."
+    },
+    "Script": {
+      "handler": "notSupportedHandler",
+      "supportsCancel": false,
+      "notSupportedReason": "Script requires a live SQL serverless/dedicated pool connection. Not supported in local run mode."
+    },
+    "SqlServerStoredProcedure": {
+      "handler": "notSupportedHandler",
+      "supportsCancel": false,
+      "notSupportedReason": "SqlServerStoredProcedure requires a live SQL server connection. Not supported in local run mode."
+    },
+    "Copy": {
+      "handler": "notSupportedHandler",
+      "supportsCancel": false,
+      "notSupportedReason": "Copy requires live source and sink connections. Not supported in local run mode."
+    },
+    "Lookup": {
+      "handler": "notSupportedHandler",
+      "supportsCancel": false,
+      "notSupportedReason": "Lookup requires a live data source connection. Not supported in local run mode."
+    },
+    "Delete": {
+      "handler": "notSupportedHandler",
+      "supportsCancel": false,
+      "notSupportedReason": "Delete requires a live data source connection. Not supported in local run mode."
+    },
+    "GetMetadata": {
+      "handler": "notSupportedHandler",
+      "supportsCancel": false,
+      "notSupportedReason": "GetMetadata requires a live data source connection. Not supported in local run mode."
+    },
+    "Validation": {
+      "handler": "notSupportedHandler",
+      "supportsCancel": false,
+      "notSupportedReason": "Validation requires a live storage connection. Not supported in local run mode."
+    }
+  },
+
+  "statusColors": {
+    "Succeeded":  "#4caf50",
+    "Failed":     "#f44336",
+    "Skipped":    "#9e9e9e",
+    "Running":    "#2196f3",
+    "Queued":     "#ff9800",
+    "Cancelled":  "#9e9e9e",
+    "NotSupported": "#ff9800"
+  },
+
+  "validationRules": {
+    "parameterTypes": ["String", "Int", "Float", "Bool", "Array", "Object", "SecureString"],
+    "variableTypes": ["String", "Integer", "Bool", "Array", "Object", "Boolean"],
+    "dependencyConditions": ["Succeeded", "Failed", "Completed", "Skipped"],
+    "maxActivitiesPerPipeline": 40,
+    "maxNestingDepth": 5
+  }
+}

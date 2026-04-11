@@ -26,6 +26,7 @@ module.exports = {
 	serializePipeline,
 	validateActivity,
 	validateActivityList,
+	validatePipeline,
 };
 
 // ─── Supported types ──────────────────────────────────────────────────────────
@@ -1164,3 +1165,232 @@ const TRANSFORMERS = {
 		},
 	},
 };
+// ─── Pipeline-level validate ──────────────────────────────────────────────────
+// Validates a raw pipeline JSON object (as read from disk or editor).
+// Returns { pipelineErrors: string[], activityErrors: { activityName: string[] } }
+// All checks are driven by config (local-run-config.json) and schemas — no hardcoded per-type logic here.
+
+const localRunConfig = require('../local-run-config.json');
+const path = require('path');
+const fs   = require('fs');
+
+function validatePipeline(pipelineJson, workspaceRoot) {
+	const rules = localRunConfig.validationRules;
+	const pipelineErrors = [];
+	const activityErrors = {}; // { activityName: [string] }
+
+	const props = pipelineJson?.properties ?? {};
+	const pipelineName = pipelineJson?.name ?? '(unnamed)';
+
+	// ── Pipeline-level metadata ───────────────────────────────────────────────
+	if (!pipelineJson?.name || !String(pipelineJson.name).trim()) {
+		pipelineErrors.push('Pipeline must have a non-empty name.');
+	}
+
+	// ── Parameters ────────────────────────────────────────────────────────────
+	for (const [paramName, paramDef] of Object.entries(props.parameters || {})) {
+		if (!paramDef.type) {
+			_addActivityError(activityErrors, `Pipeline parameter: ${paramName}`, 'Parameter type is missing. Allowed: ' + rules.parameterTypes.join(', '));
+		} else if (!rules.parameterTypes.includes(paramDef.type)) {
+			_addActivityError(activityErrors, `Pipeline parameter: ${paramName}`, `Unknown parameter type "${paramDef.type}". Allowed: ${rules.parameterTypes.join(', ')}`);
+		}
+	}
+
+	// ── Variables ─────────────────────────────────────────────────────────────
+	for (const [varName, varDef] of Object.entries(props.variables || {})) {
+		if (!varDef.type) {
+			_addActivityError(activityErrors, `Pipeline variable: ${varName}`, 'Variable type is missing. Allowed: ' + rules.variableTypes.join(', '));
+		} else if (!rules.variableTypes.includes(varDef.type)) {
+			_addActivityError(activityErrors, `Pipeline variable: ${varName}`, `Unknown variable type "${varDef.type}". Allowed: ${rules.variableTypes.join(', ')}`);
+		}
+	}
+
+	const rawActivities = props.activities || [];
+
+	// ── Activity count ────────────────────────────────────────────────────────
+	const totalCount = _countAllActivities(rawActivities);
+	if (totalCount > rules.maxActivitiesPerPipeline) {
+		pipelineErrors.push(`Pipeline has ${totalCount} activities (limit: ${rules.maxActivitiesPerPipeline}).`);
+	}
+
+	// ── Activity-level validation via engine ──────────────────────────────────
+	// Deserialize → validateActivityList (handles nesting, duplicates, restrictions)
+	const flatActivities = deserializeActivityList(rawActivities);
+	const engineErrors = validateActivityList(flatActivities);
+	for (const [name, errs] of Object.entries(engineErrors)) {
+		activityErrors[name] = (activityErrors[name] || []).concat(errs);
+	}
+
+	// ── dependsOn integrity ───────────────────────────────────────────────────
+	_validateDependsOn(rawActivities, pipelineName, activityErrors, rules.dependencyConditions);
+
+	// ── Workspace cross-reference checks ─────────────────────────────────────
+	if (workspaceRoot) {
+		_validateCrossRefs(rawActivities, workspaceRoot, activityErrors);
+	}
+
+	// ── Nesting depth ─────────────────────────────────────────────────────────
+	const maxDepth = _maxNestingDepth(rawActivities);
+	if (maxDepth > rules.maxNestingDepth) {
+		pipelineErrors.push(`Pipeline activity nesting depth is ${maxDepth} (limit: ${rules.maxNestingDepth}).`);
+	}
+
+	return { pipelineErrors, activityErrors };
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function _addActivityError(activityErrors, name, msg) {
+	activityErrors[name] = activityErrors[name] || [];
+	activityErrors[name].push(msg);
+}
+
+function _countAllActivities(rawList) {
+	let count = 0;
+	for (const a of (rawList || [])) {
+		count++;
+		for (const key of ['activities', 'ifTrueActivities', 'ifFalseActivities', 'defaultActivities']) {
+			if (Array.isArray(a.typeProperties?.[key])) count += _countAllActivities(a.typeProperties[key]);
+		}
+		for (const c of (a.typeProperties?.cases || [])) {
+			count += _countAllActivities(c.activities || []);
+		}
+	}
+	return count;
+}
+
+function _maxNestingDepth(rawList, depth) {
+	depth = depth || 0;
+	let max = depth;
+	for (const a of (rawList || [])) {
+		for (const key of ['activities', 'ifTrueActivities', 'ifFalseActivities', 'defaultActivities']) {
+			if (Array.isArray(a.typeProperties?.[key])) {
+				max = Math.max(max, _maxNestingDepth(a.typeProperties[key], depth + 1));
+			}
+		}
+		for (const c of (a.typeProperties?.cases || [])) {
+			max = Math.max(max, _maxNestingDepth(c.activities || [], depth + 1));
+		}
+	}
+	return max;
+}
+
+function _validateDependsOn(rawList, pipelineName, activityErrors, allowedConditions) {
+	const names = new Set((rawList || []).map(a => a.name));
+	for (const a of (rawList || [])) {
+		for (const dep of (a.dependsOn || [])) {
+			if (!names.has(dep.activity)) {
+				_addActivityError(activityErrors, a.name,
+					`dependsOn references unknown activity "${dep.activity}". Check that the activity exists at this level.`);
+			}
+			for (const cond of (dep.dependencyConditions || [])) {
+				if (!allowedConditions.includes(cond)) {
+					_addActivityError(activityErrors, a.name,
+						`dependsOn condition "${cond}" is not valid. Allowed: ${allowedConditions.join(', ')}`);
+				}
+			}
+		}
+
+		// Circular dependency detection at this level: simple DFS
+		const visited = new Set(), stack = new Set();
+		const hasCycle = (name) => {
+			if (stack.has(name)) return true;
+			if (visited.has(name)) return false;
+			visited.add(name); stack.add(name);
+			const node = rawList.find(x => x.name === name);
+			for (const dep of (node?.dependsOn || [])) {
+				if (hasCycle(dep.activity)) return true;
+			}
+			stack.delete(name);
+			return false;
+		};
+		if (hasCycle(a.name)) {
+			_addActivityError(activityErrors, a.name,
+				`Circular dependency detected involving activity "${a.name}".`);
+		}
+
+		// Recurse into containers
+		for (const key of ['activities', 'ifTrueActivities', 'ifFalseActivities', 'defaultActivities']) {
+			if (Array.isArray(a.typeProperties?.[key])) {
+				_validateDependsOn(a.typeProperties[key], pipelineName, activityErrors, allowedConditions);
+			}
+		}
+		for (const c of (a.typeProperties?.cases || [])) {
+			_validateDependsOn(c.activities || [], pipelineName, activityErrors, allowedConditions);
+		}
+	}
+}
+
+function _validateCrossRefs(rawList, workspaceRoot, activityErrors) {
+	// Table-driven: maps activity type → array of { field, folder } checks
+	const CROSS_REF_CHECKS = [
+		// Datasets referenced in Copy inputs/outputs
+		{
+			type: 'Copy',
+			check: (a) => {
+				const refs = [];
+				for (const inp of (a.inputs || [])) refs.push({ name: inp.referenceName, folder: 'dataset' });
+				for (const out of (a.outputs || [])) refs.push({ name: out.referenceName, folder: 'dataset' });
+				return refs;
+			}
+		},
+		// Notebook reference in SynapseNotebook
+		{
+			type: 'SynapseNotebook',
+			check: (a) => [{ name: a.typeProperties?.notebook?.referenceName, folder: 'notebook' }]
+		},
+		// Pipeline reference in ExecutePipeline
+		{
+			type: 'ExecutePipeline',
+			check: (a) => [{ name: a.typeProperties?.pipeline?.referenceName, folder: 'pipeline' }]
+		},
+		// Datasets referenced in Lookup
+		{
+			type: 'Lookup',
+			check: (a) => {
+				const refName = a.typeProperties?.dataset?.referenceName;
+				return refName ? [{ name: refName, folder: 'dataset' }] : [];
+			}
+		},
+		// GetMetadata
+		{
+			type: 'GetMetadata',
+			check: (a) => {
+				const refName = a.typeProperties?.dataset?.referenceName;
+				return refName ? [{ name: refName, folder: 'dataset' }] : [];
+			}
+		},
+		// SparkJob
+		{
+			type: 'SparkJob',
+			check: (a) => {
+				const refName = a.typeProperties?.sparkJob?.referenceName;
+				return refName ? [{ name: refName, folder: 'sparkJobDefinition' }] : [];
+			}
+		},
+	];
+
+	function checkActivities(list) {
+		for (const a of (list || [])) {
+			const rule = CROSS_REF_CHECKS.find(r => r.type === a.type);
+			if (rule) {
+				for (const ref of rule.check(a)) {
+					if (!ref.name) continue;
+					const filePath = path.join(workspaceRoot, ref.folder, `${ref.name}.json`);
+					if (!fs.existsSync(filePath)) {
+						_addActivityError(activityErrors, a.name,
+							`References ${ref.folder} "${ref.name}" which does not exist in the workspace ${ref.folder}/ folder.`);
+					}
+				}
+			}
+
+			// Recurse
+			for (const key of ['activities', 'ifTrueActivities', 'ifFalseActivities', 'defaultActivities']) {
+				if (Array.isArray(a.typeProperties?.[key])) checkActivities(a.typeProperties[key]);
+			}
+			for (const c of (a.typeProperties?.cases || [])) checkActivities(c.activities || []);
+		}
+	}
+
+	checkActivities(rawList);
+}

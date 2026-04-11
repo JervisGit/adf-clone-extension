@@ -1,0 +1,561 @@
+'use strict';
+// localRunner.js — locally executes a Synapse pipeline definition.
+//
+// Design principle: all activity type dispatch is driven by local-run-config.json.
+// To add/disable a handler, edit the config — do not add if/else chains here.
+//
+// Usage:
+//   const runner = new LocalPipelineRunner(pipelineJson, parameters, workspaceRoot);
+//   runner.on('activityUpdate', ({name, status, output, error}) => ...);
+//   runner.on('pipelineEnd',    ({status, error}) => ...);
+//   await runner.run();
+//   runner.cancel();  // graceful cancellation
+
+const EventEmitter = require('events');
+const path = require('path');
+const fs   = require('fs');
+const { evaluate } = require('./expressionEvaluator');
+const runConfig = require('../local-run-config.json');
+
+const RUNNERS     = runConfig.activityRunners;
+const RUN_LIMITS  = runConfig.runLimits;
+
+class LocalPipelineRunner extends EventEmitter {
+    /**
+     * @param {object}  pipelineJson   — raw pipeline JSON { name, properties: { activities, parameters, variables } }
+     * @param {object}  parameters     — user-supplied parameter values { name: value }
+     * @param {string}  workspaceRoot  — absolute path to the workspace folder (for ExecutePipeline cross-refs)
+     */
+    constructor(pipelineJson, parameters, workspaceRoot) {
+        super();
+        this.pipelineJson  = pipelineJson;
+        this.parameters    = parameters || {};
+        this.workspaceRoot = workspaceRoot;
+
+        this.runId        = _randomId();
+        this.pipelineName = pipelineJson?.name ?? 'pipeline';
+        this.variables    = _initVariables(pipelineJson?.properties?.variables ?? {});
+        this.activityOutputs  = {};  // { activityName: outputObject }
+        this.activityStatuses = {};  // { activityName: 'Succeeded' | 'Failed' | 'Skipped' }
+        this.activityRuns     = [];  // array of activity run result records (for viewer)
+        this._cancelled   = false;
+        this._startTime   = null;
+    }
+
+    /**
+     * Start executing the pipeline.  Resolves when the run finishes (success, failure, or cancel).
+     */
+    async run() {
+        this._startTime = new Date();
+        this._cancelled = false;
+
+        // Enforce max run duration
+        const timeoutHandle = setTimeout(() => {
+            this._cancelled = true;
+        }, RUN_LIMITS.maxRunDurationMs);
+
+        try {
+            const activities = this.pipelineJson?.properties?.activities ?? [];
+            await this._executeActivityList(activities);
+            clearTimeout(timeoutHandle);
+            const finalStatus = this._cancelled ? 'Cancelled' : 'Succeeded';
+            this.emit('pipelineEnd', { runId: this.runId, status: finalStatus, activityRuns: this.activityRuns });
+        } catch (err) {
+            clearTimeout(timeoutHandle);
+            this.emit('pipelineEnd', { runId: this.runId, status: 'Failed', error: err.message, activityRuns: this.activityRuns });
+        }
+    }
+
+    /**
+     * Request cancellation of the current run.
+     */
+    cancel() {
+        this._cancelled = true;
+    }
+
+    // ─── Core execution engine ────────────────────────────────────────────────
+
+    /**
+     * Executes a flat list of activities honouring dependsOn relationships.
+     * Resolves when all activities at this level have completed (or been skipped/failed).
+     */
+    async _executeActivityList(activities) {
+        // Build a ready-queue: topological sort respecting dependsOn
+        const remaining = [...activities];
+        const completed = new Set();
+
+        while (remaining.length > 0) {
+            if (this._cancelled) break;
+            this._enforceRunDuration();
+
+            // Find all activities whose dependsOn conditions are satisfied
+            const ready = remaining.filter(a => this._isDependsOnSatisfied(a, completed));
+            if (ready.length === 0) {
+                // No activity is ready: all remaining activities are blocked (failed deps or cycle)
+                for (const blocked of remaining) {
+                    this._emitSkipped(blocked, 'Blocked by upstream activity failure');
+                    completed.add(blocked.name);
+                }
+                remaining.length = 0;
+                break;
+            }
+
+            // Run all ready activities in parallel (ADF default is parallel within a level)
+            await Promise.all(ready.map(a => {
+                const idx = remaining.indexOf(a);
+                remaining.splice(idx, 1);
+                return this._executeOne(a).then(() => completed.add(a.name));
+            }));
+        }
+    }
+
+    _isDependsOnSatisfied(activity, completed) {
+        for (const dep of (activity.dependsOn || [])) {
+            if (!completed.has(dep.activity)) return false;
+            const depStatus = this.activityStatuses[dep.activity];
+            const conditions = dep.dependencyConditions || ['Succeeded'];
+            // 'Completed' means any terminal state
+            if (conditions.includes('Completed')) continue;
+            if (!conditions.includes(depStatus)) return false;
+        }
+        return true;
+    }
+
+    _shouldSkip(activity) {
+        for (const dep of (activity.dependsOn || [])) {
+            const depStatus = this.activityStatuses[dep.activity];
+            const conditions = dep.dependencyConditions || ['Succeeded'];
+            if (conditions.includes('Completed')) continue;
+            if (!conditions.includes(depStatus)) return true;
+        }
+        return false;
+    }
+
+    async _executeOne(activity) {
+        if (this._cancelled) { this._emitSkipped(activity, 'Run cancelled'); return; }
+        if (this._shouldSkip(activity)) { this._emitSkipped(activity, 'Upstream dependency not satisfied'); return; }
+
+        // Skip deactivated activities
+        if (activity.state === 'Inactive' || activity.state === 'Deactivated') {
+            const markAs = activity.onInactiveMarkAs || 'Succeeded';
+            this.activityStatuses[activity.name] = markAs;
+            this._recordRun(activity, markAs, null, null, { skippedReason: 'Activity is deactivated' });
+            this.emit('activityUpdate', { name: activity.name, status: markAs, output: null, error: null });
+            return;
+        }
+
+        const runnerConf = RUNNERS[activity.type];
+        const handler = runnerConf?.handler ?? 'notSupportedHandler';
+        const startTime = new Date();
+        this.emit('activityUpdate', { name: activity.name, status: 'Running', output: null, error: null });
+
+        try {
+            const output = await HANDLER_REGISTRY[handler].call(this, activity);
+            const endTime = new Date();
+            this.activityOutputs[activity.name]  = output ?? {};
+            this.activityStatuses[activity.name] = 'Succeeded';
+            this._recordRun(activity, 'Succeeded', startTime, endTime, output);
+            this.emit('activityUpdate', { name: activity.name, status: 'Succeeded', output, error: null });
+        } catch (err) {
+            const endTime = new Date();
+            let status = 'Failed';
+            // Fail activity throws are terminal for the pipeline
+            if (err.isPipelineFail) status = 'Failed';
+            this.activityStatuses[activity.name] = status;
+            this._recordRun(activity, status, startTime, endTime, null, err.message);
+            this.emit('activityUpdate', { name: activity.name, status, output: null, error: err.message });
+            if (err.isPipelineFail) throw err;
+        }
+    }
+
+    _emitSkipped(activity, reason) {
+        this.activityStatuses[activity.name] = 'Skipped';
+        this._recordRun(activity, 'Skipped', null, null, null, reason);
+        this.emit('activityUpdate', { name: activity.name, status: 'Skipped', output: null, error: reason });
+    }
+
+    _recordRun(activity, status, startTime, endTime, output, errorMsg) {
+        this.activityRuns.push({
+            activityName:    activity.name,
+            activityType:    activity.type,
+            activityRunId:   _randomId(),
+            status,
+            activityRunStart: startTime ? startTime.toISOString() : null,
+            activityRunEnd:   endTime   ? endTime.toISOString()   : null,
+            durationInMs:     (startTime && endTime) ? (endTime - startTime) : null,
+            output: output ?? null,
+            error:  errorMsg ? { message: errorMsg } : null,
+            input: null,
+        });
+    }
+
+    // ─── Context helpers ──────────────────────────────────────────────────────
+
+    _context(extra) {
+        return {
+            parameters:       this.parameters,
+            variables:        this.variables,
+            activityOutputs:  this.activityOutputs,
+            activityStatuses: this.activityStatuses,
+            globalParameters: {},
+            ...extra,
+        };
+    }
+
+    _eval(value, extra) {
+        return evaluate(value, this._context(extra));
+    }
+
+    _enforceRunDuration() {
+        if (this._startTime && ((Date.now() - this._startTime) > RUN_LIMITS.maxRunDurationMs)) {
+            this._cancelled = true;
+        }
+    }
+}
+
+// ─── Handler registry ─────────────────────────────────────────────────────────
+// All handlers are functions(activity) called with `this` bound to the LocalPipelineRunner.
+// Add new activity type support by adding an entry here AND in local-run-config.json.
+
+const HANDLER_REGISTRY = {
+
+    // ── Wait ──────────────────────────────────────────────────────────────────
+    async waitHandler(activity) {
+        const tp = activity.typeProperties || {};
+        let seconds = parseFloat(this._eval(tp.waitTimeInSeconds ?? tp.waitInSeconds ?? 1, {}));
+        if (isNaN(seconds) || seconds < 0) seconds = 0;
+        seconds = Math.min(seconds, RUN_LIMITS.waitMaxSeconds);
+
+        await new Promise((resolve, reject) => {
+            const t = setTimeout(resolve, seconds * 1000);
+            // Poll for cancellation every 100 ms
+            const poll = setInterval(() => {
+                if (this._cancelled) { clearTimeout(t); clearInterval(poll); reject(Object.assign(new Error('Run cancelled'), { isCancelled: true })); }
+            }, 100);
+            setTimeout(() => clearInterval(poll), seconds * 1000 + 200);
+        });
+        return { waitTimeInSeconds: seconds };
+    },
+
+    // ── Fail ──────────────────────────────────────────────────────────────────
+    async failHandler(activity) {
+        const tp = activity.typeProperties || {};
+        const msg       = String(this._eval(tp.message ?? tp.errorMessage ?? 'Pipeline failed', {}));
+        const errorCode = String(this._eval(tp.errorCode ?? '500', {}));
+        const err = new Error(`${msg} (errorCode: ${errorCode})`);
+        err.isPipelineFail = true;
+        throw err;
+    },
+
+    // ── SetVariable ───────────────────────────────────────────────────────────
+    async setVariableHandler(activity) {
+        const tp = activity.typeProperties || {};
+        const varName = String(this._eval(tp.variableName, {}));
+        const value   = this._eval(tp.value, {});
+        if (tp.setSystemVariable) {
+            // Pipeline return value — not a pipeline variable, just record output
+            return { variableName: varName, value };
+        }
+        this.variables[varName] = value;
+        return { variableName: varName, value };
+    },
+
+    // ── AppendVariable ────────────────────────────────────────────────────────
+    async appendVariableHandler(activity) {
+        const tp = activity.typeProperties || {};
+        const varName = String(this._eval(tp.variableName, {}));
+        const value   = this._eval(tp.value, {});
+        if (!Array.isArray(this.variables[varName])) this.variables[varName] = [];
+        this.variables[varName].push(value);
+        return { variableName: varName, value: this.variables[varName] };
+    },
+
+    // ── Filter ────────────────────────────────────────────────────────────────
+    async filterHandler(activity) {
+        const tp = activity.typeProperties || {};
+        const items     = this._eval(tp.items, {});
+        const condition = tp.condition;
+        if (!Array.isArray(items)) throw new Error(`Filter: "items" must evaluate to an array (got ${typeof items})`);
+
+        const filtered = [];
+        for (const item of items) {
+            if (this._eval(condition, { currentItem: item })) filtered.push(item);
+        }
+        return { value: filtered, filterCount: filtered.length };
+    },
+
+    // ── ForEach ───────────────────────────────────────────────────────────────
+    async forEachHandler(activity) {
+        const tp = activity.typeProperties || {};
+        const items     = this._eval(tp.items, {});
+        const isSequential = tp.isSequential !== false; // default true
+        const batchCount   = tp.batchCount ? parseInt(this._eval(tp.batchCount, {})) : 20;
+
+        if (!Array.isArray(items)) throw new Error(`ForEach: "items" did not evaluate to an array (got ${typeof items})`);
+
+        const limited = items.slice(0, RUN_LIMITS.maxForEachItems);
+        const children = tp.activities || [];
+
+        if (isSequential) {
+            for (let i = 0; i < limited.length; i++) {
+                if (this._cancelled) break;
+                const child = new LocalPipelineRunner(
+                    { name: `${activity.name}[${i}]`, properties: { activities: children } },
+                    this.parameters, this.workspaceRoot
+                );
+                // Share variables & outputs with parent (ForEach writes to parent scope)
+                child.variables        = this.variables;
+                child.activityOutputs  = {};
+                child.activityStatuses = {};
+                child._startTime       = this._startTime;
+                // Override eval context with currentItem
+                child._forEachItem      = limited[i];
+                child._forEachItemIndex = i;
+                _patchForEachContext(child, limited[i]);
+
+                await new Promise((resolve, reject) => {
+                    child.on('pipelineEnd', (e) => e.status !== 'Failed' ? resolve() : reject(new Error(`ForEach iteration ${i} failed`)));
+                    child.run().catch(reject);
+                });
+                // Propagate run records to parent
+                for (const rec of child.activityRuns) this.activityRuns.push({ ...rec, _forEachIteration: i });
+            }
+        } else {
+            // Parallel — run up to batchCount at a time
+            for (let start = 0; start < limited.length; start += batchCount) {
+                if (this._cancelled) break;
+                const batch = limited.slice(start, start + batchCount);
+                await Promise.all(batch.map((item, bIdx) => {
+                    const i = start + bIdx;
+                    const child = new LocalPipelineRunner(
+                        { name: `${activity.name}[${i}]`, properties: { activities: children } },
+                        this.parameters, this.workspaceRoot
+                    );
+                    child.variables        = this.variables;
+                    child.activityOutputs  = {};
+                    child.activityStatuses = {};
+                    child._startTime       = this._startTime;
+                    _patchForEachContext(child, item);
+                    return new Promise((resolve) => {
+                        child.on('pipelineEnd', () => resolve());
+                        child.run().catch(() => resolve());
+                    }).then(() => {
+                        for (const rec of child.activityRuns) this.activityRuns.push({ ...rec, _forEachIteration: i });
+                    });
+                }));
+            }
+        }
+        return { count: limited.length };
+    },
+
+    // ── Until ─────────────────────────────────────────────────────────────────
+    async untilHandler(activity) {
+        const tp = activity.typeProperties || {};
+        const expression = tp.expression;
+        const children   = tp.activities || [];
+
+        let iterations = 0;
+        while (iterations < RUN_LIMITS.maxUntilIterations) {
+            if (this._cancelled) break;
+            this._enforceRunDuration();
+
+            const child = new LocalPipelineRunner(
+                { name: `${activity.name}[iter${iterations}]`, properties: { activities: children } },
+                this.parameters, this.workspaceRoot
+            );
+            child.variables        = this.variables;
+            child.activityOutputs  = this.activityOutputs;
+            child.activityStatuses = {};
+            child._startTime       = this._startTime;
+
+            await new Promise((resolve) => {
+                child.on('pipelineEnd', resolve);
+                child.run().catch(resolve);
+            });
+            for (const rec of child.activityRuns) this.activityRuns.push({ ...rec, _untilIteration: iterations });
+
+            iterations++;
+            const cond = this._eval(expression?.value ?? expression, {});
+            if (cond === true || cond === 'true') break;
+        }
+        return { iterations };
+    },
+
+    // ── IfCondition ───────────────────────────────────────────────────────────
+    async ifConditionHandler(activity) {
+        const tp = activity.typeProperties || {};
+        const condValue = tp.expression?.value ?? tp.expression;
+        const result    = this._eval(condValue, {});
+        const branch    = result ? (tp.ifTrueActivities || []) : (tp.ifFalseActivities || []);
+        const branchName = result ? 'True' : 'False';
+
+        const child = new LocalPipelineRunner(
+            { name: `${activity.name}[${branchName}]`, properties: { activities: branch } },
+            this.parameters, this.workspaceRoot
+        );
+        child.variables        = this.variables;
+        child.activityOutputs  = this.activityOutputs;
+        child.activityStatuses = {};
+        child._startTime       = this._startTime;
+
+        await new Promise((resolve, reject) => {
+            child.on('pipelineEnd', (e) => e.status === 'Failed' ? reject(new Error(e.error)) : resolve());
+            child.run().catch(reject);
+        });
+        for (const rec of child.activityRuns) this.activityRuns.push({ ...rec, _ifBranch: branchName });
+        return { expression: result, branch: branchName };
+    },
+
+    // ── Switch ────────────────────────────────────────────────────────────────
+    async switchHandler(activity) {
+        const tp = activity.typeProperties || {};
+        const onValue   = String(this._eval(tp.on?.value ?? tp.on, {}));
+        const cases     = tp.cases || [];
+        const matched   = cases.find(c => String(c.value) === onValue);
+        const branch    = matched?.activities ?? tp.defaultActivities ?? [];
+        const branchLabel = matched ? `case:${onValue}` : 'default';
+
+        const child = new LocalPipelineRunner(
+            { name: `${activity.name}[${branchLabel}]`, properties: { activities: branch } },
+            this.parameters, this.workspaceRoot
+        );
+        child.variables        = this.variables;
+        child.activityOutputs  = this.activityOutputs;
+        child.activityStatuses = {};
+        child._startTime       = this._startTime;
+
+        await new Promise((resolve, reject) => {
+            child.on('pipelineEnd', (e) => e.status === 'Failed' ? reject(new Error(e.error)) : resolve());
+            child.run().catch(reject);
+        });
+        for (const rec of child.activityRuns) this.activityRuns.push({ ...rec, _switchCase: branchLabel });
+        return { on: onValue, branch: branchLabel };
+    },
+
+    // ── ExecutePipeline ───────────────────────────────────────────────────────
+    async executePipelineHandler(activity) {
+        const tp = activity.typeProperties || {};
+        const refName  = tp.pipeline?.referenceName;
+        const waitOnCompletion = tp.waitOnCompletion !== false;
+
+        if (!waitOnCompletion) {
+            return { referencedPipeline: refName, waitOnCompletion: false, note: 'Fired and forgotten — sub-pipeline not tracked in local run mode.' };
+        }
+
+        // Resolve the referenced pipeline JSON from the workspace
+        if (!this.workspaceRoot || !refName) {
+            throw new Error(`ExecutePipeline: cannot resolve pipeline "${refName}" — workspaceRoot is not set`);
+        }
+        const filePath = path.join(this.workspaceRoot, 'pipeline', `${refName}.json`);
+        if (!fs.existsSync(filePath)) {
+            throw new Error(`ExecutePipeline: pipeline file "${refName}.json" not found in workspace pipeline/ folder`);
+        }
+        const subJson = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+
+        // Evaluate parameter overrides
+        const subParams = {};
+        for (const [k, v] of Object.entries(tp.parameters || {})) {
+            subParams[k] = this._eval(v?.value ?? v, {});
+        }
+
+        const child = new LocalPipelineRunner(subJson, subParams, this.workspaceRoot);
+        child._startTime = this._startTime;
+
+        let childStatus = 'Succeeded', childError = null;
+        await new Promise((resolve) => {
+            child.on('pipelineEnd', (e) => { childStatus = e.status; childError = e.error; resolve(); });
+            child.run().catch(() => resolve());
+        });
+        for (const rec of child.activityRuns) this.activityRuns.push({ ...rec, _subPipeline: refName });
+
+        if (childStatus === 'Failed') {
+            throw new Error(`Sub-pipeline "${refName}" failed: ${childError}`);
+        }
+        return { referencedPipeline: refName, status: childStatus };
+    },
+
+    // ── WebActivity ───────────────────────────────────────────────────────────
+    async webActivityHandler(activity) {
+        const tp = activity.typeProperties || {};
+        const url    = String(this._eval(tp.url, {}));
+        const method = (tp.method || 'GET').toUpperCase();
+        const body   = tp.body ? this._eval(tp.body, {}) : undefined;
+
+        // Build headers
+        const headers = {};
+        if (tp.headers && typeof tp.headers === 'object') {
+            for (const [k, v] of Object.entries(tp.headers)) {
+                headers[k] = String(this._eval(v?.value ?? v, {}));
+            }
+        }
+        if (!headers['Content-Type'] && body) headers['Content-Type'] = 'application/json';
+
+        const https = require('https');
+        const http  = require('http');
+        const { URL: NodeURL } = require('url');
+
+        const parsed  = new NodeURL(url);
+        const lib     = parsed.protocol === 'https:' ? https : http;
+        const bodyStr = body !== undefined ? (typeof body === 'string' ? body : JSON.stringify(body)) : null;
+
+        const responseText = await new Promise((resolve, reject) => {
+            const opts = {
+                hostname: parsed.hostname,
+                port:     parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
+                path:     parsed.pathname + parsed.search,
+                method,
+                headers: { ...headers, ...(bodyStr ? { 'Content-Length': Buffer.byteLength(bodyStr) } : {}) },
+            };
+            const req = lib.request(opts, (res) => {
+                let data = '';
+                res.on('data', chunk => { data += chunk; });
+                res.on('end', () => {
+                    if (res.statusCode >= 400) {
+                        reject(new Error(`WebActivity HTTP ${res.statusCode}: ${data.slice(0, 200)}`));
+                    } else {
+                        resolve(data);
+                    }
+                });
+            });
+            req.on('error', reject);
+            if (bodyStr) req.write(bodyStr);
+            req.end();
+        });
+
+        try { return JSON.parse(responseText); } catch { return { response: responseText }; }
+    },
+
+    // ── Not Supported ─────────────────────────────────────────────────────────
+    async notSupportedHandler(activity) {
+        const conf   = RUNNERS[activity.type];
+        const reason = conf?.notSupportedReason ?? `"${activity.type}" is not supported in local run mode.`;
+        const err    = new Error(reason);
+        err.notSupported = true;
+        throw err;
+    },
+};
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function _randomId() {
+    return Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10);
+}
+
+function _initVariables(variableDefs) {
+    const vars = {};
+    for (const [name, def] of Object.entries(variableDefs)) {
+        if (def.defaultValue !== undefined) vars[name] = def.defaultValue;
+        else if (def.type === 'Array')   vars[name] = [];
+        else if (def.type === 'Boolean' || def.type === 'Bool') vars[name] = false;
+        else vars[name] = '';
+    }
+    return vars;
+}
+
+function _patchForEachContext(childRunner, currentItem) {
+    // Monkey-patch child's _eval to inject @item() context
+    const origEval = childRunner._eval.bind(childRunner);
+    childRunner._eval = (value, extra) => origEval(value, { ...extra, currentItem });
+}
+
+module.exports = { LocalPipelineRunner };

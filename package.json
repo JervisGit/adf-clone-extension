@@ -150,6 +150,16 @@
         "command": "adf-pipeline-clone.cancelPipelineRequest",
         "title": "Cancel Pipeline Run Request",
         "icon": "$(circle-slash)"
+      },
+      {
+        "command": "adf-pipeline-clone.validatePipeline",
+        "title": "Validate Pipeline",
+        "icon": "$(pass)"
+      },
+      {
+        "command": "adf-pipeline-clone.localRunPipeline",
+        "title": "Run Pipeline Locally",
+        "icon": "$(play)"
       }
     ],
     "menus": {
@@ -212,9 +222,19 @@
           "group": "inline"
         },
         {
-          "command": "adf-pipeline-clone.requestPipelineRun",
+          "command": "adf-pipeline-clone.validatePipeline",
           "when": "view == adf-pipelines && viewItem == pipeline",
-          "group": "inline"
+          "group": "inline@1"
+        },
+        {
+          "command": "adf-pipeline-clone.localRunPipeline",
+          "when": "view == adf-pipelines && viewItem == pipeline",
+          "group": "inline@2"
+        },
+        {
+          "command": "adf-pipeline-clone.requestPipelineRun",
+          "when": "view == adf-pipeline-run-requests && viewItem == pipeline-request-pending",
+          "group": "context"
         },
         {
           "command": "adf-pipeline-clone.cancelPipelineRequest",

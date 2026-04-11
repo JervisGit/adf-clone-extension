@@ -8,6 +8,8 @@ const { PipelineRunsTreeDataProvider } = require('./pipelineRunsTreeProvider');
 const { PipelineRunViewerProvider } = require('./pipelineRunViewer');
 const { PipelineRequestTreeDataProvider } = require('./pipelineRequestProvider');
 const { PipelineRequestViewerProvider } = require('./pipelineRequestViewer');
+const { PipelineValidatorPanel } = require('./pipelineValidatorPanel');
+const { LocalRunPanel } = require('./localRunPanel');
 const { buildDatasetJson } = require('./datasetUtils');
 const datasetConfig = require('./dataset-config.json');
 
@@ -92,6 +94,22 @@ function activate(context) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand('adf-pipeline-clone.refreshPipelines', () => {
 			pipelineTreeProvider.refresh();
+		})
+	);
+
+	// ── Validate Pipeline (local, schema-driven) ───────────────────────────────
+	const pipelineValidatorPanel = new PipelineValidatorPanel(context);
+	context.subscriptions.push(
+		vscode.commands.registerCommand('adf-pipeline-clone.validatePipeline', (item) => {
+			pipelineValidatorPanel.validate(item);
+		})
+	);
+
+	// ── Run Pipeline Locally ──────────────────────────────────────────────────
+	const localRunPanel = new LocalRunPanel(context);
+	context.subscriptions.push(
+		vscode.commands.registerCommand('adf-pipeline-clone.localRunPipeline', (item) => {
+			localRunPanel.runPipeline(item);
 		})
 	);
 

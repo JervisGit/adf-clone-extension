@@ -1,0 +1,306 @@
+/* localRunViewer.css — Local pipeline run progress viewer styles.
+   Reuses the same visual language as pipelineRunViewer (activity boxes, bottom panel). */
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+    color: var(--vscode-foreground);
+    background: var(--vscode-editor-background);
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+.header {
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+    background: var(--vscode-sideBar-background);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+}
+
+.header h1 {
+    font-size: 15px;
+    font-weight: 600;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.status-badge {
+    padding: 3px 10px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.status-badge.running    { background: #1565c0; color: #fff; }
+.status-badge.succeeded  { background: #2e7d32; color: #fff; }
+.status-badge.failed     { background: #c62828; color: #fff; }
+.status-badge.cancelled  { background: #424242; color: #fff; }
+
+.btn-cancel {
+    padding: 5px 14px;
+    font-size: 12px;
+    border: none;
+    border-radius: 2px;
+    cursor: pointer;
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+}
+.btn-cancel:hover { background: var(--vscode-button-secondaryHoverBackground); }
+.btn-cancel:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.run-id-label {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+}
+
+/* ── Canvas ─────────────────────────────────────────────────────────────── */
+.canvas-wrapper {
+    flex: 1;
+    overflow: auto;
+    padding: 20px;
+    background: var(--vscode-editor-background);
+    border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.canvas-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    align-items: flex-start;
+}
+
+/* ── Activity box (matches pipelineRunViewer style) ─────────────────────── */
+.activity-box {
+    width: 180px;
+    background: #f0f0f0;
+    border: 1px solid #c8c8c8;
+    border-radius: 3px;
+    box-shadow: 0 1px 2px rgba(0,0,0,.08);
+    cursor: pointer;
+    flex-shrink: 0;
+    user-select: none;
+    transition: all .15s;
+    position: relative;
+}
+.activity-box:hover {
+    background: #e8e8e8;
+    box-shadow: 0 2px 4px rgba(0,0,0,.12);
+}
+.activity-box.selected {
+    background: #fff;
+    border-color: #0078d4;
+    box-shadow: 0 4px 12px rgba(0,120,212,.2);
+}
+
+/* Status left-border */
+.activity-box.status-running    { border-left: 3px solid #2196f3; }
+.activity-box.status-succeeded  { border-left: 3px solid #4caf50; }
+.activity-box.status-failed     { border-left: 3px solid #f44336; }
+.activity-box.status-skipped    { border-left: 3px solid #9e9e9e; border-style: dashed; }
+.activity-box.status-queued     { border-left: 3px solid #ff9800; }
+.activity-box.status-notsupported { border-left: 3px solid #ff9800; border-style: dashed; }
+
+.activity-header {
+    padding: 3px 8px;
+    background: rgba(0,0,0,.05);
+    border-bottom: 1px solid rgba(0,0,0,.08);
+    border-radius: 3px 3px 0 0;
+}
+.activity-box.selected .activity-header {
+    background: #0078d4;
+    border-bottom: none;
+}
+
+.activity-type-label {
+    font-size: 11px;
+    color: #605e5c;
+}
+.activity-box.selected .activity-type-label { color: #fff; }
+
+.activity-body {
+    display: flex;
+    align-items: center;
+    padding: 6px 8px;
+    gap: 8px;
+}
+
+.activity-icon-large {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    font-size: 18px;
+    flex-shrink: 0;
+}
+
+.activity-label {
+    font-size: 13px;
+    font-weight: 400;
+    color: #323130;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.activity-status-indicator {
+    font-size: 10px;
+    padding: 1px 4px;
+    border-radius: 8px;
+    flex-shrink: 0;
+}
+.activity-status-indicator.running   { background: #e3f2fd; color: #1565c0; }
+.activity-status-indicator.succeeded { background: #e8f5e9; color: #2e7d32; }
+.activity-status-indicator.failed    { background: #ffebee; color: #c62828; }
+.activity-status-indicator.skipped   { background: #f5f5f5; color: #616161; }
+.activity-status-indicator.queued    { background: #fff3e0; color: #e65100; }
+.activity-status-indicator.notsupported { background: #fff3e0; color: #e65100; }
+
+/* Running spinner */
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinner {
+    display: inline-block;
+    width: 10px; height: 10px;
+    border: 2px solid transparent;
+    border-top-color: #2196f3;
+    border-radius: 50%;
+    animation: spin .8s linear infinite;
+    vertical-align: middle;
+    margin-right: 3px;
+}
+
+/* ── Bottom config panel ─────────────────────────────────────────────────── */
+.config-panel {
+    height: 260px;
+    min-height: 260px;
+    background: var(--vscode-panel-background);
+    border-top: 1px solid var(--vscode-panel-border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    transition: height .2s;
+}
+.config-panel.minimized {
+    height: 36px !important;
+    min-height: 36px !important;
+}
+.config-panel.minimized .config-content { display: none; }
+
+.config-tabs {
+    display: flex;
+    background: var(--vscode-sideBar-background);
+    border-bottom: 1px solid var(--vscode-panel-border);
+    padding: 0 16px;
+    gap: 4px;
+    height: 36px;
+    align-items: center;
+    flex-shrink: 0;
+}
+.config-header-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--vscode-foreground);
+}
+.config-collapse-btn {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--vscode-foreground);
+    padding: 4px 8px;
+    margin-left: auto;
+    border-radius: 3px;
+}
+.config-collapse-btn:hover { background: var(--vscode-list-hoverBackground); }
+
+.config-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    background: var(--vscode-editor-background);
+}
+
+.empty-state {
+    color: var(--vscode-descriptionForeground);
+    font-size: 13px;
+    padding: 20px 0;
+}
+
+.property-grid {
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    gap: 10px 16px;
+    align-items: start;
+}
+.property-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--vscode-descriptionForeground);
+}
+.property-value {
+    font-size: 12px;
+    padding: 4px 8px;
+    background: var(--vscode-input-background);
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 3px;
+    color: var(--vscode-input-foreground);
+    word-break: break-all;
+}
+
+.error-section {
+    margin-top: 14px;
+    padding: 10px 12px;
+    background: rgba(244, 67, 54, 0.08);
+    border-left: 3px solid #f44336;
+    border-radius: 3px;
+    font-size: 12px;
+}
+.error-title { font-weight: 600; color: #f44336; margin-bottom: 6px; font-size: 12px; }
+
+.action-buttons {
+    display: flex;
+    gap: 8px;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--vscode-panel-border);
+}
+.btn {
+    padding: 5px 12px;
+    font-size: 12px;
+    border: none;
+    border-radius: 2px;
+    cursor: pointer;
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+}
+.btn:hover { background: var(--vscode-button-hoverBackground); }
+.btn-secondary {
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+}
+.btn-secondary:hover { background: var(--vscode-button-secondaryHoverBackground); }
+
+/* ── Run summary bar ─────────────────────────────────────────────────────── */
+.run-summary {
+    padding: 8px 20px;
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+    background: var(--vscode-editor-background);
+    border-bottom: 1px solid var(--vscode-panel-border);
+    display: flex;
+    gap: 20px;
+    flex-shrink: 0;
+}
+.run-summary-item { display: flex; gap: 5px; }
+.run-summary-label { font-weight: 600; }

@@ -51,6 +51,9 @@
     function init() {
         render();
 
+        // Signal host that the webview script is loaded and ready to receive messages
+        vscode.postMessage({ command: 'ready' });
+
         window.addEventListener('message', (event) => {
             const msg = event.data;
             switch (msg.command) {

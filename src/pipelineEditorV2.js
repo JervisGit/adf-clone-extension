@@ -22,7 +22,7 @@ class PipelineEditorV2Provider {
 		const panel = PipelineEditorV2Provider.panels.get(filePath);
 		if (panel) {
 			const basename = path.basename(filePath, '.json');
-			panel.title = isDirty ? `● ${basename} [V2]` : `${basename} [V2]`;
+			panel.title = isDirty ? `● ${basename}` : basename;
 			PipelineEditorV2Provider.dirtyStates.set(filePath, isDirty);
 		}
 	}
@@ -38,8 +38,8 @@ class PipelineEditorV2Provider {
 		}
 
 		const title = filePath
-			? `${path.basename(filePath, '.json')} [V2]`
-			: 'Pipeline Editor V2';
+			? path.basename(filePath, '.json')
+			: 'Pipeline Editor';
 
 		const panel = vscode.window.createWebviewPanel(
 			'adfPipelineEditorV2',
@@ -151,7 +151,7 @@ class PipelineEditorV2Provider {
 								PipelineEditorV2Provider.initializedPanels.delete(filePath);
 								filePath = newFilePath;
 								const newBasename = path.basename(newFilePath, '.json');
-								panel.title = `${newBasename} [V2]`;
+								panel.title = newBasename;
 								vscode.window.showInformationMessage(`Pipeline renamed and saved: ${nameFromData}.json`);
 							} else {
 								vscode.window.showWarningMessage(`Pipeline saved, but could not rename: "${nameFromData}.json" already exists.`);

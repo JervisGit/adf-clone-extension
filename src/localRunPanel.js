@@ -49,7 +49,7 @@ class LocalRunPanel {
         const runner = new LocalPipelineRunner(pipelineJson, parameters, workspaceRoot);
 
         this._openPanel(runner, pipelineName);
-        runner.run().catch(() => {}); // errors are emitted via events
+        // runner.run() is called by the panel once the webview sends 'ready'
     }
 
     // ─── WebView panel ────────────────────────────────────────────────────────
@@ -79,9 +79,13 @@ class LocalRunPanel {
             panel.webview.postMessage({ command: 'pipelineEnd', ...event });
         });
 
-        // Handle messages from webview (cancel, show details)
+        // Handle messages from webview (cancel, show details, and ready signal)
         panel.webview.onDidReceiveMessage(async (msg) => {
             switch(msg.command) {
+                case 'ready':
+                    // Webview script is loaded — safe to start the runner now
+                    runner.run().catch(() => {});
+                    break;
                 case 'cancel':
                     runner.cancel();
                     break;

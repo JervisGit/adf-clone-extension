@@ -813,19 +813,6 @@ function setupToolbarButtons() {
         });
     });
 
-    document.getElementById('clearBtn').addEventListener('click', () => {
-        if (activities.length === 0) return;
-        if (confirm('Clear all activities?')) {
-            activities.forEach(a => a.remove());
-            activities = [];
-            connections = [];
-            selectedActivity = null;
-            showProperties(null);
-            markAsDirty();
-            draw();
-        }
-    });
-
     document.getElementById('zoomInBtn').addEventListener('click', () => {
         const wEl = document.getElementById('canvasWrapper');
         zoomBy(1.25, wEl.clientWidth / 2, wEl.clientHeight / 2);

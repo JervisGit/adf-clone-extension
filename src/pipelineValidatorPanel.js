@@ -46,7 +46,7 @@ class PipelineValidatorPanel {
         this._openOrUpdatePanel(pipelineName, filePath, result, totalErrors);
 
         if (totalErrors === 0) {
-            vscode.window.showInformationMessage(`✔ Pipeline "${pipelineName}" is valid — no errors found.`);
+            vscode.window.showInformationMessage(`Pipeline "${pipelineName}" is valid — no errors found.`);
         } else {
             vscode.window.showWarningMessage(
                 `Pipeline "${pipelineName}" has ${totalErrors} validation error${totalErrors === 1 ? '' : 's'}.`

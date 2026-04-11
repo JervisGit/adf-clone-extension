@@ -122,8 +122,8 @@ class LocalRunPanel {
 </head>
 <body>
     <script>
-        const PIPELINE_NAME = ${JSON.stringify(pipelineName)};
-        const RUN_ID        = ${JSON.stringify(runId)};
+        var PIPELINE_NAME = ${JSON.stringify(pipelineName)};
+        var RUN_ID        = ${JSON.stringify(runId)};
     </script>
     <div id="app"></div>
     <script src="${jsUri}"></script>

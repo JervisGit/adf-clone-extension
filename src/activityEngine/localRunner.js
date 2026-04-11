@@ -16,6 +16,9 @@ const path = require('path');
 const fs   = require('fs');
 const { evaluate } = require('./expressionEvaluator');
 const runConfig = require('../local-run-config.json');
+const { SynapseClient, NOTEBOOK_LANG_TO_KIND } = require('./synapseClient');
+const ADLSRestClient = require('../adlsRestClient');
+const { resolveDatasetToAdls, buildAdlsPath } = require('./datasetResolver');
 
 const RUNNERS     = runConfig.activityRunners;
 const RUN_LIMITS  = runConfig.runLimits;
@@ -525,6 +528,398 @@ const HANDLER_REGISTRY = {
         try { return JSON.parse(responseText); } catch { return { response: responseText }; }
     },
 
+    // ── SynapseNotebook (Livy session) ────────────────────────────────────────
+    async synapseNotebookHandler(activity) {
+        const tp          = activity.typeProperties || {};
+        const notebookName = tp.notebook?.referenceName ?? tp.notebookPath;
+        const sparkPool    = tp.sparkPool?.referenceName ?? tp.sparkPool;
+
+        if (!notebookName) throw new Error('SynapseNotebook: missing notebook.referenceName in typeProperties');
+        if (!sparkPool)    throw new Error('SynapseNotebook: missing sparkPool.referenceName in typeProperties');
+
+        const wsConfig = _loadSynapseWorkspaceConfig(this.workspaceRoot);
+        if (!wsConfig.synapseEndpoint) {
+            throw new Error(
+                'SynapseNotebook: set "synapseEndpoint" in synapse-local-run.json in your workspace root.\n' +
+                'Example: { "synapseEndpoint": "https://YOUR-WORKSPACE.dev.azuresynapse.net", "defaultSparkPool": "pool1" }'
+            );
+        }
+
+        // Read notebook JSON from workspace
+        const nbFile = path.join(this.workspaceRoot, 'notebook', `${notebookName}.json`);
+        if (!fs.existsSync(nbFile)) {
+            throw new Error(`SynapseNotebook: notebook file "${notebookName}.json" not found in workspace notebook/ folder`);
+        }
+        const nb    = JSON.parse(fs.readFileSync(nbFile, 'utf8'));
+        const cells = nb.properties?.cells ?? nb.cells ?? [];
+        const lang  = nb.properties?.metadata?.language_info?.name ?? 'python';
+        const kind  = NOTEBOOK_LANG_TO_KIND[lang] ?? 'pyspark';
+
+        const livyCfg = runConfig.synapseWorkspace;
+        const client  = new SynapseClient(wsConfig.synapseEndpoint);
+        const apiVer  = livyCfg.livyApiVersion;
+
+        const session   = await client.createSession(
+            sparkPool, apiVer, `localRun-${this.runId.slice(0, 8)}`, kind, {}
+        );
+        const sessionId = session.id;
+
+        try {
+            // Wait for session to become idle (may take 2–5 min on cold pool)
+            await client.waitForSessionIdle(
+                sparkPool, apiVer, sessionId,
+                livyCfg.sessionPollIntervalMs,
+                livyCfg.sessionTimeoutMinutes * 60_000,
+                (state) => this.emit('activityUpdate', {
+                    name: activity.name, status: 'Running', output: null, error: null,
+                    _detail: `Starting Spark session (state: ${state})...`,
+                })
+            );
+
+            // Inject parameter overrides as a prepended code cell
+            const params = tp.parameters ?? {};
+            if (Object.keys(params).length > 0) {
+                const paramLines = Object.entries(params)
+                    .map(([k, v]) => `${k} = ${JSON.stringify(this._eval(v?.value ?? v, {}))}`)
+                    .join('\n');
+                const paramStmt = await client.submitStatement(sparkPool, apiVer, sessionId, paramLines, kind);
+                await client.waitForStatement(sparkPool, apiVer, sessionId, paramStmt.id, livyCfg.statementPollIntervalMs);
+            }
+
+            // Execute each code cell sequentially
+            const codeCells = cells.filter(c => (c.cell_type ?? c.cellType) === 'code');
+            for (let i = 0; i < codeCells.length; i++) {
+                if (this._cancelled) break;
+                const src = Array.isArray(codeCells[i].source)
+                    ? codeCells[i].source.join('')
+                    : (codeCells[i].source ?? '');
+                if (!src.trim()) continue;
+
+                const stmt   = await client.submitStatement(sparkPool, apiVer, sessionId, src, kind);
+                const result = await client.waitForStatement(sparkPool, apiVer, sessionId, stmt.id, livyCfg.statementPollIntervalMs);
+                if (result.output?.status === 'error') {
+                    throw new Error(result.output.evalue ?? `Notebook cell ${i + 1} execution error`);
+                }
+            }
+
+            return { notebookName, sessionId, kind, cellsExecuted: codeCells.length };
+        } finally {
+            // Always clean up the session (best effort)
+            await client.deleteSession(sparkPool, apiVer, sessionId).catch(() => {});
+        }
+    },
+
+    // ── SparkJob (Livy batch) ─────────────────────────────────────────────────
+    async sparkJobHandler(activity) {
+        const tp        = activity.typeProperties || {};
+        const jobRef    = tp.sparkJob?.referenceName;
+        const sparkPool = tp.sparkPool?.referenceName ?? tp.sparkPool;
+
+        if (!jobRef)    throw new Error('SparkJob: missing sparkJob.referenceName in typeProperties');
+        if (!sparkPool) throw new Error('SparkJob: missing sparkPool.referenceName in typeProperties');
+
+        const wsConfig = _loadSynapseWorkspaceConfig(this.workspaceRoot);
+        if (!wsConfig.synapseEndpoint) {
+            throw new Error(
+                'SparkJob: set "synapseEndpoint" in synapse-local-run.json in your workspace root.'
+            );
+        }
+
+        // Read SparkJobDefinition from workspace if available
+        const jobFile = path.join(this.workspaceRoot, 'sparkJobDefinition', `${jobRef}.json`);
+        let jobDef = null;
+        if (fs.existsSync(jobFile)) {
+            jobDef = JSON.parse(fs.readFileSync(jobFile, 'utf8'));
+        }
+
+        const livyCfg  = runConfig.synapseWorkspace;
+        const client   = new SynapseClient(wsConfig.synapseEndpoint);
+        const apiVer   = livyCfg.livyApiVersion;
+        const jobProps = jobDef?.properties?.jobProperties ?? {};
+
+        const batchReq = {
+            name:      `localRun-${jobRef}-${this.runId.slice(0, 8)}`,
+            file:      jobProps.file ?? tp.file,
+            className: jobProps.className ?? tp.className,
+            args:      jobProps.args  ?? tp.args  ?? [],
+            conf:      jobProps.conf  ?? tp.conf  ?? {},
+        };
+
+        if (!batchReq.file) {
+            throw new Error(
+                `SparkJob: cannot determine Spark job file path for "${jobRef}". ` +
+                `Ensure sparkJobDefinition/${jobRef}.json exists in the workspace.`
+            );
+        }
+
+        const batch   = await client.createBatch(sparkPool, apiVer, batchReq);
+        const batchId = batch.id;
+
+        try {
+            await client.waitForBatch(
+                sparkPool, apiVer, batchId,
+                livyCfg.sessionPollIntervalMs,
+                livyCfg.batchTimeoutMinutes * 60_000,
+                (state) => this.emit('activityUpdate', {
+                    name: activity.name, status: 'Running', output: null, error: null,
+                    _detail: `Spark batch state: ${state}`,
+                })
+            );
+            return { jobRef, batchId, status: 'Succeeded' };
+        } catch (err) {
+            await client.deleteBatch(sparkPool, apiVer, batchId).catch(() => {});
+            throw err;
+        }
+    },
+
+    // ── WebHook ───────────────────────────────────────────────────────────────
+    async webHookHandler(activity) {
+        const tp      = activity.typeProperties || {};
+        const url     = String(this._eval(tp.url, {}));
+        const method  = (tp.method || 'POST').toUpperCase();
+        const body    = tp.body ? this._eval(tp.body, {}) : undefined;
+        const timeout = (parseInt(tp.callBackTimeoutInSecs ?? tp.timeout ?? '600', 10)) * 1000;
+
+        const headers = {};
+        if (tp.headers && typeof tp.headers === 'object') {
+            for (const [k, v] of Object.entries(tp.headers)) {
+                headers[k] = String(this._eval(v?.value ?? v, {}));
+            }
+        }
+        if (!headers['Content-Type'] && body) headers['Content-Type'] = 'application/json';
+
+        const https2 = require('https');
+        const http2  = require('http');
+        const { URL: NodeURL2 } = require('url');
+        const parsed  = new NodeURL2(url);
+        const lib     = parsed.protocol === 'https:' ? https2 : http2;
+        const bodyStr = body !== undefined
+            ? (typeof body === 'string' ? body : JSON.stringify(body))
+            : null;
+
+        const responseText = await new Promise((resolve, reject) => {
+            const timer = setTimeout(
+                () => reject(new Error(`WebHook timed out after ${timeout / 1000}s`)),
+                timeout
+            );
+            const opts = {
+                hostname: parsed.hostname,
+                port:     parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
+                path:     parsed.pathname + parsed.search,
+                method,
+                headers: { ...headers, ...(bodyStr ? { 'Content-Length': Buffer.byteLength(bodyStr) } : {}) },
+            };
+            const req = lib.request(opts, (res) => {
+                let data = '';
+                res.on('data', c => { data += c; });
+                res.on('end', () => {
+                    clearTimeout(timer);
+                    if (res.statusCode >= 400) {
+                        reject(new Error(`WebHook HTTP ${res.statusCode}: ${data.slice(0, 200)}`));
+                    } else {
+                        resolve(data);
+                    }
+                });
+            });
+            req.on('error', (err) => { clearTimeout(timer); reject(err); });
+            if (bodyStr) req.write(bodyStr);
+            req.end();
+        });
+
+        try { return JSON.parse(responseText); } catch { return { response: responseText }; }
+    },
+
+    // ── Lookup (ADLS/Blob only) ───────────────────────────────────────────────
+    async lookupHandler(activity) {
+        const tp          = activity.typeProperties || {};
+        const dsName      = tp.source?.dataset?.referenceName ?? tp.dataset?.referenceName;
+        const firstRowOnly = tp.firstRowOnly !== false;
+
+        if (!dsName) throw new Error('Lookup: missing dataset reference in typeProperties');
+
+        const loc = resolveDatasetToAdls(dsName, this.workspaceRoot);
+        if (!loc || !loc.storageAccount) {
+            throw new Error(
+                `Lookup: dataset "${dsName}" does not resolve to an ADLS Gen2 / Blob location. ` +
+                'Only AzureBlobFS and AzureBlobStorage linked services are supported in local run Lookup.'
+            );
+        }
+
+        const adls     = new ADLSRestClient(loc.storageAccount);
+        const filePath = buildAdlsPath(loc);
+        const rawText  = await adls.readFile(loc.container, filePath);
+
+        // Detect format from dataset type name
+        const dsFile = path.join(this.workspaceRoot, 'dataset', `${dsName}.json`);
+        const ds     = JSON.parse(fs.readFileSync(dsFile, 'utf8'));
+        const dsType = ds.properties?.type ?? '';
+
+        let rows = [];
+        if (dsType.includes('Json') || filePath.endsWith('.json')) {
+            const parsed = JSON.parse(rawText);
+            rows = Array.isArray(parsed) ? parsed : (parsed.value ?? [parsed]);
+        } else if (dsType.includes('DelimitedText') || dsType.includes('Csv') || filePath.endsWith('.csv')) {
+            rows = _parseCsv(rawText);
+        } else {
+            rows = [{ value: rawText }];
+        }
+
+        if (firstRowOnly) {
+            return { firstRow: rows[0] ?? null, count: rows.length };
+        }
+        return { value: rows, count: rows.length };
+    },
+
+    // ── GetMetadata (ADLS/Blob only) ──────────────────────────────────────────
+    async getMetadataHandler(activity) {
+        const tp        = activity.typeProperties || {};
+        const dsName    = tp.dataset?.referenceName;
+        const fieldList = tp.fieldList ?? [];
+
+        if (!dsName) throw new Error('GetMetadata: missing dataset reference in typeProperties');
+
+        const loc = resolveDatasetToAdls(dsName, this.workspaceRoot);
+        if (!loc || !loc.storageAccount) {
+            throw new Error(
+                `GetMetadata: dataset "${dsName}" does not resolve to an ADLS Gen2 / Blob location. ` +
+                'Only AzureBlobFS and AzureBlobStorage linked services are supported in local run GetMetadata.'
+            );
+        }
+
+        const adls     = new ADLSRestClient(loc.storageAccount);
+        const filePath = buildAdlsPath(loc);
+        const output   = {};
+
+        for (const fieldEntry of fieldList) {
+            const field = typeof fieldEntry === 'object' ? (fieldEntry.value ?? fieldEntry.field) : fieldEntry;
+            switch (field) {
+                case 'itemName':
+                    output.itemName = filePath.split('/').pop() || filePath;
+                    break;
+                case 'itemType':
+                    output.itemType = loc.fileName ? 'File' : 'Folder';
+                    break;
+                case 'size': {
+                    const props = await adls.getFileProperties(loc.container, filePath);
+                    output.size = props.contentLength ? parseInt(props.contentLength, 10) : 0;
+                    break;
+                }
+                case 'lastModified': {
+                    const props = await adls.getFileProperties(loc.container, filePath);
+                    output.lastModified = props.lastModified ?? null;
+                    break;
+                }
+                case 'childItems': {
+                    try {
+                        const items = await adls.listPaths(loc.container, filePath, false);
+                        output.childItems = items.map(item => ({
+                            name: (item.name ?? '').split('/').pop(),
+                            type: item.isDirectory ? 'Folder' : 'File',
+                        }));
+                    } catch {
+                        output.childItems = [];
+                    }
+                    break;
+                }
+                case 'exists': {
+                    try {
+                        await adls.getFileProperties(loc.container, filePath);
+                        output.exists = true;
+                    } catch {
+                        output.exists = false;
+                    }
+                    break;
+                }
+                case 'count': {
+                    try {
+                        const items = await adls.listPaths(loc.container, filePath, false);
+                        output.count = items.length;
+                    } catch {
+                        output.count = 0;
+                    }
+                    break;
+                }
+                case 'contentMD5': {
+                    const props = await adls.getFileProperties(loc.container, filePath);
+                    output.contentMD5 = props.contentMD5 ?? null;
+                    break;
+                }
+                default:
+                    output[field] = null;
+            }
+        }
+        return output;
+    },
+
+    // ── Delete (ADLS/Blob only) ───────────────────────────────────────────────
+    async deleteHandler(activity) {
+        const tp     = activity.typeProperties || {};
+        const dsName = tp.dataset?.referenceName
+            ?? tp.storeSettings?.linkedServiceName?.referenceName;
+
+        if (!dsName) throw new Error('Delete: missing dataset reference in typeProperties');
+
+        const loc = resolveDatasetToAdls(dsName, this.workspaceRoot);
+        if (!loc || !loc.storageAccount) {
+            throw new Error(
+                `Delete: dataset "${dsName}" does not resolve to an ADLS Gen2 / Blob location. ` +
+                'Only AzureBlobFS and AzureBlobStorage linked services are supported in local run Delete.'
+            );
+        }
+
+        const filePath = buildAdlsPath(loc);
+        const adls     = new ADLSRestClient(loc.storageAccount);
+        await adls.deleteFile(loc.container, filePath);
+        return { datasetName: dsName, deletedPath: `${loc.container}/${filePath}`, status: 'Succeeded' };
+    },
+
+    // ── Validation (ADLS/Blob only) ───────────────────────────────────────────
+    async validationHandler(activity) {
+        const tp         = activity.typeProperties || {};
+        const dsName     = tp.dataset?.referenceName;
+        const sleepSecs  = parseInt(tp.sleep    ?? '10',  10);
+        const timeoutSec = parseInt(tp.timeout  ?? '600', 10);
+        const minSize    = tp.minimumSize !== undefined ? parseInt(tp.minimumSize, 10) : null;
+
+        if (!dsName) throw new Error('Validation: missing dataset reference in typeProperties');
+
+        const loc = resolveDatasetToAdls(dsName, this.workspaceRoot);
+        if (!loc || !loc.storageAccount) {
+            throw new Error(
+                `Validation: dataset "${dsName}" does not resolve to an ADLS Gen2 / Blob location. ` +
+                'Only AzureBlobFS and AzureBlobStorage linked services are supported in local run Validation.'
+            );
+        }
+
+        const filePath = buildAdlsPath(loc);
+        const adls     = new ADLSRestClient(loc.storageAccount);
+        const start    = Date.now();
+        const timeoutMs = timeoutSec * 1000;
+
+        while (Date.now() - start < timeoutMs) {
+            if (this._cancelled) break;
+            try {
+                const props = await adls.getFileProperties(loc.container, filePath);
+                if (minSize !== null) {
+                    const size = parseInt(props.contentLength ?? '0', 10);
+                    if (size < minSize) {
+                        await _sleepMs(sleepSecs * 1000);
+                        continue;
+                    }
+                }
+                return { datasetName: dsName, path: `${loc.container}/${filePath}`, existed: true };
+            } catch {
+                // File not yet present — sleep and retry
+                await _sleepMs(sleepSecs * 1000);
+            }
+        }
+
+        throw new Error(
+            `Validation timed out after ${timeoutSec}s: "${dsName}" (${loc.container}/${filePath}) ` +
+            `did not appear${minSize !== null ? ` with size ≥ ${minSize}` : ''} within the timeout.`
+        );
+    },
+
     // ── Not Supported ─────────────────────────────────────────────────────────
     async notSupportedHandler(activity) {
         const conf   = RUNNERS[activity.type];
@@ -556,6 +951,50 @@ function _patchForEachContext(childRunner, currentItem) {
     // Monkey-patch child's _eval to inject @item() context
     const origEval = childRunner._eval.bind(childRunner);
     childRunner._eval = (value, extra) => origEval(value, { ...extra, currentItem });
+}
+
+// ── Synapse workspace config ───────────────────────────────────────────────────
+// Reads synapse-local-run.json from the workspace root. Returns {} if absent.
+function _loadSynapseWorkspaceConfig(workspaceRoot) {
+    if (!workspaceRoot) return {};
+    const cfgFile = path.join(workspaceRoot, 'synapse-local-run.json');
+    if (!fs.existsSync(cfgFile)) return {};
+    try { return JSON.parse(fs.readFileSync(cfgFile, 'utf8')); }
+    catch { return {}; }
+}
+
+function _sleepMs(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// Minimal CSV parser: handles quoted fields, returns array of row objects.
+function _parseCsv(text) {
+    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+    if (lines.length === 0) return [];
+    const headers = _splitCsvLine(lines[0]);
+    return lines.slice(1).map(line => {
+        const vals = _splitCsvLine(line);
+        const row  = {};
+        headers.forEach((h, i) => { row[h] = vals[i] ?? ''; });
+        return row;
+    });
+}
+
+function _splitCsvLine(line) {
+    const result = [];
+    let current  = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+        if (line[i] === '"') {
+            if (inQuotes && line[i + 1] === '"') { current += '"'; i++; }
+            else { inQuotes = !inQuotes; }
+        } else if (line[i] === ',' && !inQuotes) {
+            result.push(current);
+            current = '';
+        } else {
+            current += line[i];
+        }
+    }
+    result.push(current);
+    return result;
 }
 
 module.exports = { LocalPipelineRunner };

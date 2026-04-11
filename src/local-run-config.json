@@ -83,14 +83,14 @@
       "description": "Makes an HTTP call using the developer's local network and identity (no MSI)"
     },
     "SynapseNotebook": {
-      "handler": "notSupportedHandler",
-      "supportsCancel": false,
-      "notSupportedReason": "SynapseNotebook requires a live Synapse Spark pool connection. Not supported in local run mode."
+      "handler": "synapseNotebookHandler",
+      "supportsCancel": true,
+      "description": "Submits notebook cells to a Synapse Spark pool via the Livy session API. Requires synapse-local-run.json in the workspace root with synapseEndpoint set."
     },
     "SparkJob": {
-      "handler": "notSupportedHandler",
-      "supportsCancel": false,
-      "notSupportedReason": "SparkJob requires a live Synapse Spark pool connection. Not supported in local run mode."
+      "handler": "sparkJobHandler",
+      "supportsCancel": true,
+      "description": "Submits a SparkJobDefinition to a Synapse Spark pool via the Livy batch API. Requires synapse-local-run.json in the workspace root with synapseEndpoint set."
     },
     "Script": {
       "handler": "notSupportedHandler",
@@ -108,25 +108,39 @@
       "notSupportedReason": "Copy requires live source and sink connections. Not supported in local run mode."
     },
     "Lookup": {
-      "handler": "notSupportedHandler",
+      "handler": "lookupHandler",
       "supportsCancel": false,
-      "notSupportedReason": "Lookup requires a live data source connection. Not supported in local run mode."
+      "description": "Reads from an ADLS Gen2 / Blob dataset. Returns first row or all rows depending on firstRowOnly. JSON and CSV formats are parsed; other formats returned as raw text."
     },
     "Delete": {
-      "handler": "notSupportedHandler",
+      "handler": "deleteHandler",
       "supportsCancel": false,
-      "notSupportedReason": "Delete requires a live data source connection. Not supported in local run mode."
+      "description": "Deletes the file/path specified by the dataset from ADLS Gen2 / Blob."
     },
     "GetMetadata": {
-      "handler": "notSupportedHandler",
+      "handler": "getMetadataHandler",
       "supportsCancel": false,
-      "notSupportedReason": "GetMetadata requires a live data source connection. Not supported in local run mode."
+      "description": "Returns the requested metadata fields (itemName, itemType, size, lastModified, childItems, exists, count) from an ADLS Gen2 / Blob dataset."
     },
     "Validation": {
-      "handler": "notSupportedHandler",
-      "supportsCancel": false,
-      "notSupportedReason": "Validation requires a live storage connection. Not supported in local run mode."
+      "handler": "validationHandler",
+      "supportsCancel": true,
+      "description": "Polls until the ADLS Gen2 / Blob path specified by the dataset exists (and optionally meets size requirements) or the timeout is reached."
+    },
+    "WebHook": {
+      "handler": "webHookHandler",
+      "supportsCancel": true,
+      "description": "Posts to the configured webhook URL and waits up to callBackTimeoutInSecs for a successful HTTP response."
     }
+  },
+
+  "synapseWorkspace": {
+    "_comment": "Livy API polling settings for SynapseNotebook and SparkJob handlers. The workspace endpoint is read from synapse-local-run.json in your workspace root, not from here.",
+    "livyApiVersion":         "2023-12-01",
+    "sessionTimeoutMinutes":  30,
+    "sessionPollIntervalMs":  5000,
+    "statementPollIntervalMs": 2000,
+    "batchTimeoutMinutes":    60
   },
 
   "statusColors": {

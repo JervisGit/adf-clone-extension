@@ -110,7 +110,7 @@ class PipelineValidatorPanel {
     <title>Validate: ${_escHtml(pipelineName)}</title>
 </head>
 <body>
-    <script>const INITIAL_DATA = ${initialData};</script>
+    <script>var INITIAL_DATA = ${initialData};<\/script>
     <div id="app"></div>
     <script src="${jsUri}"></script>
 </body>

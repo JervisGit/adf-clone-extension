@@ -10,7 +10,9 @@
     // ── Bootstrap ─────────────────────────────────────────────────────────────
     function init() {
         currentData = window.INITIAL_DATA;
+        if (!currentData) { document.getElementById('app').textContent = 'No validation data received.'; return; }
         render(currentData);
+        vscode.postMessage({ command: 'ready' });
 
         window.addEventListener('message', (event) => {
             const msg = event.data;

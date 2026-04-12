@@ -322,7 +322,13 @@ function draw() {
     if (!ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     drawGrid();
-    connections.forEach(conn => {
+    // During drag, only redraw connections that touch the dragged activity (their
+    // segment cache is busted anyway). All other connections can be skipped to reduce
+    // per-frame canvas work and eliminate the main source of drag lag.
+    const connsToRender = (isDragging && draggedActivity)
+        ? connections.filter(c => c.from === draggedActivity || c.to === draggedActivity)
+        : connections;
+    connsToRender.forEach(conn => {
         const highlight = conn === selectedConnection || conn === hoveredConnection;
         conn.draw(ctx, highlight);
     });
@@ -619,8 +625,14 @@ class Connection {
         const tc = { x: this.to.x   + this.to.width   / 2, y: this.to.y   + this.to.height   / 2 };
         const dx = tc.x - fc.x, dy = tc.y - fc.y;
 
-        // Prefer horizontal routing when x-distance dominates; vertical otherwise.
-        const useHorizontal = Math.abs(dx) > Math.abs(dy);
+        // Routing rule:
+        //  - When the target is above the source (dy < 0): ALWAYS use vertical routing
+        //    (exit source top, enter target bottom) regardless of horizontal distance.
+        //    This mirrors the natural "A above B → exit bottom, enter top" behaviour —
+        //    just inverted. Without this, a large dx would pick horizontal routing and
+        //    the path would pass through the middle of the target box.
+        //  - When target is below (dy >= 0): prefer horizontal when dx dominates.
+        const useHorizontal = dy >= 0 && Math.abs(dx) > Math.abs(dy);
         let start, end;
         if (useHorizontal) {
             start = this.from.getConnectionPoint(dx > 0 ? 'right' : 'left');

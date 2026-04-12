@@ -7,7 +7,9 @@
 
     const vscode = acquireVsCodeApi();
 
-    const BOX_W = 190, BOX_H = 72, H_GAP = 80, V_GAP = 20;
+    const BOX_W = 190, BOX_H = 68, H_GAP = 80, V_GAP = 20;
+
+    let pendingArrowRaf = null; // handle for the two-pass arrow-injection rAF
 
     // ─── State ────────────────────────────────────────────────────────────────
     const state = {
@@ -190,38 +192,56 @@
         document.getElementById('btn-view-output')?.addEventListener('click',  () => showPopover('Output',  state.selectedName));
         document.getElementById('btn-view-error')?.addEventListener('click',   () => showPopover('Error',   state.selectedName));
         document.getElementById('btn-view-details')?.addEventListener('click', () => showPopover('Details', state.selectedName));
+
+        // Phase 2: inject SVG arrows after browser has laid out the boxes
+        if (pendingArrowRaf) cancelAnimationFrame(pendingArrowRaf);
+        pendingArrowRaf = requestAnimationFrame(insertDependencyArrows);
     }
 
-    // ─── Canvas (SVG arrows + absolute-positioned boxes) ──────────────────────
+    // ─── Canvas (boxes only — arrows injected post-render via DOM measurement) ──
     function renderCanvas() {
-        if (state.activityOrder.length === 0) {
-            return `<div class="canvas-container canvas-empty">Waiting for activities…</div>`;
-        }
-        // Compute canvas bounds
-        let maxX = 0, maxY = 0;
-        for (const name of state.activityOrder) {
-            const pos = state.layout[name] || ensurePosition(name);
-            maxX = Math.max(maxX, pos.x + BOX_W + 40);
-            maxY = Math.max(maxY, pos.y + BOX_H + 40);
+        // Compute container minimum size from the full pre-computed layout
+        // (includes ALL activities, not just those that have reported in yet)
+        let minW = 400, minH = 160;
+        for (const pos of Object.values(state.layout)) {
+            minW = Math.max(minW, pos.x + BOX_W + 60);
+            minH = Math.max(minH, pos.y + BOX_H + 60);
         }
 
-        const boxes    = state.activityOrder.map(name => renderActivityBox(state.activities[name])).join('');
-        const svgArrows = renderDependencyArrows(maxX, maxY);
+        // Show ALL activities from pipelineActivities; supplement with live data
+        const allNames = state.pipelineActivities.length > 0
+            ? state.pipelineActivities.map(a => a.name)
+            : state.activityOrder;
 
-        return `<div class="canvas-container" style="width:${maxX}px;height:${maxY}px;">
-            ${svgArrows}
+        if (allNames.length === 0) {
+            return `<div class="canvas-container canvas-empty" id="canvas-container">Waiting for activities…</div>`;
+        }
+
+        const boxes = allNames.map(name => {
+            const live  = state.activities[name];
+            const paDef = state.pipelineActivities.find(a => a.name === name);
+            const type  = live?.type ?? paDef?.type ?? null;
+            return renderActivityBox({ name, type, ...(live ?? {}) });
+        }).join('');
+
+        // SVG is NOT included here — injected by insertDependencyArrows() after layout
+        return `<div class="canvas-container" id="canvas-container"
+             style="min-width:${minW}px;min-height:${minH}px;">
             ${boxes}
         </div>`;
     }
 
     function renderActivityBox(a) {
-        const conf   = getActivityConf(a.type);
-        const status = (a.status || 'Queued').toLowerCase().replace(/ /g, '');
-        const isSelected = state.selectedName === a.name;
+        const conf      = getActivityConf(a.type);
+        const hasLive   = !!state.activities[a.name];
+        const statusRaw = hasLive ? (a.status || 'Queued') : 'waiting';
+        const statusCss = statusRaw.toLowerCase().replace(/ /g, '');
+        const isSelected  = state.selectedName === a.name;
         const spinnerHtml = a.status === 'Running' ? `<span class="spinner"></span>` : '';
-        const pos    = state.layout[a.name] || { x: 20, y: 20 };
+        const statusLabel = hasLive ? (a.status || 'Queued') : '—';
+        const pos = state.layout[a.name] || { x: 20, y: 20 };
 
-        return `<div class="activity-box status-${status} ${isSelected ? 'selected' : ''}"
+        return `<div class="activity-box status-${statusCss} ${isSelected ? 'selected' : ''}"
                      style="left:${pos.x}px;top:${pos.y}px;"
                      data-name="${esc(a.name)}">
             <div class="activity-header">
@@ -230,58 +250,80 @@
             <div class="activity-body">
                 <div class="activity-icon-large" style="color:${conf.color}">${conf.icon}</div>
                 <div class="activity-label" title="${esc(a.name)}">${esc(a.name)}</div>
-                <span class="activity-status-indicator ${status}">${spinnerHtml}${esc(a.status || 'Queued')}</span>
+                <span class="activity-status-indicator ${statusCss}">${spinnerHtml}${esc(statusLabel)}</span>
             </div>
         </div>`;
     }
 
-    // Condition → SVG stroke colour (matches pipeline editor)
+    // Condition → stroke colour
     const DEP_COLORS = { Succeeded: '#107c10', Failed: '#d13438', Skipped: '#ffa500', Completed: '#0078d4' };
 
-    function renderDependencyArrows(svgW, svgH) {
-        if (!state.pipelineActivities.length) return '';
+    /**
+     * Phase-2 of rendering: called from requestAnimationFrame after boxes are
+     * in the DOM so we can read their actual offsetTop/offsetHeight.
+     * Builds an SVG overlay using real measured centres instead of the BOX_H constant.
+     */
+    function insertDependencyArrows() {
+        pendingArrowRaf = null;
+        const container = document.getElementById('canvas-container');
+        if (!container || !state.pipelineActivities.length) return;
 
-        const defs = Object.entries(DEP_COLORS).map(([cond, color]) => `
-            <marker id="arrow-${cond}" viewBox="0 0 10 10" refX="9" refY="5"
-                    markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                <path d="M 0 0 L 10 5 L 0 10 z" fill="${color}"/>
-            </marker>`).join('');
+        // Remove any previously injected SVG
+        container.querySelectorAll('.dep-svg').forEach(el => el.remove());
+
+        // Measure actual rendered box positions
+        const measured = {};
+        container.querySelectorAll('.activity-box[data-name]').forEach(el => {
+            measured[el.dataset.name] = {
+                l: el.offsetLeft,
+                t: el.offsetTop,
+                w: el.offsetWidth,
+                h: el.offsetHeight,
+            };
+        });
 
         const paths = [];
+        const defs  = Object.entries(DEP_COLORS).map(([cond, color]) =>
+            `<marker id="arrow-${cond}" viewBox="0 0 10 10" refX="9" refY="5"
+                     markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="${color}"/>
+            </marker>`
+        ).join('');
+
         for (const a of state.pipelineActivities) {
-            const toPos = state.layout[a.name];
-            if (!toPos) continue;
+            const tm = measured[a.name];
+            if (!tm) continue;
             for (const dep of (a.dependsOn || [])) {
-                const fromPos = state.layout[dep.activity];
-                if (!fromPos) continue;
-                const cond  = dep.dependencyConditions?.[0] ?? 'Succeeded';
-                const color = DEP_COLORS[cond] || DEP_COLORS.Succeeded;
-                const markerId = `arrow-${cond}`;
-
-                // Right edge of source → left edge of target
-                const x1 = fromPos.x + BOX_W;
-                const y1 = fromPos.y + BOX_H / 2;
-                const x2 = toPos.x;
-                const y2 = toPos.y + BOX_H / 2;
+                const fm = measured[dep.activity];
+                if (!fm) continue;
+                const cond     = dep.dependencyConditions?.[0] ?? 'Succeeded';
+                const color    = DEP_COLORS[cond] || DEP_COLORS.Succeeded;
+                // Connect right-centre of source → left-centre of target
+                const x1 = fm.l + fm.w, y1 = fm.t + fm.h / 2;
+                const x2 = tm.l,        y2 = tm.t + tm.h / 2;
                 const cpX = (x1 + x2) / 2;
-
-                paths.push(`<path d="M${x1},${y1} C${cpX},${y1} ${cpX},${y2} ${x2},${y2}"
-                    stroke="${color}" stroke-width="1.5" fill="none"
-                    marker-end="url(#${markerId})" opacity="0.8"/>`);
-
-                // Small condition label mid-path
-                const mx = (x1 + x2) / 2, my = (y1 + y2) / 2 - 6;
+                paths.push(
+                    `<path d="M${x1},${y1} C${cpX},${y1} ${cpX},${y2} ${x2},${y2}"
+                        stroke="${color}" stroke-width="1.5" fill="none"
+                        marker-end="url(#arrow-${cond})" opacity="0.85"/>`
+                );
                 if (cond !== 'Succeeded') {
-                    paths.push(`<text x="${mx}" y="${my}" text-anchor="middle" font-size="9" fill="${color}" opacity="0.8">${esc(cond)}</text>`);
+                    paths.push(
+                        `<text x="${(x1+x2)/2}" y="${(y1+y2)/2 - 6}" text-anchor="middle"
+                             font-size="9" fill="${color}">${esc(cond)}</text>`
+                    );
                 }
             }
         }
 
-        if (!paths.length) return '';
-        return `<svg class="dep-svg" width="${svgW}" height="${svgH}" xmlns="http://www.w3.org/2000/svg">
-            <defs>${defs}</defs>
-            ${paths.join('')}
-        </svg>`;
+        if (!paths.length) return;
+
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.classList.add('dep-svg');
+        svg.setAttribute('width',  container.offsetWidth);
+        svg.setAttribute('height', container.offsetHeight);
+        svg.innerHTML = `<defs>${defs}</defs>${paths.join('')}`;
+        container.insertBefore(svg, container.firstChild);
     }
 
     // ─── Details panel ────────────────────────────────────────────────────────

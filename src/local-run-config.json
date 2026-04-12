@@ -103,9 +103,9 @@
       "notSupportedReason": "SqlServerStoredProcedure requires a live SQL server connection. Not supported in local run mode."
     },
     "Copy": {
-      "handler": "notSupportedHandler",
+      "handler": "copyHandler",
       "supportsCancel": false,
-      "notSupportedReason": "Copy requires live source and sink connections. Not supported in local run mode."
+      "description": "Streams file content from source to sink for ADLS Gen2/Blob same-format copies. Cross-format conversion (CSV→Parquet etc.) is not supported. See src/copyActivityConfig.json for the supported source/sink matrix."
     },
     "Lookup": {
       "handler": "lookupHandler",

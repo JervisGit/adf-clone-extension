@@ -19,6 +19,7 @@ const runConfig = require('../local-run-config.json');
 const { SynapseClient, NOTEBOOK_LANG_TO_KIND } = require('./synapseClient');
 const ADLSRestClient = require('../adlsRestClient');
 const { resolveDatasetToAdls, buildAdlsPath } = require('./datasetResolver');
+const copyConfig = require('../copyActivityConfig.json');
 
 const RUNNERS     = runConfig.activityRunners;
 const RUN_LIMITS  = runConfig.runLimits;
@@ -206,6 +207,10 @@ class LocalPipelineRunner extends EventEmitter {
     }
 
     _eval(value, extra) {
+        // Unwrap ADF expression objects: { value: "@...", type: "Expression" }
+        if (value !== null && typeof value === 'object' && typeof value.value === 'string' && value.type === 'Expression') {
+            value = value.value;
+        }
         return evaluate(value, this._context(extra));
     }
 
@@ -254,10 +259,14 @@ const HANDLER_REGISTRY = {
     async setVariableHandler(activity) {
         const tp = activity.typeProperties || {};
         const varName = String(this._eval(tp.variableName, {}));
-        const value   = this._eval(tp.value, {});
+        let value     = this._eval(tp.value, {});
         if (tp.setSystemVariable) {
-            // Pipeline return value — not a pipeline variable, just record output
             return { variableName: varName, value };
+        }
+        // If the variable is declared as Array/Object and the value is a JSON string, parse it
+        const varDef = this.pipelineJson?.properties?.variables?.[varName];
+        if (typeof value === 'string' && varDef?.type && ['Array', 'Object'].includes(varDef.type)) {
+            try { value = JSON.parse(value); } catch { /* keep as string */ }
         }
         this.variables[varName] = value;
         return { variableName: varName, value };
@@ -931,6 +940,71 @@ const HANDLER_REGISTRY = {
             `Validation timed out after ${timeoutSec}s: "${dsName}" (${loc.container}/${filePath}) ` +
             `did not appear${minSize !== null ? ` with size ≥ ${minSize}` : ''} within the timeout.`
         );
+    },
+
+    // ── Copy (ADLS Gen2 / Blob only, same-format streaming) ──────────────────
+    async copyHandler(activity) {
+        const tp = activity.typeProperties || {};
+
+        // Resolve source dataset
+        const srcName = tp.source?.dataset?.referenceName
+            ?? (activity.inputs?.[0]?.referenceName);
+        const sinkName = tp.sink?.dataset?.referenceName
+            ?? (activity.outputs?.[0]?.referenceName);
+
+        if (!srcName)  throw new Error('Copy: cannot determine source dataset reference');
+        if (!sinkName) throw new Error('Copy: cannot determine sink dataset reference');
+
+        const srcLoc  = resolveDatasetToAdls(srcName,  this.workspaceRoot);
+        const sinkLoc = resolveDatasetToAdls(sinkName, this.workspaceRoot);
+
+        if (!srcLoc  || !srcLoc.storageAccount)  throw new Error(`Copy: source dataset "${srcName}" does not resolve to ADLS Gen2 / Blob. Only AzureBlobFS and AzureBlobStorage linked services are supported in local run Copy.`);
+        if (!sinkLoc || !sinkLoc.storageAccount) throw new Error(`Copy: sink dataset "${sinkName}" does not resolve to ADLS Gen2 / Blob. Only AzureBlobFS and AzureBlobStorage linked services are supported in local run Copy.`);
+
+        // Determine storage types (adls or blob) and look up pair strategy
+        const srcType  = srcLoc.isAdls  ? 'adls' : 'blob';
+        const sinkType = sinkLoc.isAdls ? 'adls' : 'blob';
+        const pairKey  = `${srcType}→${sinkType}`;
+
+        if (!copyConfig.supportedPairs[pairKey]) {
+            const reason = copyConfig.unsupportedPairs[pairKey]
+                ?? `Copy from "${srcType}" to "${sinkType}" is not supported in local run mode.`;
+            throw new Error(`Copy: ${reason}`);
+        }
+
+        // Format compatibility check: warn if source and sink dataset types differ
+        const srcDsFile  = path.join(this.workspaceRoot, 'dataset', `${srcName}.json`);
+        const sinkDsFile = path.join(this.workspaceRoot, 'dataset', `${sinkName}.json`);
+        const srcDsType  = fs.existsSync(srcDsFile)  ? (JSON.parse(fs.readFileSync(srcDsFile,  'utf8')).properties?.type ?? '') : '';
+        const sinkDsType = fs.existsSync(sinkDsFile) ? (JSON.parse(fs.readFileSync(sinkDsFile, 'utf8')).properties?.type ?? '') : '';
+
+        const sameFormat = srcDsType === sinkDsType || !srcDsType || !sinkDsType;
+        if (!sameFormat) {
+            // Cross-format is not supported: raw text copy would break structure
+            throw new Error(
+                `Copy: format conversion from "${srcDsType}" to "${sinkDsType}" is not supported in local run mode. ` +
+                `Only same-format copies (e.g. DelimitedText→DelimitedText) are supported. ` +
+                `Cross-format conversion (e.g. CSV→Parquet) requires a Synapse Spark engine.`
+            );
+        }
+
+        // Stream: read source, write to sink
+        const srcAdls  = new ADLSRestClient(srcLoc.storageAccount);
+        const sinkAdls = new ADLSRestClient(sinkLoc.storageAccount);
+
+        const srcPath  = buildAdlsPath(srcLoc);
+        const sinkPath = buildAdlsPath(sinkLoc);
+
+        const content = await srcAdls.readFile(srcLoc.container, srcPath);
+        await sinkAdls.writeFile(sinkLoc.container, sinkPath, content);
+
+        return {
+            source: `${srcLoc.storageAccount}/${srcLoc.container}/${srcPath}`,
+            sink:   `${sinkLoc.storageAccount}/${sinkLoc.container}/${sinkPath}`,
+            bytes:  Buffer.byteLength(content, 'utf8'),
+            format: srcDsType || 'unknown',
+            note:   'Local run: raw text stream copy (same format only)',
+        };
     },
 
     // ── Not Supported ─────────────────────────────────────────────────────────

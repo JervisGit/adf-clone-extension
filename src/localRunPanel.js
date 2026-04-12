@@ -51,13 +51,12 @@ class LocalRunPanel {
         const totalErrors = pipelineErrorCount + activityErrorCount;
 
         if (totalErrors > 0) {
-            const choice = await vscode.window.showWarningMessage(
-                `"${pipelineName}" has ${totalErrors} validation error${totalErrors !== 1 ? 's' : ''}. Running it may produce unexpected results.`,
-                { modal: true },
-                'Run Anyway',
-                'Cancel'
+            await vscode.window.showErrorMessage(
+                `Cannot run "${pipelineName}": ${totalErrors} validation error${totalErrors !== 1 ? 's' : ''} found.` +
+                ` Fix all errors first (click the ✓ icon on the pipeline to see details).`,
+                { modal: true }
             );
-            if (choice !== 'Run Anyway') return;
+            return;
         }
         // ── End validation gate ────────────────────────────────────────────────
 

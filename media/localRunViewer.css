@@ -247,9 +247,15 @@ body {
 
 .config-content {
     flex: 1;
-    overflow-y: auto;
+    overflow: hidden;
     padding: 16px;
     background: var(--vscode-editor-background);
+    display: flex;
+    flex-direction: column;
+}
+/* List view takes over the full content area without extra padding */
+.config-content:has(.list-view-scroll) {
+    padding: 0;
 }
 
 .empty-state {
@@ -435,6 +441,85 @@ body {
 }
 
 /* Button label tweak — show ↑ arrow to indicate popover */
-#btn-view-output, #btn-view-error, #btn-view-details {
+#btn-view-output, #btn-view-error, #btn-view-details, #btn-view-input, #btn-iter-output {
     font-size: 11px;
 }
+
+/* ── Back button (list → detail) ─────────────────────────────────────────── */
+.config-back-btn {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 11px;
+    color: var(--vscode-textLink-foreground);
+    padding: 4px 8px;
+    border-radius: 3px;
+}
+.config-back-btn:hover { text-decoration: underline; }
+
+/* ── Activity list table (default bottom panel) ──────────────────────────── */
+.list-view-scroll {
+    overflow-x: auto;
+    overflow-y: auto;
+    max-height: 100%;
+}
+
+.activity-list-table {
+    border-collapse: collapse;
+    width: max-content;
+    min-width: 100%;
+    font-size: 12px;
+}
+
+.activity-list-table th {
+    position: sticky;
+    top: 0;
+    background: var(--vscode-sideBar-background);
+    color: var(--vscode-foreground);
+    font-weight: 600;
+    text-align: left;
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+    white-space: nowrap;
+}
+
+.activity-list-table td {
+    padding: 5px 12px;
+    border-bottom: 1px solid var(--vscode-list-inactiveSelectionBackground);
+    color: var(--vscode-foreground);
+    white-space: nowrap;
+}
+
+.list-row {
+    cursor: pointer;
+}
+.list-row:hover td {
+    background: var(--vscode-list-hoverBackground);
+}
+.list-row-child td {
+    background: var(--vscode-list-inactiveSelectionBackground);
+    opacity: 0.9;
+}
+.list-row-child:hover td {
+    background: var(--vscode-list-hoverBackground);
+}
+
+.list-name { min-width: 160px; max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
+.list-name-child { padding-left: 28px !important; color: var(--vscode-descriptionForeground); }
+
+/* Status dot ─ coloured circle in list rows */
+.status-dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    vertical-align: middle;
+    margin-right: 4px;
+}
+.status-dot-running    { background: #2196f3; }
+.status-dot-succeeded  { background: #4caf50; }
+.status-dot-failed     { background: #f44336; }
+.status-dot-skipped    { background: #9e9e9e; }
+.status-dot-cancelled  { background: #ff9800; }
+.status-dot-queued     { background: #ff9800; }
+.status-dot-waiting,
+.status-dot-            { background: #bdbdbd; }

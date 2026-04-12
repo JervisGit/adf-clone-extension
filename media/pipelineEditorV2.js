@@ -335,6 +335,11 @@ function requestDraw() {
         needsRedraw = true;
         if (animationFrameId) cancelAnimationFrame(animationFrameId);
         animationFrameId = requestAnimationFrame(() => {
+            // Batch DOM position update here (not on every mousemove) to stay at 60 fps
+            if (isDragging && draggedActivity?.element) {
+                draggedActivity.element.style.left = `${draggedActivity.x}px`;
+                draggedActivity.element.style.top  = `${draggedActivity.y}px`;
+            }
             draw();
             needsRedraw = false;
             animationFrameId = null;
@@ -606,27 +611,61 @@ class Connection {
 
     // Compute the three segments of this connection's orthogonal path.
     _getSegments() {
+        // Cache: recompute only when endpoint positions change
+        const cacheKey = `${this.from.x},${this.from.y},${this.to.x},${this.to.y}`;
+        if (this._segCache?.k === cacheKey) return this._segCache.v;
+
         const fc = { x: this.from.x + this.from.width / 2, y: this.from.y + this.from.height / 2 };
         const tc = { x: this.to.x   + this.to.width   / 2, y: this.to.y   + this.to.height   / 2 };
         const dx = tc.x - fc.x, dy = tc.y - fc.y;
-        let start, end;
-        if (Math.abs(dx) > Math.abs(dy)) {
-            start = this.from.getConnectionPoint(dx > 0 ? 'right' : 'left');
-            end   = this.to.getConnectionPoint(dx > 0 ? 'left' : 'right');
-        } else {
-            start = this.from.getConnectionPoint(dy > 0 ? 'bottom' : 'top');
-            end   = this.to.getConnectionPoint(dy > 0 ? 'top' : 'bottom');
-        }
+
+        const ARROW_PAD = 8;
         const snap = v => Math.floor(v) + 0.5;
-        const sx = snap(start.x), sy = snap(start.y), ex = snap(end.x), ey = snap(end.y);
-        const dx2 = ex - sx, dy2 = ey - sy;
-        if (Math.abs(dx2) > Math.abs(dy2)) {
-            const mx = sx + dx2 / 2;
-            return [[sx,sy,mx,sy],[mx,sy,mx,ey],[mx,ey,ex,ey]];
+        let start, end, segs;
+
+        if (dy < 0) {
+            // Target is ABOVE source: route via the side to avoid the path
+            // going straight up through box interiors (the "piercing" visual).
+            // Exit source from the right side (or left if target is to the left),
+            // jog out to a clear vertical lane, go up, then enter target from the same side.
+            const useRight = dx >= 0;
+            const side = useRight ? 'right' : 'left';
+            start = this.from.getConnectionPoint(side);
+            end   = this.to.getConnectionPoint(side);
+            this._arrowTip = { x: end.x, y: end.y };
+            // Pull path endpoint outside the box so arrowhead body is visible.
+            const peX = end.x + (useRight ? ARROW_PAD : -ARROW_PAD);
+            // Vertical lane far enough right (or left) to clear both boxes.
+            const OFFSET = Math.max(40, Math.abs(dx) / 2);
+            const viaX = useRight
+                ? Math.max(this.from.x + this.from.width, this.to.x + this.to.width) + OFFSET
+                : Math.min(this.from.x, this.to.x) - OFFSET;
+            const sx = snap(start.x), sy = snap(start.y);
+            const ey = snap(end.y);
+            const vx = snap(viaX), px = snap(peX);
+            segs = [[sx,sy,vx,sy],[vx,sy,vx,ey],[vx,ey,px,ey]];
+        } else if (Math.abs(dx) > Math.abs(dy)) {
+            // Primarily horizontal: exit/enter left-right ports.
+            start = this.from.getConnectionPoint(dx > 0 ? 'right' : 'left');
+            end   = this.to.getConnectionPoint(  dx > 0 ? 'left'  : 'right');
+            this._arrowTip = { x: end.x, y: end.y };
+            const peX = end.x + (dx > 0 ? -ARROW_PAD : ARROW_PAD);
+            const sx = snap(start.x), sy = snap(start.y), ex = snap(peX), ey = snap(end.y);
+            const mx = sx + (ex - sx) / 2;
+            segs = [[sx,sy,mx,sy],[mx,sy,mx,ey],[mx,ey,ex,ey]];
         } else {
-            const my = sy + dy2 / 2;
-            return [[sx,sy,sx,my],[sx,my,ex,my],[ex,my,ex,ey]];
+            // Primarily vertical, target below source: exit bottom, enter top.
+            start = this.from.getConnectionPoint('bottom');
+            end   = this.to.getConnectionPoint('top');
+            this._arrowTip = { x: end.x, y: end.y };
+            const peY = end.y - ARROW_PAD;
+            const sx = snap(start.x), sy = snap(start.y), ex = snap(end.x), ey = snap(peY);
+            const my = sy + (ey - sy) / 2;
+            segs = [[sx,sy,sx,my],[sx,my,ex,my],[ex,my,ex,ey]];
         }
+
+        this._segCache = { k: cacheKey, v: segs };
+        return segs;
     }
 
     // Returns true if world-space point (wx, wy) is within `thresh` pixels of any segment.
@@ -675,19 +714,20 @@ class Connection {
         }
         ctx.stroke();
 
-        // Arrowhead at end of last segment
-        const fc = { x: this.from.x + this.from.width / 2, y: this.from.y + this.from.height / 2 };
-        const tc = { x: this.to.x   + this.to.width   / 2, y: this.to.y   + this.to.height   / 2 };
-        const dx = tc.x - fc.x, dy = tc.y - fc.y;
-        const arrowAngle = Math.abs(dx) > Math.abs(dy)
-            ? (dx > 0 ? 0 : Math.PI)
-            : (dy > 0 ? Math.PI / 2 : -Math.PI / 2);
+        // Arrowhead: tip is at the stored box-edge point; angle derived from last segment direction.
+        // This guarantees the arrowhead is rendered OUTSIDE the target box (canvas is behind DOM).
+        const tip = this._arrowTip ?? { x: segs[2][2], y: segs[2][3] };
+        const lastSeg = segs[2];
+        const segDx = lastSeg[2] - lastSeg[0], segDy = lastSeg[3] - lastSeg[1];
+        const arrowAngle = Math.abs(segDx) >= Math.abs(segDy)
+            ? (segDx > 0 ? 0 : Math.PI)
+            : (segDy > 0 ? Math.PI / 2 : -Math.PI / 2);
         const s = 7;
         ctx.fillStyle = highlight ? '#ffffff' : color;
         ctx.beginPath();
-        ctx.moveTo(_ex, _ey);
-        ctx.lineTo(_ex - s * Math.cos(arrowAngle - Math.PI / 6), _ey - s * Math.sin(arrowAngle - Math.PI / 6));
-        ctx.lineTo(_ex - s * Math.cos(arrowAngle + Math.PI / 6), _ey - s * Math.sin(arrowAngle + Math.PI / 6));
+        ctx.moveTo(tip.x, tip.y);
+        ctx.lineTo(tip.x - s * Math.cos(arrowAngle - Math.PI / 6), tip.y - s * Math.sin(arrowAngle - Math.PI / 6));
+        ctx.lineTo(tip.x - s * Math.cos(arrowAngle + Math.PI / 6), tip.y - s * Math.sin(arrowAngle + Math.PI / 6));
         ctx.closePath();
         ctx.fill();
     }
@@ -758,7 +798,9 @@ function setupCanvasEvents() {
         }
         if (isDragging && draggedActivity) {
             const pos = screenToWorld(e.clientX, e.clientY);
-            draggedActivity.updatePosition(pos.x - dragOffset.x, pos.y - dragOffset.y);
+            // Only update the logical position; DOM sync is batched into the RAF callback
+            draggedActivity.x = pos.x - dragOffset.x;
+            draggedActivity.y = pos.y - dragOffset.y;
             requestDraw();
             return;
         }

@@ -144,14 +144,14 @@ class LocalPipelineRunner extends EventEmitter {
             const markAs = activity.onInactiveMarkAs || 'Succeeded';
             this.activityStatuses[activity.name] = markAs;
             this._recordRun(activity, markAs, null, null, { skippedReason: 'Activity is deactivated' });
-            this.emit('activityUpdate', { name: activity.name, status: markAs, output: null, error: null });
+            this.emit('activityUpdate', { name: activity.name, type: activity.type, status: markAs, output: null, error: null, input: null });
             return;
         }
 
         const runnerConf = RUNNERS[activity.type];
         const handler = runnerConf?.handler ?? 'notSupportedHandler';
         const startTime = new Date();
-        this.emit('activityUpdate', { name: activity.name, status: 'Running', output: null, error: null });
+        this.emit('activityUpdate', { name: activity.name, type: activity.type, status: 'Running', output: null, error: null, input: activity.typeProperties || {} });
 
         try {
             const output = await HANDLER_REGISTRY[handler].call(this, activity);
@@ -159,7 +159,7 @@ class LocalPipelineRunner extends EventEmitter {
             this.activityOutputs[activity.name]  = output ?? {};
             this.activityStatuses[activity.name] = 'Succeeded';
             this._recordRun(activity, 'Succeeded', startTime, endTime, output);
-            this.emit('activityUpdate', { name: activity.name, status: 'Succeeded', output, error: null });
+            this.emit('activityUpdate', { name: activity.name, type: activity.type, status: 'Succeeded', output, error: null, input: activity.typeProperties || {} });
         } catch (err) {
             const endTime = new Date();
             let status = 'Failed';
@@ -167,7 +167,7 @@ class LocalPipelineRunner extends EventEmitter {
             if (err.isPipelineFail) status = 'Failed';
             this.activityStatuses[activity.name] = status;
             this._recordRun(activity, status, startTime, endTime, null, err.message);
-            this.emit('activityUpdate', { name: activity.name, status, output: null, error: err.message });
+            this.emit('activityUpdate', { name: activity.name, type: activity.type, status, output: null, error: err.message, input: activity.typeProperties || {} });
             if (err.isPipelineFail) throw err;
         }
     }
@@ -175,7 +175,7 @@ class LocalPipelineRunner extends EventEmitter {
     _emitSkipped(activity, reason) {
         this.activityStatuses[activity.name] = 'Skipped';
         this._recordRun(activity, 'Skipped', null, null, null, reason);
-        this.emit('activityUpdate', { name: activity.name, status: 'Skipped', output: null, error: reason });
+        this.emit('activityUpdate', { name: activity.name, type: activity.type, status: 'Skipped', output: null, error: reason, input: null });
     }
 
     _recordRun(activity, status, startTime, endTime, output, errorMsg) {
@@ -325,12 +325,17 @@ const HANDLER_REGISTRY = {
                 child._forEachItemIndex = i;
                 _patchForEachContext(child, limited[i]);
 
+                // Forward child activity events to parent with iteration context
+                child.on('activityUpdate', (update) => {
+                    this.emit('activityUpdate', { ...update, parentActivity: activity.name, iteration: i });
+                });
+
                 await new Promise((resolve, reject) => {
                     child.on('pipelineEnd', (e) => e.status !== 'Failed' ? resolve() : reject(new Error(`ForEach iteration ${i} failed`)));
                     child.run().catch(reject);
                 });
                 // Propagate run records to parent
-                for (const rec of child.activityRuns) this.activityRuns.push({ ...rec, _forEachIteration: i });
+                for (const rec of child.activityRuns) this.activityRuns.push({ ...rec, _forEachIteration: i, _parentActivity: activity.name });
             }
         } else {
             // Parallel — run up to batchCount at a time
@@ -348,11 +353,17 @@ const HANDLER_REGISTRY = {
                     child.activityStatuses = {};
                     child._startTime       = this._startTime;
                     _patchForEachContext(child, item);
+
+                    // Forward child activity events to parent with iteration context
+                    child.on('activityUpdate', (update) => {
+                        this.emit('activityUpdate', { ...update, parentActivity: activity.name, iteration: i });
+                    });
+
                     return new Promise((resolve) => {
                         child.on('pipelineEnd', () => resolve());
                         child.run().catch(() => resolve());
                     }).then(() => {
-                        for (const rec of child.activityRuns) this.activityRuns.push({ ...rec, _forEachIteration: i });
+                        for (const rec of child.activityRuns) this.activityRuns.push({ ...rec, _forEachIteration: i, _parentActivity: activity.name });
                     });
                 }));
             }
@@ -380,11 +391,16 @@ const HANDLER_REGISTRY = {
             child.activityStatuses = {};
             child._startTime       = this._startTime;
 
+            // Forward child activity events to parent with iteration context
+            child.on('activityUpdate', (update) => {
+                this.emit('activityUpdate', { ...update, parentActivity: activity.name, iteration: iterations, branchLabel: String(iterations) });
+            });
+
             await new Promise((resolve) => {
                 child.on('pipelineEnd', resolve);
                 child.run().catch(resolve);
             });
-            for (const rec of child.activityRuns) this.activityRuns.push({ ...rec, _untilIteration: iterations });
+            for (const rec of child.activityRuns) this.activityRuns.push({ ...rec, _untilIteration: iterations, _parentActivity: activity.name });
 
             iterations++;
             const cond = this._eval(expression?.value ?? expression, {});
@@ -410,11 +426,16 @@ const HANDLER_REGISTRY = {
         child.activityStatuses = {};
         child._startTime       = this._startTime;
 
+        // Forward child activity events to parent
+        child.on('activityUpdate', (update) => {
+            this.emit('activityUpdate', { ...update, parentActivity: activity.name, iteration: 0, branchLabel: branchName });
+        });
+
         await new Promise((resolve, reject) => {
             child.on('pipelineEnd', (e) => e.status === 'Failed' ? reject(new Error(e.error)) : resolve());
             child.run().catch(reject);
         });
-        for (const rec of child.activityRuns) this.activityRuns.push({ ...rec, _ifBranch: branchName });
+        for (const rec of child.activityRuns) this.activityRuns.push({ ...rec, _ifBranch: branchName, _parentActivity: activity.name });
         return { expression: result, branch: branchName };
     },
 
@@ -436,11 +457,16 @@ const HANDLER_REGISTRY = {
         child.activityStatuses = {};
         child._startTime       = this._startTime;
 
+        // Forward child activity events to parent
+        child.on('activityUpdate', (update) => {
+            this.emit('activityUpdate', { ...update, parentActivity: activity.name, iteration: 0, branchLabel });
+        });
+
         await new Promise((resolve, reject) => {
             child.on('pipelineEnd', (e) => e.status === 'Failed' ? reject(new Error(e.error)) : resolve());
             child.run().catch(reject);
         });
-        for (const rec of child.activityRuns) this.activityRuns.push({ ...rec, _switchCase: branchLabel });
+        for (const rec of child.activityRuns) this.activityRuns.push({ ...rec, _switchCase: branchLabel, _parentActivity: activity.name });
         return { on: onValue, branch: branchLabel };
     },
 
@@ -473,12 +499,17 @@ const HANDLER_REGISTRY = {
         const child = new LocalPipelineRunner(subJson, subParams, this.workspaceRoot);
         child._startTime = this._startTime;
 
+        // Forward child activity events to parent
+        child.on('activityUpdate', (update) => {
+            this.emit('activityUpdate', { ...update, parentActivity: activity.name, iteration: 0, branchLabel: refName });
+        });
+
         let childStatus = 'Succeeded', childError = null;
         await new Promise((resolve) => {
             child.on('pipelineEnd', (e) => { childStatus = e.status; childError = e.error; resolve(); });
             child.run().catch(() => resolve());
         });
-        for (const rec of child.activityRuns) this.activityRuns.push({ ...rec, _subPipeline: refName });
+        for (const rec of child.activityRuns) this.activityRuns.push({ ...rec, _subPipeline: refName, _parentActivity: activity.name });
 
         if (childStatus === 'Failed') {
             throw new Error(`Sub-pipeline "${refName}" failed: ${childError}`);

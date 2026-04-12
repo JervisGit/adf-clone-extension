@@ -62,7 +62,8 @@ class LocalPipelineRunner extends EventEmitter {
             const activities = this.pipelineJson?.properties?.activities ?? [];
             await this._executeActivityList(activities);
             clearTimeout(timeoutHandle);
-            const finalStatus = this._cancelled ? 'Cancelled' : 'Succeeded';
+            const hasFailed  = Object.values(this.activityStatuses).some(s => s === 'Failed');
+            const finalStatus = this._cancelled ? 'Cancelled' : (hasFailed ? 'Failed' : 'Succeeded');
             this.emit('pipelineEnd', { runId: this.runId, status: finalStatus, activityRuns: this.activityRuns });
         } catch (err) {
             clearTimeout(timeoutHandle);
@@ -731,7 +732,19 @@ const HANDLER_REGISTRY = {
         const url     = String(this._eval(tp.url, {}));
         const method  = (tp.method || 'POST').toUpperCase();
         const body    = tp.body ? this._eval(tp.body, {}) : undefined;
-        const timeout = (parseInt(tp.callBackTimeoutInSecs ?? tp.timeout ?? '600', 10)) * 1000;
+        // Timeout may be a plain number (seconds) or ISO 8601 duration (e.g. "PT1M", "PT30S").
+        const _parseTimeout = (val) => {
+            if (!val) return 600000;
+            const s = String(val);
+            const iso = s.match(/^PT?(?:(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?)?$/);
+            if (iso && s.startsWith('P')) {
+                const h = parseFloat(iso[1] || 0), m = parseFloat(iso[2] || 0), sec = parseFloat(iso[3] || 0);
+                return Math.max(1000, (h * 3600 + m * 60 + sec) * 1000);
+            }
+            const sec = parseFloat(s);
+            return isNaN(sec) ? 600000 : Math.max(1000, sec * 1000);
+        };
+        const timeout = _parseTimeout(tp.callBackTimeoutInSecs ?? tp.timeout);
 
         const headers = {};
         if (tp.headers && typeof tp.headers === 'object') {

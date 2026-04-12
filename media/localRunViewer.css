@@ -523,3 +523,5 @@ body {
 .status-dot-queued     { background: #ff9800; }
 .status-dot-waiting,
 .status-dot-            { background: #bdbdbd; }
+
+.list-error-hint { font-size: 10px; color: var(--vscode-errorForeground, #f44336); font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }

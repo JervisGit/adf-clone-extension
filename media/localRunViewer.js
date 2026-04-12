@@ -502,8 +502,11 @@
             const statusCss = status.toLowerCase();
             const start  = a?.startTime ? new Date(a.startTime).toLocaleTimeString() : '-';
             const dur    = a?.durationMs != null ? formatDuration(a.durationMs) : (a?.status === 'Running' ? 'Running...' : '-');
+            const errorHint = (status === 'Failed' && a?.error)
+                ? `<div class="list-error-hint">${esc(a.error.length > 72 ? a.error.slice(0, 72) + '\u2026' : a.error)}</div>`
+                : '';
             rows.push(`<tr class="list-row" data-name="${esc(name)}">
-                <td class="list-name">${esc(name)}</td>
+                <td class="list-name">${esc(name)}${errorHint}</td>
                 <td>${esc(type)}</td>
                 <td><span class="status-dot status-dot-${statusCss}"></span> ${esc(status)}</td>
                 <td>${esc(start)}</td>
@@ -517,11 +520,14 @@
                 const iStatusCss = iStatus.toLowerCase();
                 const iStart = ir.startTime ? new Date(ir.startTime).toLocaleTimeString() : '-';
                 const iDur   = ir.durationMs != null ? formatDuration(ir.durationMs) : (ir.status === 'Running' ? 'Running...' : '-');
+                const iErrorHint = (iStatus === 'Failed' && ir.error)
+                ? `<div class="list-error-hint">${esc(ir.error.length > 72 ? ir.error.slice(0, 72) + '\u2026' : ir.error)}</div>`
+                : '';
                 rows.push(`<tr class="list-row list-row-child"
                         data-name="${esc(ir.name)}"
                         data-iter-parent="${esc(ir.parentActivity)}"
                         data-iteration="${ir.iteration}">
-                    <td class="list-name list-name-child">\u21b3 ${esc(ir.name)} [${esc(ir.branchLabel ?? String(ir.iteration))}]</td>
+                    <td class="list-name list-name-child">\u21b3 ${esc(ir.name)} [${esc(ir.branchLabel ?? String(ir.iteration))}]${iErrorHint}</td>
                     <td>${esc(ir.type ?? '-')}</td>
                     <td><span class="status-dot status-dot-${iStatusCss}"></span> ${esc(iStatus)}</td>
                     <td>${esc(iStart)}</td>

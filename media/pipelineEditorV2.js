@@ -619,47 +619,35 @@ class Connection {
         const tc = { x: this.to.x   + this.to.width   / 2, y: this.to.y   + this.to.height   / 2 };
         const dx = tc.x - fc.x, dy = tc.y - fc.y;
 
-        const ARROW_PAD = 8;
-        const snap = v => Math.floor(v) + 0.5;
-        let start, end, segs;
-
-        if (dy < 0) {
-            // Target is ABOVE source: route via the side to avoid the path
-            // going straight up through box interiors (the "piercing" visual).
-            // Exit source from the right side (or left if target is to the left),
-            // jog out to a clear vertical lane, go up, then enter target from the same side.
-            const useRight = dx >= 0;
-            const side = useRight ? 'right' : 'left';
-            start = this.from.getConnectionPoint(side);
-            end   = this.to.getConnectionPoint(side);
-            this._arrowTip = { x: end.x, y: end.y };
-            // Pull path endpoint outside the box so arrowhead body is visible.
-            const peX = end.x + (useRight ? ARROW_PAD : -ARROW_PAD);
-            // Vertical lane far enough right (or left) to clear both boxes.
-            const OFFSET = Math.max(40, Math.abs(dx) / 2);
-            const viaX = useRight
-                ? Math.max(this.from.x + this.from.width, this.to.x + this.to.width) + OFFSET
-                : Math.min(this.from.x, this.to.x) - OFFSET;
-            const sx = snap(start.x), sy = snap(start.y);
-            const ey = snap(end.y);
-            const vx = snap(viaX), px = snap(peX);
-            segs = [[sx,sy,vx,sy],[vx,sy,vx,ey],[vx,ey,px,ey]];
-        } else if (Math.abs(dx) > Math.abs(dy)) {
-            // Primarily horizontal: exit/enter left-right ports.
+        // Prefer horizontal routing when x-distance dominates; vertical otherwise.
+        const useHorizontal = Math.abs(dx) > Math.abs(dy);
+        let start, end;
+        if (useHorizontal) {
             start = this.from.getConnectionPoint(dx > 0 ? 'right' : 'left');
             end   = this.to.getConnectionPoint(  dx > 0 ? 'left'  : 'right');
-            this._arrowTip = { x: end.x, y: end.y };
-            const peX = end.x + (dx > 0 ? -ARROW_PAD : ARROW_PAD);
-            const sx = snap(start.x), sy = snap(start.y), ex = snap(peX), ey = snap(end.y);
+        } else {
+            // Vertical: exit bottom when target is below, exit top when target is above.
+            start = this.from.getConnectionPoint(dy > 0 ? 'bottom' : 'top');
+            end   = this.to.getConnectionPoint(  dy > 0 ? 'top'    : 'bottom');
+        }
+
+        // Save the exact box-edge connection point so draw() can place the arrowhead tip there.
+        this._arrowTip = { x: end.x, y: end.y };
+
+        // Pull the path endpoint OUTSIDE the box so the arrowhead body is fully visible.
+        const ARROW_PAD = 8;
+        const pe = { x: end.x, y: end.y };
+        if (useHorizontal) pe.x += dx > 0 ? -ARROW_PAD : ARROW_PAD;
+        else               pe.y += dy > 0 ? -ARROW_PAD : ARROW_PAD;
+
+        const snap = v => Math.floor(v) + 0.5;
+        const sx = snap(start.x), sy = snap(start.y), ex = snap(pe.x), ey = snap(pe.y);
+
+        let segs;
+        if (useHorizontal) {
             const mx = sx + (ex - sx) / 2;
             segs = [[sx,sy,mx,sy],[mx,sy,mx,ey],[mx,ey,ex,ey]];
         } else {
-            // Primarily vertical, target below source: exit bottom, enter top.
-            start = this.from.getConnectionPoint('bottom');
-            end   = this.to.getConnectionPoint('top');
-            this._arrowTip = { x: end.x, y: end.y };
-            const peY = end.y - ARROW_PAD;
-            const sx = snap(start.x), sy = snap(start.y), ex = snap(end.x), ey = snap(peY);
             const my = sy + (ey - sy) / 2;
             segs = [[sx,sy,sx,my],[sx,my,ex,my],[ex,my,ex,ey]];
         }

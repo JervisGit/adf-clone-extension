@@ -7,8 +7,9 @@
 const vscode = require('vscode');
 const path   = require('path');
 const fs     = require('fs');
-const { LocalPipelineRunner } = require('./activityEngine/localRunner');
-const { validatePipeline }    = require('./activityEngine/engine');
+const { LocalPipelineRunner }    = require('./activityEngine/localRunner');
+const { validatePipeline }       = require('./activityEngine/engine');
+const { NotebookSnapshotPanel }  = require('./notebookSnapshotPanel');
 
 class LocalRunPanel {
     static panels = new Map(); // Map<runId, vscode.WebviewPanel>
@@ -102,14 +103,10 @@ class LocalRunPanel {
         });
         runner.on('pipelineEnd', (event) => {
             panel.webview.postMessage({ command: 'pipelineEnd', ...event });
-            // Auto-open any notebook snapshot generated during this run
-            if (Array.isArray(event.activityRuns)) {
-                for (const rec of event.activityRuns) {
-                    if (rec.output?.snapshotFile) {
-                        vscode.env.openExternal(vscode.Uri.file(rec.output.snapshotFile));
-                    }
-                }
-            }
+        });
+
+        runner.on('notebookSnapshot', (snapshotData) => {
+            NotebookSnapshotPanel.show(this.context, snapshotData);
         });
 
         // Handle messages from webview (cancel, show details, and ready signal)

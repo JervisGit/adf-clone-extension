@@ -1,0 +1,100 @@
+/* Notebook Snapshot Viewer — VS Code webview styles */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--vscode-editor-background);
+    color: var(--vscode-editor-foreground);
+    padding: 20px 28px 40px;
+    line-height: 1.5;
+}
+
+.loading {
+    text-align: center;
+    padding: 60px;
+    color: var(--vscode-descriptionForeground);
+    font-size: 14px;
+}
+
+/* Header */
+.nb-header { margin-bottom: 20px; }
+
+.nb-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--vscode-textLink-foreground);
+    margin-bottom: 4px;
+}
+
+.nb-meta {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+}
+
+/* Cell wrapper */
+.cell {
+    margin-bottom: 14px;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+/* Cell gutter labels (In [N], Out [N], Markdown, Parameters) */
+.cell-label {
+    font-size: 11px;
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    color: var(--vscode-descriptionForeground);
+    background: var(--vscode-editorGroupHeader-tabsBackground);
+    padding: 3px 10px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+    user-select: none;
+}
+
+.out-label {
+    background: var(--vscode-sideBar-background);
+    border-top: 1px solid var(--vscode-panel-border);
+}
+
+/* Source code area */
+.cell-source {
+    margin: 0;
+    padding: 10px 14px;
+    font-size: 12.5px;
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    white-space: pre-wrap;
+    word-break: break-all;
+    overflow-x: auto;
+    background: var(--vscode-editor-background);
+    color: var(--vscode-editor-foreground);
+}
+
+.cell-source.md {
+    color: var(--vscode-gitDecoration-untrackedResourceForeground, #73c991);
+}
+
+.param-cell .cell-source {
+    color: var(--vscode-textLink-foreground, #9cdcfe);
+}
+
+/* Output areas */
+.cell-output {
+    margin: 0;
+    padding: 10px 14px;
+    font-size: 12px;
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    white-space: pre-wrap;
+    word-break: break-all;
+    background: var(--vscode-sideBar-background);
+    color: var(--vscode-terminal-foreground, var(--vscode-editor-foreground));
+}
+
+.cell-output.error {
+    background: var(--vscode-inputValidation-errorBackground, rgba(255, 0, 0, 0.05));
+    color: var(--vscode-errorForeground, #f44747);
+}
+
+.cell-output-html {
+    padding: 10px 14px;
+    background: var(--vscode-editor-background);
+    overflow-x: auto;
+}

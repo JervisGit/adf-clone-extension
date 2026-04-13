@@ -3,8 +3,17 @@
   "_instructions": [
     "1. Set synapseEndpoint to your Synapse workspace endpoint URL.",
     "2. Set defaultSparkPool to the name of your Spark pool.",
-    "3. Run 'az login' so DefaultAzureCredential can acquire tokens."
+    "3. Run 'az login' so DefaultAzureCredential can acquire tokens.",
+    "4. Set driverCores/driverMemory/executorCores/executorMemory/numExecutors to match your pool node size.",
+    "   Small=4 cores/28g, Medium=8 cores/56g, Large=16 cores/112g, XLarge=32 cores/224g, XXLarge=64 cores/432g"
   ],
   "synapseEndpoint": "https://test-synapse-jervis.dev.azuresynapse.net",
-  "defaultSparkPool": ""
+  "defaultSparkPool": "testsparkpool",
+  "sessionConfig": {
+    "driverCores":    4,
+    "driverMemory":   "28g",
+    "executorCores":  4,
+    "executorMemory": "28g",
+    "numExecutors":   2
+  }
 }

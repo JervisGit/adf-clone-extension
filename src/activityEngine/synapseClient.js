@@ -88,10 +88,21 @@ class SynapseClient {
 
     // ── Livy Sessions (interactive notebook execution) ─────────────────────────
 
-    async createSession(sparkPool, apiVersion, name, kind, conf) {
+    async createSession(sparkPool, apiVersion, name, kind, conf, sessionConfig) {
+        const body = {
+            name,
+            kind,
+            conf: conf || {},
+            // Synapse requires driver/executor sizing — without these the API returns 400.
+            driverCores:    sessionConfig?.driverCores    ?? 4,
+            driverMemory:   sessionConfig?.driverMemory   ?? '28g',
+            executorCores:  sessionConfig?.executorCores  ?? 4,
+            executorMemory: sessionConfig?.executorMemory ?? '28g',
+            numExecutors:   sessionConfig?.numExecutors   ?? 2,
+        };
         return this._request('POST',
             `/livyApi/versions/${apiVersion}/sparkPools/${sparkPool}/sessions`,
-            { name, kind, conf: conf || {} });
+            body);
     }
 
     async getSession(sparkPool, apiVersion, sessionId) {

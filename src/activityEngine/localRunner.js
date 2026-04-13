@@ -627,7 +627,7 @@ const HANDLER_REGISTRY = {
         const apiVer  = livyCfg.livyApiVersion;
 
         const session   = await client.createSession(
-            sparkPool, apiVer, `localRun-${this.runId.slice(0, 8)}`, kind, {}
+            sparkPool, apiVer, `localRun-${this.runId.slice(0, 8)}`, kind, {}, wsConfig.sessionConfig
         );
         const sessionId = session.id;
 

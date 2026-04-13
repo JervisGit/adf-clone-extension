@@ -211,8 +211,8 @@ body {
 
 /* ── Bottom config panel ─────────────────────────────────────────────────── */
 .config-panel {
-    height: 260px;
-    min-height: 260px;
+    height: 320px;
+    min-height: 320px;
     background: var(--vscode-panel-background);
     border-top: 1px solid var(--vscode-panel-border);
     display: flex;

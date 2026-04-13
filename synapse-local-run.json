@@ -1,0 +1,10 @@
+{
+  "_comment": "Synapse workspace config for local pipeline run/debug.",
+  "_instructions": [
+    "1. Set synapseEndpoint to your Synapse workspace endpoint URL.",
+    "2. Set defaultSparkPool to the name of your Spark pool.",
+    "3. Run 'az login' so DefaultAzureCredential can acquire tokens."
+  ],
+  "synapseEndpoint": "https://test-synapse-jervis.dev.azuresynapse.net",
+  "defaultSparkPool": ""
+}

@@ -322,13 +322,11 @@ function draw() {
     if (!ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     drawGrid();
-    // During drag, only redraw connections that touch the dragged activity (their
-    // segment cache is busted anyway). All other connections can be skipped to reduce
-    // per-frame canvas work and eliminate the main source of drag lag.
-    const connsToRender = (isDragging && draggedActivity)
-        ? connections.filter(c => c.from === draggedActivity || c.to === draggedActivity)
-        : connections;
-    connsToRender.forEach(conn => {
+    // Hide connection lines while dragging — the activity box moves via CSS transform
+    // (GPU-composited, zero reflow) and forcing a full canvas repaint each frame is
+    // the primary source of drag lag. Connections reappear instantly on mouseup.
+    if (isDragging) return;
+    connections.forEach(conn => {
         const highlight = conn === selectedConnection || conn === hoveredConnection;
         conn.draw(ctx, highlight);
     });
@@ -341,10 +339,12 @@ function requestDraw() {
         needsRedraw = true;
         if (animationFrameId) cancelAnimationFrame(animationFrameId);
         animationFrameId = requestAnimationFrame(() => {
-            // Batch DOM position update here (not on every mousemove) to stay at 60 fps
+            // Move via CSS transform (GPU composited) to avoid layout reflow each frame.
+            // style.left/top stay at the drag-start position; transform carries the delta.
             if (isDragging && draggedActivity?.element) {
-                draggedActivity.element.style.left = `${draggedActivity.x}px`;
-                draggedActivity.element.style.top  = `${draggedActivity.y}px`;
+                const dx = draggedActivity.x - (draggedActivity._dragBaseX ?? draggedActivity.x);
+                const dy = draggedActivity.y - (draggedActivity._dragBaseY ?? draggedActivity.y);
+                draggedActivity.element.style.transform = `translate(${dx}px,${dy}px)`;
             }
             draw();
             needsRedraw = false;
@@ -549,6 +549,9 @@ class Activity {
         const wPos = screenToWorld(e.clientX, e.clientY);
         dragOffset.x = wPos.x - this.x;
         dragOffset.y = wPos.y - this.y;
+        // Record stable base position so we can move via transform (no reflow)
+        this._dragBaseX = this.x;
+        this._dragBaseY = this.y;
         this.element.classList.add('dragging');
         this._setSelected(true);
         showProperties(this);
@@ -625,41 +628,44 @@ class Connection {
         const tc = { x: this.to.x   + this.to.width   / 2, y: this.to.y   + this.to.height   / 2 };
         const dx = tc.x - fc.x, dy = tc.y - fc.y;
 
-        // Routing rule:
-        //  - When the target is above the source (dy < 0): ALWAYS use vertical routing
-        //    (exit source top, enter target bottom) regardless of horizontal distance.
-        //    This mirrors the natural "A above B → exit bottom, enter top" behaviour —
-        //    just inverted. Without this, a large dx would pick horizontal routing and
-        //    the path would pass through the middle of the target box.
-        //  - When target is below (dy >= 0): prefer horizontal when dx dominates.
-        const useHorizontal = dy >= 0 && Math.abs(dx) > Math.abs(dy);
-        let start, end;
-        if (useHorizontal) {
+        const ARROW_PAD = 8;
+        const snap = v => Math.floor(v) + 0.5;
+        let start, end, segs;
+
+        if (dy < 0) {
+            // Target B is ABOVE source A.
+            // Route: exit A.top → go UP to a jog-point 32 px BELOW B.bottom
+            //        → horizontal to B.cx → enter B from the bottom.
+            // The horizontal segment sits below B, so nothing passes through B's interior.
+            start = this.from.getConnectionPoint('top');
+            end   = this.to.getConnectionPoint('bottom');
+            this._arrowTip = { x: end.x, y: end.y };
+            const peY  = snap(end.y + ARROW_PAD);              // path end just below B.bottom
+            let   knee = snap(this.to.y + this.to.height + 32);// jog 32 px below B.bottom
+            // Guard: A too close to B — pull knee just above A.top
+            if (knee >= snap(start.y)) knee = snap(start.y) - 4;
+            // Always keep knee below pe so the last segment heads upward
+            if (knee <= peY) knee = peY + 4;
+            const sx = snap(start.x), sy = snap(start.y), ex = snap(end.x);
+            segs = [[sx,sy,sx,knee],[sx,knee,ex,knee],[ex,knee,ex,peY]];
+
+        } else if (Math.abs(dx) > Math.abs(dy)) {
+            // Primarily horizontal (target to the side and below/level).
             start = this.from.getConnectionPoint(dx > 0 ? 'right' : 'left');
             end   = this.to.getConnectionPoint(  dx > 0 ? 'left'  : 'right');
-        } else {
-            // Vertical: exit bottom when target is below, exit top when target is above.
-            start = this.from.getConnectionPoint(dy > 0 ? 'bottom' : 'top');
-            end   = this.to.getConnectionPoint(  dy > 0 ? 'top'    : 'bottom');
-        }
-
-        // Save the exact box-edge connection point so draw() can place the arrowhead tip there.
-        this._arrowTip = { x: end.x, y: end.y };
-
-        // Pull the path endpoint OUTSIDE the box so the arrowhead body is fully visible.
-        const ARROW_PAD = 8;
-        const pe = { x: end.x, y: end.y };
-        if (useHorizontal) pe.x += dx > 0 ? -ARROW_PAD : ARROW_PAD;
-        else               pe.y += dy > 0 ? -ARROW_PAD : ARROW_PAD;
-
-        const snap = v => Math.floor(v) + 0.5;
-        const sx = snap(start.x), sy = snap(start.y), ex = snap(pe.x), ey = snap(pe.y);
-
-        let segs;
-        if (useHorizontal) {
+            this._arrowTip = { x: end.x, y: end.y };
+            const peX = end.x + (dx > 0 ? -ARROW_PAD : ARROW_PAD);
+            const sx = snap(start.x), sy = snap(start.y), ex = snap(peX), ey = snap(end.y);
             const mx = sx + (ex - sx) / 2;
             segs = [[sx,sy,mx,sy],[mx,sy,mx,ey],[mx,ey,ex,ey]];
+
         } else {
+            // Primarily vertical downward (target below source).
+            start = this.from.getConnectionPoint('bottom');
+            end   = this.to.getConnectionPoint('top');
+            this._arrowTip = { x: end.x, y: end.y };
+            const peY = end.y - ARROW_PAD;
+            const sx = snap(start.x), sy = snap(start.y), ex = snap(end.x), ey = snap(peY);
             const my = sy + (ey - sy) / 2;
             segs = [[sx,sy,sx,my],[sx,my,ex,my],[ex,my,ex,ey]];
         }
@@ -860,7 +866,13 @@ function setupCanvasEvents() {
             canvas.style.cursor = 'default';
         }
         if (isDragging) {
-            draggedActivity?.element?.classList.remove('dragging');
+            // Commit final position to left/top and clear the transform
+            if (draggedActivity?.element) {
+                draggedActivity.element.style.left      = `${draggedActivity.x}px`;
+                draggedActivity.element.style.top       = `${draggedActivity.y}px`;
+                draggedActivity.element.style.transform = '';
+                draggedActivity.element.classList.remove('dragging');
+            }
             if (draggedActivity) markAsDirty();
         }
         isDragging = false;

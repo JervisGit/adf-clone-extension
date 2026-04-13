@@ -136,7 +136,7 @@
 
   "synapseWorkspace": {
     "_comment": "Livy API polling settings for SynapseNotebook and SparkJob handlers. The workspace endpoint is read from synapse-local-run.json in your workspace root, not from here.",
-    "livyApiVersion":         "2023-12-01",
+    "livyApiVersion":         "2024-09-20",
     "sessionTimeoutMinutes":  30,
     "sessionPollIntervalMs":  5000,
     "statementPollIntervalMs": 2000,

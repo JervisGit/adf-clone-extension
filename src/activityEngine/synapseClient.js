@@ -91,7 +91,7 @@ class SynapseClient {
     async createSession(sparkPool, apiVersion, name, kind, conf) {
         return this._request('POST',
             `/livyApi/versions/${apiVersion}/sparkPools/${sparkPool}/sessions`,
-            { name, kind, conf: conf || {}, heartbeatTimeoutInSecond: 3600 });
+            { name, kind, conf: conf || {} });
     }
 
     async getSession(sparkPool, apiVersion, sessionId) {

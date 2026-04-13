@@ -64,7 +64,7 @@ class LocalRunPanel {
         const parameters = await promptParameters(pipelineName, paramDefs);
         if (parameters === null) return; // user cancelled
 
-        const runner = new LocalPipelineRunner(pipelineJson, parameters, workspaceRoot);
+        const runner = new LocalPipelineRunner(pipelineJson, parameters, workspaceRoot, this.context.extensionUri.fsPath);
 
         // Extract a lightweight activity summary for the webview canvas layout
         const pipelineActivities = (pipelineJson?.properties?.activities ?? []).map(a => ({

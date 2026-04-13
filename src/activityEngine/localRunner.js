@@ -30,11 +30,12 @@ class LocalPipelineRunner extends EventEmitter {
      * @param {object}  parameters     — user-supplied parameter values { name: value }
      * @param {string}  workspaceRoot  — absolute path to the workspace folder (for ExecutePipeline cross-refs)
      */
-    constructor(pipelineJson, parameters, workspaceRoot) {
+    constructor(pipelineJson, parameters, workspaceRoot, extensionPath) {
         super();
         this.pipelineJson  = pipelineJson;
         this.parameters    = parameters || {};
         this.workspaceRoot = workspaceRoot;
+        this.extensionPath = extensionPath || null;
 
         this.runId        = _randomId();
         this.pipelineName = pipelineJson?.name ?? 'pipeline';
@@ -577,7 +578,7 @@ const HANDLER_REGISTRY = {
         const notebookName = tp.notebook?.referenceName ?? tp.notebookPath;
         const sparkPool    = tp.sparkPool?.referenceName
             ?? tp.sparkPool
-            ?? _loadSynapseWorkspaceConfig(this.workspaceRoot).defaultSparkPool;
+            ?? _loadSynapseWorkspaceConfig(this.workspaceRoot, this.extensionPath).defaultSparkPool;
 
         if (!notebookName) throw new Error('SynapseNotebook: missing notebook.referenceName in typeProperties');
         if (!sparkPool)    throw new Error(
@@ -585,10 +586,10 @@ const HANDLER_REGISTRY = {
             '"defaultSparkPool" in synapse-local-run.json.'
         );
 
-        const wsConfig = _loadSynapseWorkspaceConfig(this.workspaceRoot);
+        const wsConfig = _loadSynapseWorkspaceConfig(this.workspaceRoot, this.extensionPath);
         if (!wsConfig.synapseEndpoint) {
             throw new Error(
-                'SynapseNotebook: set "synapseEndpoint" in synapse-local-run.json in your workspace root.\n' +
+                'SynapseNotebook: set "synapseEndpoint" in synapse-local-run.json in your workspace root or extension folder.\n' +
                 'Example: { "synapseEndpoint": "https://YOUR-WORKSPACE.dev.azuresynapse.net", "defaultSparkPool": "pool1" }'
             );
         }
@@ -672,10 +673,10 @@ const HANDLER_REGISTRY = {
         if (!jobRef)    throw new Error('SparkJob: missing sparkJob.referenceName in typeProperties');
         if (!sparkPool) throw new Error('SparkJob: missing sparkPool.referenceName in typeProperties');
 
-        const wsConfig = _loadSynapseWorkspaceConfig(this.workspaceRoot);
+        const wsConfig = _loadSynapseWorkspaceConfig(this.workspaceRoot, this.extensionPath);
         if (!wsConfig.synapseEndpoint) {
             throw new Error(
-                'SparkJob: set "synapseEndpoint" in synapse-local-run.json in your workspace root.'
+                'SparkJob: set "synapseEndpoint" in synapse-local-run.json in your workspace root or extension folder.'
             );
         }
 
@@ -1086,12 +1087,16 @@ function _patchForEachContext(childRunner, currentItem) {
 
 // ── Synapse workspace config ───────────────────────────────────────────────────
 // Reads synapse-local-run.json from the workspace root. Returns {} if absent.
-function _loadSynapseWorkspaceConfig(workspaceRoot) {
-    if (!workspaceRoot) return {};
-    const cfgFile = path.join(workspaceRoot, 'synapse-local-run.json');
-    if (!fs.existsSync(cfgFile)) return {};
-    try { return JSON.parse(fs.readFileSync(cfgFile, 'utf8')); }
-    catch { return {}; }
+function _loadSynapseWorkspaceConfig(workspaceRoot, extensionPath) {
+    // Prefer the extension folder (developer convenience), fall back to workspace root.
+    for (const dir of [extensionPath, workspaceRoot].filter(Boolean)) {
+        const cfgFile = path.join(dir, 'synapse-local-run.json');
+        if (fs.existsSync(cfgFile)) {
+            try { return JSON.parse(fs.readFileSync(cfgFile, 'utf8')); }
+            catch { /* corrupt file — try next location */ }
+        }
+    }
+    return {};
 }
 
 function _sleepMs(ms) { return new Promise(r => setTimeout(r, ms)); }

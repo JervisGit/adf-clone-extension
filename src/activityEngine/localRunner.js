@@ -604,6 +604,30 @@ const HANDLER_REGISTRY = {
         const lang  = nb.properties?.metadata?.language_info?.name ?? 'python';
         const kind  = NOTEBOOK_LANG_TO_KIND[lang] ?? 'pyspark';
 
+        // Map ADF size names → driver/executor cores+memory for the MemoryOptimized family.
+        // If the activity specifies executorSize/driverSize, those take precedence over
+        // synapse-local-run.json sessionConfig.
+        const SIZE_MAP = {
+            Small:   { cores: 4,  memory: '28g'  },
+            Medium:  { cores: 8,  memory: '56g'  },
+            Large:   { cores: 16, memory: '112g' },
+            XLarge:  { cores: 32, memory: '224g' },
+            XXLarge: { cores: 64, memory: '432g' },
+        };
+        const driverSpec   = SIZE_MAP[tp.driverSize]   ?? SIZE_MAP[tp.executorSize] ?? null;
+        const executorSpec = SIZE_MAP[tp.executorSize] ?? driverSpec ?? null;
+        const baseConfig   = wsConfig.sessionConfig ?? {};
+        const sessionConfig = {
+            driverCores:    driverSpec?.cores    ?? baseConfig.driverCores    ?? 4,
+            driverMemory:   driverSpec?.memory   ?? baseConfig.driverMemory   ?? '28g',
+            executorCores:  executorSpec?.cores  ?? baseConfig.executorCores  ?? 4,
+            executorMemory: executorSpec?.memory ?? baseConfig.executorMemory ?? '28g',
+            numExecutors:   baseConfig.numExecutors ?? 2,
+        };
+
+        // Merge activity-level Spark conf with sessionConfig
+        const activityConf = (tp.conf && typeof tp.conf === 'object') ? tp.conf : {};
+
         // Build parameter injection preamble
         const params    = tp.parameters ?? {};
         const paramCode = Object.keys(params).length > 0
@@ -612,13 +636,9 @@ const HANDLER_REGISTRY = {
                 .join('\n') + '\n'
             : '';
 
-        // Collapse ALL code cells into one statement (batch-style)
+        // Collect code cells
         const codeCells = cells.filter(c => (c.cell_type ?? c.cellType) === 'code');
-        const cellBodies = codeCells.map(c =>
-            Array.isArray(c.source) ? c.source.join('') : (c.source ?? ''));
-        const fullScript = paramCode + cellBodies.join('\n\n');
-
-        if (!fullScript.trim()) {
+        if (codeCells.length === 0) {
             return { notebookName, kind, note: 'No code cells to execute.' };
         }
 
@@ -627,7 +647,7 @@ const HANDLER_REGISTRY = {
         const apiVer  = livyCfg.livyApiVersion;
 
         const session   = await client.createSession(
-            sparkPool, apiVer, `localRun-${this.runId.slice(0, 8)}`, kind, {}, wsConfig.sessionConfig
+            sparkPool, apiVer, `localRun-${this.runId.slice(0, 8)}`, kind, activityConf, sessionConfig
         );
         const sessionId = session.id;
 
@@ -643,21 +663,49 @@ const HANDLER_REGISTRY = {
                 })
             );
 
-            // Submit once — all cells as a single statement
-            const stmt   = await client.submitStatement(sparkPool, apiVer, sessionId, fullScript, kind);
-            const result = await client.waitForStatement(
-                sparkPool, apiVer, sessionId, stmt.id, livyCfg.statementPollIntervalMs
-            );
+            // Execute parameter preamble first (if any), then each cell individually
+            // so we can collect per-cell outputs for the notebook snapshot.
+            const cellResults = [];
 
-            if (result.output?.status === 'error') {
-                const trace = result.output.traceback?.join('\n') ?? '';
-                throw new Error(result.output.evalue ?? 'Notebook execution error' + (trace ? '\n' + trace : ''));
+            if (paramCode.trim()) {
+                await client.submitStatement(sparkPool, apiVer, sessionId, paramCode, kind)
+                    .then(s => client.waitForStatement(sparkPool, apiVer, sessionId, s.id, livyCfg.statementPollIntervalMs))
+                    .catch(() => {}); // parameter injection errors are non-fatal
             }
+
+            for (let i = 0; i < codeCells.length; i++) {
+                const cell = codeCells[i];
+                const src  = Array.isArray(cell.source) ? cell.source.join('') : (cell.source ?? '');
+                if (!src.trim()) { cellResults.push({ source: src, output: null }); continue; }
+
+                this.emit('activityUpdate', {
+                    name: activity.name, status: 'Running', output: null, error: null,
+                    _detail: `Executing cell ${i + 1} / ${codeCells.length}...`,
+                });
+
+                const stmt   = await client.submitStatement(sparkPool, apiVer, sessionId, src, kind);
+                const result = await client.waitForStatement(
+                    sparkPool, apiVer, sessionId, stmt.id, livyCfg.statementPollIntervalMs
+                );
+
+                if (result.output?.status === 'error') {
+                    const trace = (result.output.traceback ?? []).join('\n');
+                    throw new Error(`Cell ${i + 1}: ${result.output.evalue ?? 'execution error'}${trace ? '\n' + trace : ''}`);
+                }
+
+                cellResults.push({ source: src, output: result.output ?? null });
+            }
+
+            // Write HTML snapshot to workspace so user can review it
+            const snapshotPath = _writeNotebookSnapshot(
+                this.workspaceRoot, notebookName, cells, cellResults, params
+            );
 
             return {
                 notebookName, sessionId, kind,
                 cellsExecuted: codeCells.length,
-                output: result.output?.text ?? result.output?.data ?? null,
+                snapshotFile:  snapshotPath,
+                output: cellResults.map(r => r.output?.text ?? r.output?.data?.['text/plain'] ?? '').filter(Boolean).join('\n') || null,
             };
         } finally {
             await client.deleteSession(sparkPool, apiVer, sessionId).catch(() => {});
@@ -1100,6 +1148,75 @@ function _loadSynapseWorkspaceConfig(workspaceRoot, extensionPath) {
 }
 
 function _sleepMs(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// Writes a self-contained HTML notebook snapshot and returns the file path.
+// Each code cell is shown with its source and output side-by-side in notebook style.
+function _writeNotebookSnapshot(workspaceRoot, notebookName, allCells, cellResults, parameters) {
+    if (!workspaceRoot) return null;
+    const esc = s => String(s ?? '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    const paramSection = Object.keys(parameters).length > 0 ? `
+        <div class="cell param-cell">
+            <div class="cell-label">Parameters</div>
+            <pre class="cell-source">${Object.entries(parameters).map(([k,v]) => `${esc(k)} = ${esc(JSON.stringify(v))}`).join('\n')}</pre>
+        </div>` : '';
+
+    let cellIdx = 0;
+    const cellHtml = allCells.map(cell => {
+        const cellType = cell.cell_type ?? cell.cellType ?? 'code';
+        const src = Array.isArray(cell.source) ? cell.source.join('') : (cell.source ?? '');
+        if (cellType === 'markdown') {
+            return `<div class="cell md-cell"><div class="cell-label">Markdown</div><pre class="cell-source md">${esc(src)}</pre></div>`;
+        }
+        const result   = cellResults[cellIdx++] ?? null;
+        const outObj   = result?.output ?? null;
+        let outHtml    = '';
+        if (outObj) {
+            const html = outObj.data?.['text/html'];
+            const text = outObj.text ?? outObj.data?.['text/plain'] ?? outObj.data;
+            if (html) {
+                outHtml = `<div class="cell-output-html">${html}</div>`;
+            } else if (text) {
+                outHtml = `<pre class="cell-output">${esc(typeof text === 'string' ? text : JSON.stringify(text, null, 2))}</pre>`;
+            } else if (outObj.status === 'error') {
+                outHtml = `<pre class="cell-output cell-error">${esc(outObj.evalue)}\n${esc((outObj.traceback ?? []).join('\n'))}</pre>`;
+            }
+        }
+        return `<div class="cell code-cell">
+            <div class="cell-label">In [${cellIdx}]</div>
+            <pre class="cell-source">${esc(src)}</pre>
+            ${outHtml ? `<div class="cell-label out-label">Out [${cellIdx}]</div>${outHtml}` : ''}
+        </div>`;
+    }).join('');
+
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${esc(notebookName)} — snapshot</title>
+<style>
+body{font-family:'Segoe UI',sans-serif;background:#1e1e1e;color:#d4d4d4;margin:0;padding:24px 32px;}
+h1{font-size:16px;font-weight:600;margin-bottom:4px;color:#9cdcfe;}
+.meta{font-size:11px;color:#6a9955;margin-bottom:20px;}
+.cell{margin-bottom:20px;border:1px solid #333;border-radius:4px;overflow:hidden;}
+.cell-label{font-size:11px;color:#858585;background:#252526;padding:3px 10px;border-bottom:1px solid #333;}
+.out-label{background:#1a2a1a;border-top:1px solid #333;}
+.cell-source{margin:0;padding:10px 14px;font-size:12px;font-family:'Cascadia Code','Consolas',monospace;white-space:pre-wrap;word-break:break-all;overflow-x:auto;background:#1e1e1e;color:#ce9178;}
+.cell-source.md{color:#6a9955;}
+.param-cell .cell-source{color:#9cdcfe;}
+.cell-output{margin:0;padding:10px 14px;font-size:12px;font-family:'Cascadia Code','Consolas',monospace;white-space:pre-wrap;word-break:break-all;background:#1a2a1a;color:#b5cea8;}
+.cell-output.cell-error{background:#2a1a1a;color:#f44747;}
+.cell-output-html{padding:10px 14px;background:#1a2a1a;}
+</style></head><body>
+<h1>\u{1F4D3} ${esc(notebookName)}</h1>
+<div class="meta">Snapshot generated ${new Date().toISOString()}</div>
+${paramSection}${cellHtml}
+</body></html>`;
+
+    const outDir  = path.join(workspaceRoot, '.local-run-snapshots');
+    if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
+    const fname   = `${notebookName.replace(/[^a-zA-Z0-9_-]/g, '_')}_${Date.now()}.html`;
+    const outFile = path.join(outDir, fname);
+    fs.writeFileSync(outFile, html, 'utf8');
+    return outFile;
+}
 
 // Minimal CSV parser: handles quoted fields, returns array of row objects.
 function _parseCsv(text) {

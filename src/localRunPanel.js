@@ -102,6 +102,14 @@ class LocalRunPanel {
         });
         runner.on('pipelineEnd', (event) => {
             panel.webview.postMessage({ command: 'pipelineEnd', ...event });
+            // Auto-open any notebook snapshot generated during this run
+            if (Array.isArray(event.activityRuns)) {
+                for (const rec of event.activityRuns) {
+                    if (rec.output?.snapshotFile) {
+                        vscode.env.openExternal(vscode.Uri.file(rec.output.snapshotFile));
+                    }
+                }
+            }
         });
 
         // Handle messages from webview (cancel, show details, and ready signal)

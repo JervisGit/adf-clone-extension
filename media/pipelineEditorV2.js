@@ -175,6 +175,9 @@ function fitToScreen() {
     ty = padding - minY * scale;
     applyTransform();
     draw();
+    // Reveal activities now that they are at the correct screen position
+    const _wc = document.getElementById('worldContainer');
+    if (_wc) _wc.style.visibility = 'visible';
 }
 
 // ─── Panel toggles ─────────────────────────────────────────────────────────────
@@ -187,13 +190,11 @@ function toggleProperties() {
 function toggleConfig() {
     const panel = document.querySelector('.config-panel');
     const btn = document.getElementById('configCollapseBtn');
-    const container = document.querySelector('.container');
     panel.classList.toggle('minimized');
     const isMin = panel.classList.contains('minimized');
     btn.textContent = isMin ? '«' : '»';
-    container.style.height = isMin ? 'calc(100vh - 40px)' : 'calc(100vh - 250px)';
-    // Re-fit after panel animates
-    setTimeout(fitToScreen, 220);
+    // Resize canvas and re-fit after panel animates
+    setTimeout(() => { resizeCanvas(); fitToScreen(); }, 220);
 }
 
 function toggleCategory(element) {
@@ -283,6 +284,11 @@ document.addEventListener('DOMContentLoaded', () => {
     ctx = canvas.getContext('2d');
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
+    // ResizeObserver ensures canvas matches canvasWrapper whenever panel expands/collapses
+    const _canvasWrapperEl = document.getElementById('canvasWrapper');
+    if (typeof ResizeObserver !== 'undefined' && _canvasWrapperEl) {
+        new ResizeObserver(() => resizeCanvas()).observe(_canvasWrapperEl);
+    }
     setupCanvasEvents();
     setupToolbarButtons();
     setupContextMenu();
@@ -311,10 +317,12 @@ function buildGridCache(size) {
 
 function resizeCanvas() {
     if (!canvas) return;
-    canvas.width = 4000;
-    canvas.height = 4000;
-    gridCache     = buildGridCache(4000);
-    gridCacheSize = 4000;
+    const wrapper = document.getElementById('canvasWrapper');
+    canvas.width  = wrapper.offsetWidth  || 800;
+    canvas.height = wrapper.offsetHeight || 600;
+    // No separate grid cache — draw grid live at viewport size with world offset
+    gridCache     = null;
+    gridCacheSize = 0;
     draw();
 }
 
@@ -323,13 +331,14 @@ function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     drawGrid();
     // Hide connection lines while dragging — the activity box moves via CSS transform
-    // (GPU-composited, zero reflow) and forcing a full canvas repaint each frame is
-    // the primary source of drag lag. Connections reappear instantly on mouseup.
     if (isDragging) return;
+    ctx.save();
+    ctx.setTransform(scale, 0, 0, scale, tx, ty);
     connections.forEach(conn => {
         const highlight = conn === selectedConnection || conn === hoveredConnection;
         conn.draw(ctx, highlight);
     });
+    ctx.restore();
 
     // Activity boxes are DOM elements; canvas only draws connections + grid.
 }
@@ -354,14 +363,18 @@ function requestDraw() {
 }
 
 function drawGrid() {
-    // Use cached offscreen bitmap — a single drawImage instead of 400 stroke() calls
-    if (gridCache) {
-        ctx.drawImage(gridCache, 0, 0);
-    } else {
-        // Fallback: build once inline (should not normally happen)
-        gridCache = buildGridCache(canvas.width);
-        ctx.drawImage(gridCache, 0, 0);
-    }
+    // Draw an infinite tiling grid at the current pan/zoom. The grid stays fixed
+    // to world space (it scrolls with the canvas) using a tiled pattern approach.
+    const gridSize = 20;
+    const gs  = gridSize * scale;                     // grid spacing in screen pixels
+    const offX = ((tx % gs) + gs) % gs;               // phase offset X
+    const offY = ((ty % gs) + gs) % gs;               // phase offset Y
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(128,128,128,0.12)';
+    ctx.lineWidth   = 1;
+    for (let x = offX; x < canvas.width;  x += gs) { ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); }
+    for (let y = offY; y < canvas.height; y += gs) { ctx.moveTo(0, y); ctx.lineTo(canvas.width,  y); }
+    ctx.stroke();
 }
 
 // Returns a name based on `base` that doesn't already exist in the activities array.
@@ -700,7 +713,7 @@ class Connection {
         // Draw a wider transparent hit zone when highlighted so selection feels intentional
         if (highlight) {
             ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-            ctx.lineWidth = 10;
+            ctx.lineWidth = 10 / scale;
             ctx.beginPath();
             for (let i = 0; i < segs.length; i++) {
                 const [x1,y1,x2,y2] = segs[i];
@@ -711,7 +724,7 @@ class Connection {
         }
 
         ctx.strokeStyle = highlight ? '#ffffff' : color;
-        ctx.lineWidth = highlight ? 2.5 : 1.5;
+        ctx.lineWidth = (highlight ? 2.5 : 1.5) / scale;
         ctx.beginPath();
         for (let i = 0; i < segs.length; i++) {
             const [x1,y1,x2,y2] = segs[i];
@@ -728,7 +741,7 @@ class Connection {
         const arrowAngle = Math.abs(segDx) >= Math.abs(segDy)
             ? (segDx > 0 ? 0 : Math.PI)
             : (segDy > 0 ? Math.PI / 2 : -Math.PI / 2);
-        const s = 7;
+        const s = 7 / scale;
         ctx.fillStyle = highlight ? '#ffffff' : color;
         ctx.beginPath();
         ctx.moveTo(tip.x, tip.y);

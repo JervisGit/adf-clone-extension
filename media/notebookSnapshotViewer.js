@@ -76,7 +76,7 @@ function renderSnapshot(data) {
 
     return `
         <div class="nb-header">
-            <div class="nb-title">\uD83D\uDCD3 ${esc(notebookName)}</div>
+            <div class="nb-title">${esc(notebookName)}</div>
             <div class="nb-meta">Snapshot generated ${esc(dateStr)}</div>
         </div>
         ${paramSection}

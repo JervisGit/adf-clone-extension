@@ -705,6 +705,7 @@ const HANDLER_REGISTRY = {
 
             // Emit snapshot event so the UI can open a notebook viewer panel
             this.emit('notebookSnapshot', {
+                activityName: activity.name,
                 notebookName,
                 generatedAt: new Date().toISOString(),
                 evaluatedParams,

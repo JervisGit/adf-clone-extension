@@ -13,7 +13,7 @@ class NotebookSnapshotPanel {
     static show(context, snapshotData) {
         const panel = vscode.window.createWebviewPanel(
             'notebookSnapshot',
-            `\uD83D\uDCD3 ${snapshotData.notebookName}`,
+            snapshotData.notebookName,
             vscode.ViewColumn.Beside,
             { enableScripts: true, retainContextWhenHidden: true }
         );
@@ -33,7 +33,7 @@ class NotebookSnapshotPanel {
     <meta http-equiv="Content-Security-Policy"
           content="default-src 'none'; style-src ${csp} 'unsafe-inline'; script-src ${csp} 'unsafe-inline';">
     <link rel="stylesheet" href="${cssUri}">
-    <title>\uD83D\uDCD3 ${_esc(snapshotData.notebookName)}</title>
+    <title>${_esc(snapshotData.notebookName)}</title>
 </head>
 <body>
     <div id="app"><div class="loading">Loading notebook snapshot\u2026</div></div>

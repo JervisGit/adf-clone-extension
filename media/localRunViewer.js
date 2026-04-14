@@ -25,6 +25,7 @@
         startTime:     new Date(),
         endTime:       null,
         layout:        {},   // { name: { x, y } } -- computed once from pipelineActivities
+        snapshots:     new Set(), // activityNames that have notebook snapshots available
     };
 
     // --- Config ---------------------------------------------------------------
@@ -141,8 +142,12 @@
         window.addEventListener('message', (event) => {
             const msg = event.data;
             switch (msg.command) {
-                case 'activityUpdate': handleActivityUpdate(msg); break;
-                case 'pipelineEnd':    handlePipelineEnd(msg);    break;
+                case 'activityUpdate':    handleActivityUpdate(msg); break;
+                case 'pipelineEnd':       handlePipelineEnd(msg);    break;
+                case 'snapshotAvailable':
+                    state.snapshots.add(msg.activityName);
+                    render();
+                    break;
             }
         });
     }
@@ -286,6 +291,17 @@
         document.getElementById('btn-view-output')?.addEventListener('click',  () => showPopover('Output',  state.selectedName));
         document.getElementById('btn-view-error')?.addEventListener('click',   () => showPopover('Error',   state.selectedName));
         document.getElementById('btn-view-details')?.addEventListener('click', () => showPopover('Details', state.selectedName));
+        document.getElementById('btn-view-snapshot')?.addEventListener('click', (e) => {
+            vscode.postMessage({ command: 'openSnapshot', activityName: e.currentTarget.dataset.snap });
+        });
+
+        // Snapshot buttons in the list table (use event delegation since there can be many)
+        document.querySelectorAll('.btn-view-snapshot').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation(); // don't select the row
+                vscode.postMessage({ command: 'openSnapshot', activityName: btn.dataset.snap });
+            });
+        });
 
         // Iteration child output popover
         document.getElementById('btn-iter-output')?.addEventListener('click', () => {
@@ -505,12 +521,15 @@
             const errorHint = (status === 'Failed' && a?.error)
                 ? `<div class="list-error-hint">${esc(a.error.length > 72 ? a.error.slice(0, 72) + '\u2026' : a.error)}</div>`
                 : '';
+            const snapshotBtn = state.snapshots.has(name)
+                ? `<button class="btn-view-snapshot" data-snap="${esc(name)}" title="Re-open notebook snapshot">View Notebook</button>`
+                : '';
             rows.push(`<tr class="list-row" data-name="${esc(name)}">
                 <td class="list-name">${esc(name)}${errorHint}</td>
                 <td>${esc(type)}</td>
                 <td><span class="status-dot status-dot-${statusCss}"></span> ${esc(status)}</td>
                 <td>${esc(start)}</td>
-                <td>${esc(dur)}</td>
+                <td>${esc(dur)}${snapshotBtn}</td>
             </tr>`);
 
             // ForEach / Until iteration sub-rows
@@ -603,6 +622,7 @@
             ${a.output != null  ? `<button class="btn btn-secondary" id="btn-view-output">Output \u2191</button>` : ''}
             ${a.error           ? `<button class="btn btn-secondary" id="btn-view-error">Error \u2191</button>`   : ''}
             <button class="btn btn-secondary" id="btn-view-details">Details \u2191</button>
+            ${state.snapshots.has(a.name) ? `<button class="btn btn-primary" id="btn-view-snapshot" data-snap="${esc(a.name)}">View Notebook</button>` : ''}
         </div>`;
         return html;
     }

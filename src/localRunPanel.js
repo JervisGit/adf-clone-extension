@@ -105,8 +105,13 @@ class LocalRunPanel {
             panel.webview.postMessage({ command: 'pipelineEnd', ...event });
         });
 
+        // Per-activity snapshot store so the user can re-open snapshots after they close
+        const snapshots = new Map(); // activityName → snapshotData
+
         runner.on('notebookSnapshot', (snapshotData) => {
+            snapshots.set(snapshotData.activityName, snapshotData);
             NotebookSnapshotPanel.show(this.context, snapshotData);
+            panel.webview.postMessage({ command: 'snapshotAvailable', activityName: snapshotData.activityName });
         });
 
         // Handle messages from webview (cancel, show details, and ready signal)
@@ -119,6 +124,11 @@ class LocalRunPanel {
                 case 'cancel':
                     runner.cancel();
                     break;
+                case 'openSnapshot': {
+                    const snap = snapshots.get(msg.activityName);
+                    if (snap) NotebookSnapshotPanel.show(this.context, snap);
+                    break;
+                }
             }
         }, undefined, this.context.subscriptions);
     }

@@ -919,7 +919,7 @@ const HANDLER_REGISTRY = {
             const parsed = JSON.parse(rawText);
             rows = Array.isArray(parsed) ? parsed : (parsed.value ?? [parsed]);
         } else if (dsType.includes('DelimitedText') || dsType.includes('Csv') || filePath.endsWith('.csv')) {
-            rows = _parseCsv(rawText);
+            rows = _parseCsv(rawText).rows;
         } else {
             rows = [{ value: rawText }];
         }
@@ -1246,14 +1246,15 @@ function _mergeSnapshotCells(allCells, cellResults) {
 // Minimal CSV parser: handles quoted fields, returns array of row objects.
 function _parseCsv(text) {
     const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-    if (lines.length === 0) return [];
-    const headers = _splitCsvLine(lines[0]);
-    return lines.slice(1).map(line => {
+    if (lines.length === 0) return { rows: [], columns: [] };
+    const columns = _splitCsvLine(lines[0]);
+    const rows = lines.slice(1).map(line => {
         const vals = _splitCsvLine(line);
         const row  = {};
-        headers.forEach((h, i) => { row[h] = vals[i] ?? ''; });
+        columns.forEach((h, i) => { row[h] = vals[i] ?? ''; });
         return row;
     });
+    return { rows, columns };
 }
 
 function _splitCsvLine(line) {

@@ -3,13 +3,13 @@
  * Uses Azure Identity for authentication and REST API for file operations
  */
 
-const { DefaultAzureCredential } = require('@azure/identity');
+const { AzureCliCredential } = require('@azure/identity');
 
 class ADLSRestClient {
     constructor(storageAccountName) {
         this.storageAccountName = storageAccountName;
         this.baseUrl = `https://${storageAccountName}.dfs.core.windows.net`;
-        this.credential = new DefaultAzureCredential();
+        this.credential = new AzureCliCredential();
         this.scope = 'https://storage.azure.com/.default';
     }
 

@@ -1,4 +1,6 @@
 const esbuild = require("esbuild");
+const fs      = require("fs");
+const path    = require("path");
 
 const production = process.argv.includes('--production');
 const watch = process.argv.includes('--watch');
@@ -47,6 +49,13 @@ async function main() {
 	} else {
 		await ctx.rebuild();
 		await ctx.dispose();
+		// Copy sql_runner.py into dist/ so it's accessible at runtime
+		const src  = path.join(__dirname, 'src', 'activityEngine', 'sql_runner.py');
+		const dest = path.join(__dirname, 'dist', 'sql_runner.py');
+		if (fs.existsSync(src)) {
+			fs.copyFileSync(src, dest);
+			console.log('[esbuild] copied sql_runner.py -> dist/');
+		}
 	}
 }
 

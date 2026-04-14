@@ -19,6 +19,8 @@ const runConfig = require('../local-run-config.json');
 const { SynapseClient, NOTEBOOK_LANG_TO_KIND } = require('./synapseClient');
 const { ADLSRestClient } = require('../adlsRestClient');
 const { resolveDatasetToAdls, buildAdlsPath } = require('./datasetResolver');
+const { resolveSqlLinkedService, resolveSqlDataset } = require('./sqlResolver');
+const { SqlClient } = require('./sqlClient');
 const copyConfig = require('../copyActivityConfig.json');
 
 const RUNNERS     = runConfig.activityRunners;
@@ -1078,72 +1080,103 @@ const HANDLER_REGISTRY = {
         );
     },
 
-    // â”€â”€ Copy (ADLS Gen2 / Blob only, same-format streaming) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // -- Copy (ADLS/Blob -> ADLS/Blob, or ADLS CSV/JSON -> Azure SQL) --
     async copyHandler(activity) {
         const tp = activity.typeProperties || {};
-
-        // Resolve source dataset
-        const srcName = tp.source?.dataset?.referenceName
-            ?? (activity.inputs?.[0]?.referenceName);
-        const sinkName = tp.sink?.dataset?.referenceName
-            ?? (activity.outputs?.[0]?.referenceName);
-
+        const srcName  = tp.source?.dataset?.referenceName ?? (activity.inputs?.[0]?.referenceName);
+        const sinkName = tp.sink?.dataset?.referenceName   ?? (activity.outputs?.[0]?.referenceName);
         if (!srcName)  throw new Error('Copy: cannot determine source dataset reference');
         if (!sinkName) throw new Error('Copy: cannot determine sink dataset reference');
-
-        const srcLoc  = resolveDatasetToAdls(srcName,  this.workspaceRoot, this.extensionPath);
+        const srcLoc = resolveDatasetToAdls(srcName, this.workspaceRoot, this.extensionPath);
+        if (!srcLoc || !srcLoc.storageAccount)
+            throw new Error(`Copy: source dataset "${srcName}" does not resolve to ADLS Gen2 / Blob.`);
+        // -- SQL sink path --
+        const sinkSql = resolveSqlDataset(sinkName, this.workspaceRoot, this.extensionPath);
+        if (sinkSql) {
+            const sqlConn = resolveSqlLinkedService(sinkSql.linkedServiceName, this.workspaceRoot, this.extensionPath);
+            if (!sqlConn) throw new Error(`Copy: cannot resolve SQL linked service for sink "${sinkName}"`);
+            const srcAdls   = new ADLSRestClient(srcLoc.storageAccount);
+            const srcPath   = buildAdlsPath(srcLoc);
+            const rawText   = await srcAdls.readFile(srcLoc.container, srcPath);
+            const srcDsFile = path.join(this.workspaceRoot, 'dataset', `${srcName}.json`);
+            const srcDsType = fs.existsSync(srcDsFile) ? (JSON.parse(fs.readFileSync(srcDsFile, 'utf8')).properties?.type || '') : '';
+            let rows = [], columns = [];
+            if (!srcDsType || srcDsType === 'DelimitedText') {
+                ({ rows, columns } = _parseCsv(rawText));
+            } else if (srcDsType === 'Json') {
+                const parsed = JSON.parse(rawText);
+                const arr = Array.isArray(parsed) ? parsed : [parsed];
+                columns = arr.length ? Object.keys(arr[0]) : [];
+                rows = arr;
+            } else {
+                throw new Error(`Copy: source format "${srcDsType}" not supported for SQL sink in local run.`);
+            }
+            const client = new SqlClient(sqlConn.server, sqlConn.database);
+            const result = await client.bulkInsert(sinkSql.schema, sinkSql.table, rows, columns);
+            return {
+                source: `${srcLoc.storageAccount}/${srcLoc.container}/${srcPath}`,
+                sink: `${sqlConn.server}/${sqlConn.database}/${sinkSql.schema}.${sinkSql.table}`,
+                rowsCopied: result.rowsAffected, format: srcDsType || 'DelimitedText',
+            };
+        }
+        // -- ADLS/Blob -> ADLS/Blob path --
         const sinkLoc = resolveDatasetToAdls(sinkName, this.workspaceRoot, this.extensionPath);
-
-        if (!srcLoc  || !srcLoc.storageAccount)  throw new Error(`Copy: source dataset "${srcName}" does not resolve to ADLS Gen2 / Blob. Only AzureBlobFS and AzureBlobStorage linked services are supported in local run Copy.`);
-        if (!sinkLoc || !sinkLoc.storageAccount) throw new Error(`Copy: sink dataset "${sinkName}" does not resolve to ADLS Gen2 / Blob. Only AzureBlobFS and AzureBlobStorage linked services are supported in local run Copy.`);
-
-        // Determine storage types (adls or blob) and look up pair strategy
+        if (!sinkLoc || !sinkLoc.storageAccount)
+            throw new Error(`Copy: sink dataset "${sinkName}" does not resolve to ADLS Gen2 / Blob or Azure SQL.`);
         const srcType  = srcLoc.isAdls  ? 'adls' : 'blob';
         const sinkType = sinkLoc.isAdls ? 'adls' : 'blob';
-        const pairKey  = `${srcType}â†’${sinkType}`;
-
+        const pairKey  = `${srcType}->${sinkType}`;
         if (!copyConfig.supportedPairs[pairKey]) {
-            const reason = copyConfig.unsupportedPairs[pairKey]
-                ?? `Copy from "${srcType}" to "${sinkType}" is not supported in local run mode.`;
+            const reason = copyConfig.unsupportedPairs?.[pairKey] || `Copy from "${srcType}" to "${sinkType}" is not supported in local run mode.`;
             throw new Error(`Copy: ${reason}`);
         }
-
-        // Format compatibility check: warn if source and sink dataset types differ
         const srcDsFile  = path.join(this.workspaceRoot, 'dataset', `${srcName}.json`);
         const sinkDsFile = path.join(this.workspaceRoot, 'dataset', `${sinkName}.json`);
-        const srcDsType  = fs.existsSync(srcDsFile)  ? (JSON.parse(fs.readFileSync(srcDsFile,  'utf8')).properties?.type ?? '') : '';
-        const sinkDsType = fs.existsSync(sinkDsFile) ? (JSON.parse(fs.readFileSync(sinkDsFile, 'utf8')).properties?.type ?? '') : '';
-
-        const sameFormat = srcDsType === sinkDsType || !srcDsType || !sinkDsType;
-        if (!sameFormat) {
-            // Cross-format is not supported: raw text copy would break structure
-            throw new Error(
-                `Copy: format conversion from "${srcDsType}" to "${sinkDsType}" is not supported in local run mode. ` +
-                `Only same-format copies (e.g. DelimitedTextâ†’DelimitedText) are supported. ` +
-                `Cross-format conversion (e.g. CSVâ†’Parquet) requires a Synapse Spark engine.`
-            );
-        }
-
-        // Stream: read source, write to sink
+        const srcDsType  = fs.existsSync(srcDsFile)  ? (JSON.parse(fs.readFileSync(srcDsFile,  'utf8')).properties?.type || '') : '';
+        const sinkDsType = fs.existsSync(sinkDsFile) ? (JSON.parse(fs.readFileSync(sinkDsFile, 'utf8')).properties?.type || '') : '';
+        if (srcDsType && sinkDsType && srcDsType !== sinkDsType)
+            throw new Error(`Copy: format conversion from "${srcDsType}" to "${sinkDsType}" is not supported in local run mode.`);
         const srcAdls  = new ADLSRestClient(srcLoc.storageAccount);
         const sinkAdls = new ADLSRestClient(sinkLoc.storageAccount);
-
         const srcPath  = buildAdlsPath(srcLoc);
         const sinkPath = buildAdlsPath(sinkLoc);
-
-        const content = await srcAdls.readFile(srcLoc.container, srcPath);
+        const content  = await srcAdls.readFile(srcLoc.container, srcPath);
         await sinkAdls.writeFile(sinkLoc.container, sinkPath, content);
-
-        return {
-            source: `${srcLoc.storageAccount}/${srcLoc.container}/${srcPath}`,
-            sink:   `${sinkLoc.storageAccount}/${sinkLoc.container}/${sinkPath}`,
-            bytes:  Buffer.byteLength(content, 'utf8'),
-            format: srcDsType || 'unknown',
-            note:   'Local run: raw text stream copy (same format only)',
-        };
+        return { source: `${srcLoc.storageAccount}/${srcLoc.container}/${srcPath}`, sink: `${sinkLoc.storageAccount}/${sinkLoc.container}/${sinkPath}`, bytes: Buffer.byteLength(content, 'utf8'), format: srcDsType || 'unknown', note: 'Local run: raw text stream copy (same format only)' };
     },
 
-    // â”€â”€ Not Supported â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // -- Script (Azure SQL via Python subprocess) --
+    async scriptHandler(activity) {
+        const lsName = activity.linkedServiceName?.referenceName;
+        if (!lsName) throw new Error('Script: missing linkedServiceName');
+        const tp = activity.typeProperties || {};
+        const scripts = (tp.scripts || []).map(s => ({ type: s.type || 'Query', text: String(this._eval(s.text || '', {}) || '') }));
+        if (!scripts.length) throw new Error('Script: no scripts in typeProperties.scripts');
+        const sqlConn = resolveSqlLinkedService(lsName, this.workspaceRoot, this.extensionPath);
+        if (!sqlConn) throw new Error(`Script: cannot resolve linked service "${lsName}" to a SQL connection.`);
+        const client = new SqlClient(sqlConn.server, sqlConn.database);
+        const results = await client.executeScripts(scripts);
+        const last = results[results.length - 1] || {};
+        return { resultSetCount: results.length, recordsetCount: results.reduce((n, r) => n + (r.recordset?.length || 0), 0), recordset: last.recordset || [], rowsAffected: last.rowsAffected || 0 };
+    },
+
+    // -- SqlServerStoredProcedure (Azure SQL via Python subprocess) --
+    async storedProcedureHandler(activity) {
+        const lsName = activity.linkedServiceName?.referenceName;
+        if (!lsName) throw new Error('SqlServerStoredProcedure: missing linkedServiceName');
+        const tp = activity.typeProperties || {};
+        const procName = String(this._eval(tp.storedProcedureName || tp.storedProcedure || '', {}) || '');
+        if (!procName) throw new Error('SqlServerStoredProcedure: missing storedProcedureName');
+        const rawParams = tp.storedProcedureParameters || {};
+        const params = {};
+        for (const [name, def] of Object.entries(rawParams))
+            params[name] = { type: def.type, value: this._eval(def.value, {}) };
+        const sqlConn = resolveSqlLinkedService(lsName, this.workspaceRoot, this.extensionPath);
+        if (!sqlConn) throw new Error(`SqlServerStoredProcedure: cannot resolve linked service "${lsName}".`);
+        const client = new SqlClient(sqlConn.server, sqlConn.database);
+        const result = await client.executeStoredProcedure(procName, params);
+        return { storedProcedureName: procName, rowsAffected: result.rowsAffected, recordset: result.recordset || [] };
+    },
     async notSupportedHandler(activity) {
         const conf   = RUNNERS[activity.type];
         const reason = conf?.notSupportedReason ?? `"${activity.type}" is not supported in local run mode.`;

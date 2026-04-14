@@ -93,14 +93,14 @@
       "description": "Submits a SparkJobDefinition to a Synapse Spark pool via the Livy batch API. Requires synapse-local-run.json in the workspace root with synapseEndpoint set."
     },
     "Script": {
-      "handler": "notSupportedHandler",
+      "handler": "scriptHandler",
       "supportsCancel": false,
-      "notSupportedReason": "Script requires a live SQL serverless/dedicated pool connection. Not supported in local run mode."
+      "description": "Executes SQL scripts against Azure SQL Database using pyodbc + AzureCliCredential via Python subprocess."
     },
     "SqlServerStoredProcedure": {
-      "handler": "notSupportedHandler",
+      "handler": "storedProcedureHandler",
       "supportsCancel": false,
-      "notSupportedReason": "SqlServerStoredProcedure requires a live SQL server connection. Not supported in local run mode."
+      "description": "Executes a stored procedure against Azure SQL Database using pyodbc + AzureCliCredential via Python subprocess."
     },
     "Copy": {
       "handler": "copyHandler",

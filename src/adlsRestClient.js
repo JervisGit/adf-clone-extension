@@ -58,31 +58,33 @@ class ADLSRestClient {
     }
 
     /**
-     * Read file content from ADLS
+     * Read file content from ADLS Gen2 / Blob.
+     * Tries the DFS endpoint first; if the account has SoftDelete/BlobStorageEvents
+     * enabled (HTTP 409 EndpointUnsupportedAccountFeatures) it automatically falls
+     * back to the Blob endpoint.
      * @param {string} containerName - The container name
      * @param {string} filePath - Path to the file
      */
     async readFile(containerName, filePath) {
         const token = await this.getAccessToken();
-        
-        // Encode each path segment separately to preserve slashes
         const encodedPath = filePath.split('/').map(segment => encodeURIComponent(segment)).join('/');
-        const url = `${this.baseUrl}/${containerName}/${encodedPath}`;
+        const headers = { 'Authorization': `Bearer ${token}`, 'x-ms-version': '2020-02-10' };
 
-        const response = await fetch(url, {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'x-ms-version': '2020-02-10'
-            }
-        });
+        // Try DFS endpoint first
+        const dfsUrl = `${this.baseUrl}/${containerName}/${encodedPath}`;
+        const dfsResp = await fetch(dfsUrl, { method: 'GET', headers });
+        if (dfsResp.ok) return await dfsResp.text();
 
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to read file: ${response.status} ${response.statusText}\n${errorText}`);
+        const errorText = await dfsResp.text();
+        // Fall back to Blob endpoint on 409 EndpointUnsupportedAccountFeatures
+        if (dfsResp.status === 409 && errorText.includes('EndpointUnsupportedAccountFeatures')) {
+            const blobUrl = `https://${this.storageAccountName}.blob.core.windows.net/${containerName}/${encodedPath}`;
+            const blobResp = await fetch(blobUrl, { method: 'GET', headers });
+            if (blobResp.ok) return await blobResp.text();
+            const blobErr = await blobResp.text();
+            throw new Error(`Failed to read file (blob fallback): ${blobResp.status} ${blobResp.statusText}\n${blobErr}`);
         }
-
-        return await response.text();
+        throw new Error(`Failed to read file: ${dfsResp.status} ${dfsResp.statusText}\n${errorText}`);
     }
 
     /**
@@ -168,33 +170,39 @@ class ADLSRestClient {
     async writeFile(containerName, filePath, content) {
         const token = await this.getAccessToken();
         const encodedPath = filePath.split('/').map(segment => encodeURIComponent(segment)).join('/');
-        const baseUrl = `${this.baseUrl}/${containerName}/${encodedPath}`;
+        const dfsBase = `${this.baseUrl}/${containerName}/${encodedPath}`;
         const data = Buffer.from(content, 'utf-8');
         const contentLength = data.length;
+        const authHeaders = { 'Authorization': `Bearer ${token}`, 'x-ms-version': '2020-02-10' };
 
         // Step 1: Create (overwrite if exists)
-        const createResponse = await fetch(`${baseUrl}?resource=file&overwrite=true`, {
+        const createResponse = await fetch(`${dfsBase}?resource=file&overwrite=true`, {
             method: 'PUT',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'x-ms-version': '2020-02-10',
-                'Content-Length': '0'
-            }
+            headers: { ...authHeaders, 'Content-Length': '0' }
         });
+        // DFS not supported on this account — fall back to Blob single-PUT
         if (!createResponse.ok) {
-            const err = await createResponse.text();
-            throw new Error(`ADLS create failed: ${createResponse.status} ${createResponse.statusText}\n${err}`);
+            const createErr = await createResponse.text();
+            if (createResponse.status === 409 && createErr.includes('EndpointUnsupportedAccountFeatures')) {
+                const blobUrl = `https://${this.storageAccountName}.blob.core.windows.net/${containerName}/${encodedPath}`;
+                const blobResp = await fetch(blobUrl, {
+                    method: 'PUT',
+                    headers: { ...authHeaders, 'x-ms-blob-type': 'BlockBlob', 'Content-Length': String(contentLength), 'Content-Type': 'application/octet-stream' },
+                    body: data
+                });
+                if (!blobResp.ok) {
+                    const blobErr = await blobResp.text();
+                    throw new Error(`ADLS write failed (blob fallback): ${blobResp.status} ${blobResp.statusText}\n${blobErr}`);
+                }
+                return;
+            }
+            throw new Error(`ADLS create failed: ${createResponse.status} ${createResponse.statusText}\n${createErr}`);
         }
 
         // Step 2: Append data
-        const appendResponse = await fetch(`${baseUrl}?action=append&position=0`, {
+        const appendResponse = await fetch(`${dfsBase}?action=append&position=0`, {
             method: 'PATCH',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'x-ms-version': '2020-02-10',
-                'Content-Length': String(contentLength),
-                'Content-Type': 'application/octet-stream'
-            },
+            headers: { ...authHeaders, 'Content-Length': String(contentLength), 'Content-Type': 'application/octet-stream' },
             body: data
         });
         if (!appendResponse.ok) {
@@ -203,13 +211,9 @@ class ADLSRestClient {
         }
 
         // Step 3: Flush
-        const flushResponse = await fetch(`${baseUrl}?action=flush&position=${contentLength}`, {
+        const flushResponse = await fetch(`${dfsBase}?action=flush&position=${contentLength}`, {
             method: 'PATCH',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'x-ms-version': '2020-02-10',
-                'Content-Length': '0'
-            }
+            headers: { ...authHeaders, 'Content-Length': '0' }
         });
         if (!flushResponse.ok) {
             const err = await flushResponse.text();

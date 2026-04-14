@@ -23,9 +23,10 @@ const path = require('path');
  *
  * @param {string} datasetName
  * @param {string} workspaceRoot  absolute path to workspace Documents folder
+ * @param {string} [extensionPath]  optional path to the extension folder (also searched for linkedService/)
  * @returns {DatasetLocation|null}  null if unsupported, missing, or unparseable
  */
-function resolveDatasetToAdls(datasetName, workspaceRoot) {
+function resolveDatasetToAdls(datasetName, workspaceRoot, extensionPath) {
     if (!datasetName || !workspaceRoot) return null;
 
     // ── Read dataset JSON ─────────────────────────────────────────────────────
@@ -41,13 +42,15 @@ function resolveDatasetToAdls(datasetName, workspaceRoot) {
     const lsName   = dsProps.linkedServiceName?.referenceName;
     if (!lsName) return null;
 
-    // ── Read linked service JSON ──────────────────────────────────────────────
-    const lsFile = path.join(workspaceRoot, 'linkedService', `${lsName}.json`);
-    if (!fs.existsSync(lsFile)) return null;
-
+    // ── Read linked service JSON (workspace root first, then extension folder) ─
     let ls;
-    try { ls = JSON.parse(fs.readFileSync(lsFile, 'utf8')); }
-    catch { return null; }
+    for (const dir of [workspaceRoot, extensionPath].filter(Boolean)) {
+        const lsFile = path.join(dir, 'linkedService', `${lsName}.json`);
+        if (!fs.existsSync(lsFile)) continue;
+        try { ls = JSON.parse(fs.readFileSync(lsFile, 'utf8')); break; }
+        catch { /* try next location */ }
+    }
+    if (!ls) return null;
 
     const lsType  = ls.properties?.type;
     const lsProps = ls.properties?.typeProperties || {};

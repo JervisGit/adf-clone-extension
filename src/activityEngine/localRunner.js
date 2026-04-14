@@ -1,8 +1,8 @@
-'use strict';
-// localRunner.js — locally executes a Synapse pipeline definition.
+﻿'use strict';
+// localRunner.js â€” locally executes a Synapse pipeline definition.
 //
 // Design principle: all activity type dispatch is driven by local-run-config.json.
-// To add/disable a handler, edit the config — do not add if/else chains here.
+// To add/disable a handler, edit the config â€” do not add if/else chains here.
 //
 // Usage:
 //   const runner = new LocalPipelineRunner(pipelineJson, parameters, workspaceRoot);
@@ -17,18 +17,48 @@ const fs   = require('fs');
 const { evaluate } = require('./expressionEvaluator');
 const runConfig = require('../local-run-config.json');
 const { SynapseClient, NOTEBOOK_LANG_TO_KIND } = require('./synapseClient');
-const ADLSRestClient = require('../adlsRestClient');
+const { ADLSRestClient } = require('../adlsRestClient');
 const { resolveDatasetToAdls, buildAdlsPath } = require('./datasetResolver');
 const copyConfig = require('../copyActivityConfig.json');
 
 const RUNNERS     = runConfig.activityRunners;
 const RUN_LIMITS  = runConfig.runLimits;
 
+/**
+ * Parse an ADF TimeSpan string to total seconds.
+ * Supported formats:
+ *   D.HH:MM:SS  (e.g. "0.00:30:00" = 1800 seconds)
+ *   HH:MM:SS    (e.g. "00:30:00"   = 1800 seconds)
+ *   PT...       ISO 8601 (e.g. "PT30S", "PT5M", "PT1H") — kept for compat
+ *   plain int   (seconds, legacy)
+ */
+function parseAdfTimespan(val, defaultSec = 600) {
+    if (!val) return defaultSec;
+    const s = String(val).trim();
+    // D.HH:MM:SS or HH:MM:SS
+    const ts = s.match(/^(?:(\d+)\.)?(\d+):(\d+):(\d+)$/);
+    if (ts) {
+        return (parseInt(ts[1] || '0', 10) * 86400 +
+                parseInt(ts[2],          10) * 3600  +
+                parseInt(ts[3],          10) * 60    +
+                parseInt(ts[4],          10));
+    }
+    // ISO 8601 duration PT[nH][nM][nS]
+    const iso = s.match(/^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?$/i);
+    if (iso) {
+        return (parseInt(iso[1] || '0', 10) * 3600 +
+                parseInt(iso[2] || '0', 10) * 60    +
+                parseFloat(iso[3] || '0'));
+    }
+    const n = parseInt(s, 10);
+    return isNaN(n) ? defaultSec : n;
+}
+
 class LocalPipelineRunner extends EventEmitter {
     /**
-     * @param {object}  pipelineJson   — raw pipeline JSON { name, properties: { activities, parameters, variables } }
-     * @param {object}  parameters     — user-supplied parameter values { name: value }
-     * @param {string}  workspaceRoot  — absolute path to the workspace folder (for ExecutePipeline cross-refs)
+     * @param {object}  pipelineJson   â€” raw pipeline JSON { name, properties: { activities, parameters, variables } }
+     * @param {object}  parameters     â€” user-supplied parameter values { name: value }
+     * @param {string}  workspaceRoot  â€” absolute path to the workspace folder (for ExecutePipeline cross-refs)
      */
     constructor(pipelineJson, parameters, workspaceRoot, extensionPath) {
         super();
@@ -79,7 +109,7 @@ class LocalPipelineRunner extends EventEmitter {
         this._cancelled = true;
     }
 
-    // ─── Core execution engine ────────────────────────────────────────────────
+    // â”€â”€â”€ Core execution engine â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     /**
      * Executes a flat list of activities honouring dependsOn relationships.
@@ -195,7 +225,7 @@ class LocalPipelineRunner extends EventEmitter {
         });
     }
 
-    // ─── Context helpers ──────────────────────────────────────────────────────
+    // â”€â”€â”€ Context helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     _context(extra) {
         return {
@@ -223,13 +253,13 @@ class LocalPipelineRunner extends EventEmitter {
     }
 }
 
-// ─── Handler registry ─────────────────────────────────────────────────────────
+// â”€â”€â”€ Handler registry â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // All handlers are functions(activity) called with `this` bound to the LocalPipelineRunner.
 // Add new activity type support by adding an entry here AND in local-run-config.json.
 
 const HANDLER_REGISTRY = {
 
-    // ── Wait ──────────────────────────────────────────────────────────────────
+    // â”€â”€ Wait â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     async waitHandler(activity) {
         const tp = activity.typeProperties || {};
         let seconds = parseFloat(this._eval(tp.waitTimeInSeconds ?? tp.waitInSeconds ?? 1, {}));
@@ -247,7 +277,7 @@ const HANDLER_REGISTRY = {
         return { waitTimeInSeconds: seconds };
     },
 
-    // ── Fail ──────────────────────────────────────────────────────────────────
+    // â”€â”€ Fail â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     async failHandler(activity) {
         const tp = activity.typeProperties || {};
         const msg       = String(this._eval(tp.message ?? tp.errorMessage ?? 'Pipeline failed', {}));
@@ -257,7 +287,7 @@ const HANDLER_REGISTRY = {
         throw err;
     },
 
-    // ── SetVariable ───────────────────────────────────────────────────────────
+    // â”€â”€ SetVariable â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     async setVariableHandler(activity) {
         const tp = activity.typeProperties || {};
         const varName = String(this._eval(tp.variableName, {}));
@@ -274,7 +304,7 @@ const HANDLER_REGISTRY = {
         return { variableName: varName, value };
     },
 
-    // ── AppendVariable ────────────────────────────────────────────────────────
+    // â”€â”€ AppendVariable â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     async appendVariableHandler(activity) {
         const tp = activity.typeProperties || {};
         const varName = String(this._eval(tp.variableName, {}));
@@ -284,7 +314,7 @@ const HANDLER_REGISTRY = {
         return { variableName: varName, value: this.variables[varName] };
     },
 
-    // ── Filter ────────────────────────────────────────────────────────────────
+    // â”€â”€ Filter â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     async filterHandler(activity) {
         const tp = activity.typeProperties || {};
         const items     = this._eval(tp.items, {});
@@ -298,7 +328,7 @@ const HANDLER_REGISTRY = {
         return { value: filtered, filterCount: filtered.length };
     },
 
-    // ── ForEach ───────────────────────────────────────────────────────────────
+    // â”€â”€ ForEach â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     async forEachHandler(activity) {
         const tp = activity.typeProperties || {};
         const items     = this._eval(tp.items, {});
@@ -340,7 +370,7 @@ const HANDLER_REGISTRY = {
                 for (const rec of child.activityRuns) this.activityRuns.push({ ...rec, _forEachIteration: i, _parentActivity: activity.name });
             }
         } else {
-            // Parallel — run up to batchCount at a time
+            // Parallel â€” run up to batchCount at a time
             for (let start = 0; start < limited.length; start += batchCount) {
                 if (this._cancelled) break;
                 const batch = limited.slice(start, start + batchCount);
@@ -373,7 +403,7 @@ const HANDLER_REGISTRY = {
         return { count: limited.length };
     },
 
-    // ── Until ─────────────────────────────────────────────────────────────────
+    // â”€â”€ Until â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     async untilHandler(activity) {
         const tp = activity.typeProperties || {};
         const expression = tp.expression;
@@ -411,7 +441,7 @@ const HANDLER_REGISTRY = {
         return { iterations };
     },
 
-    // ── IfCondition ───────────────────────────────────────────────────────────
+    // â”€â”€ IfCondition â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     async ifConditionHandler(activity) {
         const tp = activity.typeProperties || {};
         const condValue = tp.expression?.value ?? tp.expression;
@@ -441,7 +471,7 @@ const HANDLER_REGISTRY = {
         return { expression: result, branch: branchName };
     },
 
-    // ── Switch ────────────────────────────────────────────────────────────────
+    // â”€â”€ Switch â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     async switchHandler(activity) {
         const tp = activity.typeProperties || {};
         const onValue   = String(this._eval(tp.on?.value ?? tp.on, {}));
@@ -472,19 +502,19 @@ const HANDLER_REGISTRY = {
         return { on: onValue, branch: branchLabel };
     },
 
-    // ── ExecutePipeline ───────────────────────────────────────────────────────
+    // â”€â”€ ExecutePipeline â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     async executePipelineHandler(activity) {
         const tp = activity.typeProperties || {};
         const refName  = tp.pipeline?.referenceName;
         const waitOnCompletion = tp.waitOnCompletion !== false;
 
         if (!waitOnCompletion) {
-            return { referencedPipeline: refName, waitOnCompletion: false, note: 'Fired and forgotten — sub-pipeline not tracked in local run mode.' };
+            return { referencedPipeline: refName, waitOnCompletion: false, note: 'Fired and forgotten â€” sub-pipeline not tracked in local run mode.' };
         }
 
         // Resolve the referenced pipeline JSON from the workspace
         if (!this.workspaceRoot || !refName) {
-            throw new Error(`ExecutePipeline: cannot resolve pipeline "${refName}" — workspaceRoot is not set`);
+            throw new Error(`ExecutePipeline: cannot resolve pipeline "${refName}" â€” workspaceRoot is not set`);
         }
         const filePath = path.join(this.workspaceRoot, 'pipeline', `${refName}.json`);
         if (!fs.existsSync(filePath)) {
@@ -519,7 +549,7 @@ const HANDLER_REGISTRY = {
         return { referencedPipeline: refName, status: childStatus };
     },
 
-    // ── WebActivity ───────────────────────────────────────────────────────────
+    // â”€â”€ WebActivity â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     async webActivityHandler(activity) {
         const tp = activity.typeProperties || {};
         const url    = String(this._eval(tp.url, {}));
@@ -570,7 +600,7 @@ const HANDLER_REGISTRY = {
         try { return JSON.parse(responseText); } catch { return { response: responseText }; }
     },
 
-    // ── SynapseNotebook (Livy session, batch-style: single statement) ──────────
+    // â”€â”€ SynapseNotebook (Livy session, batch-style: single statement) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // All code cells are concatenated into one statement so the notebook runs
     // end-to-end without per-cell round-trips ("run and done" semantics).
     async synapseNotebookHandler(activity) {
@@ -604,7 +634,7 @@ const HANDLER_REGISTRY = {
         const lang  = nb.properties?.metadata?.language_info?.name ?? 'python';
         const kind  = NOTEBOOK_LANG_TO_KIND[lang] ?? 'pyspark';
 
-        // Map ADF size names → driver/executor cores+memory for the MemoryOptimized family.
+        // Map ADF size names â†’ driver/executor cores+memory for the MemoryOptimized family.
         // If the activity specifies executorSize/driverSize, those take precedence over
         // synapse-local-run.json sessionConfig.
         const SIZE_MAP = {
@@ -652,7 +682,7 @@ const HANDLER_REGISTRY = {
         const sessionId = session.id;
 
         try {
-            // Wait for session to become idle (may take 2–5 min on cold pool)
+            // Wait for session to become idle (may take 2â€“5 min on cold pool)
             await client.waitForSessionIdle(
                 sparkPool, apiVer, sessionId,
                 livyCfg.sessionPollIntervalMs,
@@ -725,7 +755,7 @@ const HANDLER_REGISTRY = {
         }
     },
 
-    // ── SparkJob (Livy batch) ─────────────────────────────────────────────────
+    // â”€â”€ SparkJob (Livy batch) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     async sparkJobHandler(activity) {
         const tp        = activity.typeProperties || {};
         const jobRef    = tp.sparkJob?.referenceName;
@@ -788,7 +818,7 @@ const HANDLER_REGISTRY = {
         }
     },
 
-    // ── WebHook ───────────────────────────────────────────────────────────────
+    // â”€â”€ WebHook â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     async webHookHandler(activity) {
         const tp      = activity.typeProperties || {};
         const url     = String(this._eval(tp.url, {}));
@@ -857,7 +887,7 @@ const HANDLER_REGISTRY = {
         try { return JSON.parse(responseText); } catch { return { response: responseText }; }
     },
 
-    // ── Lookup (ADLS/Blob only) ───────────────────────────────────────────────
+    // â”€â”€ Lookup (ADLS/Blob only) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     async lookupHandler(activity) {
         const tp          = activity.typeProperties || {};
         const dsName      = tp.source?.dataset?.referenceName ?? tp.dataset?.referenceName;
@@ -865,7 +895,7 @@ const HANDLER_REGISTRY = {
 
         if (!dsName) throw new Error('Lookup: missing dataset reference in typeProperties');
 
-        const loc = resolveDatasetToAdls(dsName, this.workspaceRoot);
+        const loc = resolveDatasetToAdls(dsName, this.workspaceRoot, this.extensionPath);
         if (!loc || !loc.storageAccount) {
             throw new Error(
                 `Lookup: dataset "${dsName}" does not resolve to an ADLS Gen2 / Blob location. ` +
@@ -898,7 +928,7 @@ const HANDLER_REGISTRY = {
         return { value: rows, count: rows.length };
     },
 
-    // ── GetMetadata (ADLS/Blob only) ──────────────────────────────────────────
+    // â”€â”€ GetMetadata (ADLS/Blob only) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     async getMetadataHandler(activity) {
         const tp        = activity.typeProperties || {};
         const dsName    = tp.dataset?.referenceName;
@@ -906,7 +936,7 @@ const HANDLER_REGISTRY = {
 
         if (!dsName) throw new Error('GetMetadata: missing dataset reference in typeProperties');
 
-        const loc = resolveDatasetToAdls(dsName, this.workspaceRoot);
+        const loc = resolveDatasetToAdls(dsName, this.workspaceRoot, this.extensionPath);
         if (!loc || !loc.storageAccount) {
             throw new Error(
                 `GetMetadata: dataset "${dsName}" does not resolve to an ADLS Gen2 / Blob location. ` +
@@ -979,7 +1009,7 @@ const HANDLER_REGISTRY = {
         return output;
     },
 
-    // ── Delete (ADLS/Blob only) ───────────────────────────────────────────────
+    // â”€â”€ Delete (ADLS/Blob only) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     async deleteHandler(activity) {
         const tp     = activity.typeProperties || {};
         const dsName = tp.dataset?.referenceName
@@ -987,7 +1017,7 @@ const HANDLER_REGISTRY = {
 
         if (!dsName) throw new Error('Delete: missing dataset reference in typeProperties');
 
-        const loc = resolveDatasetToAdls(dsName, this.workspaceRoot);
+        const loc = resolveDatasetToAdls(dsName, this.workspaceRoot, this.extensionPath);
         if (!loc || !loc.storageAccount) {
             throw new Error(
                 `Delete: dataset "${dsName}" does not resolve to an ADLS Gen2 / Blob location. ` +
@@ -1001,17 +1031,17 @@ const HANDLER_REGISTRY = {
         return { datasetName: dsName, deletedPath: `${loc.container}/${filePath}`, status: 'Succeeded' };
     },
 
-    // ── Validation (ADLS/Blob only) ───────────────────────────────────────────
+    // â”€â”€ Validation (ADLS/Blob only) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     async validationHandler(activity) {
         const tp         = activity.typeProperties || {};
         const dsName     = tp.dataset?.referenceName;
         const sleepSecs  = parseInt(tp.sleep    ?? '10',  10);
-        const timeoutSec = parseInt(tp.timeout  ?? '600', 10);
+        const timeoutSec = parseAdfTimespan(tp.timeout, 600);
         const minSize    = tp.minimumSize !== undefined ? parseInt(tp.minimumSize, 10) : null;
 
         if (!dsName) throw new Error('Validation: missing dataset reference in typeProperties');
 
-        const loc = resolveDatasetToAdls(dsName, this.workspaceRoot);
+        const loc = resolveDatasetToAdls(dsName, this.workspaceRoot, this.extensionPath);
         if (!loc || !loc.storageAccount) {
             throw new Error(
                 `Validation: dataset "${dsName}" does not resolve to an ADLS Gen2 / Blob location. ` +
@@ -1037,18 +1067,18 @@ const HANDLER_REGISTRY = {
                 }
                 return { datasetName: dsName, path: `${loc.container}/${filePath}`, existed: true };
             } catch {
-                // File not yet present — sleep and retry
+                // File not yet present â€” sleep and retry
                 await _sleepMs(sleepSecs * 1000);
             }
         }
 
         throw new Error(
             `Validation timed out after ${timeoutSec}s: "${dsName}" (${loc.container}/${filePath}) ` +
-            `did not appear${minSize !== null ? ` with size ≥ ${minSize}` : ''} within the timeout.`
+            `did not appear${minSize !== null ? ` with size â‰¥ ${minSize}` : ''} within the timeout.`
         );
     },
 
-    // ── Copy (ADLS Gen2 / Blob only, same-format streaming) ──────────────────
+    // â”€â”€ Copy (ADLS Gen2 / Blob only, same-format streaming) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     async copyHandler(activity) {
         const tp = activity.typeProperties || {};
 
@@ -1061,8 +1091,8 @@ const HANDLER_REGISTRY = {
         if (!srcName)  throw new Error('Copy: cannot determine source dataset reference');
         if (!sinkName) throw new Error('Copy: cannot determine sink dataset reference');
 
-        const srcLoc  = resolveDatasetToAdls(srcName,  this.workspaceRoot);
-        const sinkLoc = resolveDatasetToAdls(sinkName, this.workspaceRoot);
+        const srcLoc  = resolveDatasetToAdls(srcName,  this.workspaceRoot, this.extensionPath);
+        const sinkLoc = resolveDatasetToAdls(sinkName, this.workspaceRoot, this.extensionPath);
 
         if (!srcLoc  || !srcLoc.storageAccount)  throw new Error(`Copy: source dataset "${srcName}" does not resolve to ADLS Gen2 / Blob. Only AzureBlobFS and AzureBlobStorage linked services are supported in local run Copy.`);
         if (!sinkLoc || !sinkLoc.storageAccount) throw new Error(`Copy: sink dataset "${sinkName}" does not resolve to ADLS Gen2 / Blob. Only AzureBlobFS and AzureBlobStorage linked services are supported in local run Copy.`);
@@ -1070,7 +1100,7 @@ const HANDLER_REGISTRY = {
         // Determine storage types (adls or blob) and look up pair strategy
         const srcType  = srcLoc.isAdls  ? 'adls' : 'blob';
         const sinkType = sinkLoc.isAdls ? 'adls' : 'blob';
-        const pairKey  = `${srcType}→${sinkType}`;
+        const pairKey  = `${srcType}â†’${sinkType}`;
 
         if (!copyConfig.supportedPairs[pairKey]) {
             const reason = copyConfig.unsupportedPairs[pairKey]
@@ -1089,8 +1119,8 @@ const HANDLER_REGISTRY = {
             // Cross-format is not supported: raw text copy would break structure
             throw new Error(
                 `Copy: format conversion from "${srcDsType}" to "${sinkDsType}" is not supported in local run mode. ` +
-                `Only same-format copies (e.g. DelimitedText→DelimitedText) are supported. ` +
-                `Cross-format conversion (e.g. CSV→Parquet) requires a Synapse Spark engine.`
+                `Only same-format copies (e.g. DelimitedTextâ†’DelimitedText) are supported. ` +
+                `Cross-format conversion (e.g. CSVâ†’Parquet) requires a Synapse Spark engine.`
             );
         }
 
@@ -1113,7 +1143,7 @@ const HANDLER_REGISTRY = {
         };
     },
 
-    // ── Not Supported ─────────────────────────────────────────────────────────
+    // â”€â”€ Not Supported â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     async notSupportedHandler(activity) {
         const conf   = RUNNERS[activity.type];
         const reason = conf?.notSupportedReason ?? `"${activity.type}" is not supported in local run mode.`;
@@ -1123,7 +1153,7 @@ const HANDLER_REGISTRY = {
     },
 };
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function _randomId() {
     return Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10);
@@ -1146,7 +1176,7 @@ function _patchForEachContext(childRunner, currentItem) {
     childRunner._eval = (value, extra) => origEval(value, { ...extra, currentItem });
 }
 
-// ── Synapse workspace config ───────────────────────────────────────────────────
+// â”€â”€ Synapse workspace config â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Reads synapse-local-run.json from the workspace root. Returns {} if absent.
 function _loadSynapseWorkspaceConfig(workspaceRoot, extensionPath) {
     // Prefer the extension folder (developer convenience), fall back to workspace root.
@@ -1154,7 +1184,7 @@ function _loadSynapseWorkspaceConfig(workspaceRoot, extensionPath) {
         const cfgFile = path.join(dir, 'synapse-local-run.json');
         if (fs.existsSync(cfgFile)) {
             try { return JSON.parse(fs.readFileSync(cfgFile, 'utf8')); }
-            catch { /* corrupt file — try next location */ }
+            catch { /* corrupt file â€” try next location */ }
         }
     }
     return {};
@@ -1213,3 +1243,4 @@ function _splitCsvLine(line) {
 }
 
 module.exports = { LocalPipelineRunner };
+

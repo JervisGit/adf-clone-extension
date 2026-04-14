@@ -612,12 +612,14 @@ class Activity {
     }
 
     getConnectionPoint(pos) {
+        const w = (this.element ? this.element.offsetWidth  : this.width)  || this.width;
+        const h = (this.element ? this.element.offsetHeight : this.height) || this.height;
         switch (pos) {
-            case 'top':    return { x: this.x + this.width / 2, y: this.y };
-            case 'right':  return { x: this.x + this.width,     y: this.y + this.height / 2 };
-            case 'bottom': return { x: this.x + this.width / 2, y: this.y + this.height };
-            case 'left':   return { x: this.x,                  y: this.y + this.height / 2 };
-            default:       return { x: this.x + this.width / 2, y: this.y + this.height };
+            case 'top':    return { x: this.x + w / 2, y: this.y };
+            case 'right':  return { x: this.x + w,     y: this.y + h / 2 };
+            case 'bottom': return { x: this.x + w / 2, y: this.y + h };
+            case 'left':   return { x: this.x,         y: this.y + h / 2 };
+            default:       return { x: this.x + w / 2, y: this.y + h };
         }
     }
 }
@@ -633,8 +635,10 @@ class Connection {
 
     // Compute the three segments of this connection's orthogonal path.
     _getSegments() {
-        // Cache: recompute only when endpoint positions change
-        const cacheKey = `${this.from.x},${this.from.y},${this.to.x},${this.to.y}`;
+        // Cache: recompute only when endpoint positions or sizes change
+        const fromH = (this.from.element ? this.from.element.offsetHeight : this.from.height) || this.from.height;
+        const toH   = (this.to.element   ? this.to.element.offsetHeight   : this.to.height)   || this.to.height;
+        const cacheKey = `${this.from.x},${this.from.y},${fromH},${this.to.x},${this.to.y},${toH}`;
         if (this._segCache?.k === cacheKey) return this._segCache.v;
 
         const fc = { x: this.from.x + this.from.width / 2, y: this.from.y + this.from.height / 2 };
@@ -652,9 +656,8 @@ class Connection {
             // The horizontal segment sits below B, so nothing passes through B's interior.
             start = this.from.getConnectionPoint('top');
             end   = this.to.getConnectionPoint('bottom');
-            this._arrowTip = { x: end.x, y: end.y };
             const peY  = snap(end.y + ARROW_PAD);              // path end just below B.bottom
-            let   knee = snap(this.to.y + this.to.height + 32);// jog 32 px below B.bottom
+            let   knee = snap(this.to.y + ((this.to.element ? this.to.element.offsetHeight : this.to.height) || this.to.height) + 32);
             // Guard: A too close to B — pull knee just above A.top
             if (knee >= snap(start.y)) knee = snap(start.y) - 4;
             // Always keep knee below pe so the last segment heads upward
@@ -666,7 +669,6 @@ class Connection {
             // Primarily horizontal (target to the side and below/level).
             start = this.from.getConnectionPoint(dx > 0 ? 'right' : 'left');
             end   = this.to.getConnectionPoint(  dx > 0 ? 'left'  : 'right');
-            this._arrowTip = { x: end.x, y: end.y };
             const peX = end.x + (dx > 0 ? -ARROW_PAD : ARROW_PAD);
             const sx = snap(start.x), sy = snap(start.y), ex = snap(peX), ey = snap(end.y);
             const mx = sx + (ex - sx) / 2;
@@ -676,12 +678,14 @@ class Connection {
             // Primarily vertical downward (target below source).
             start = this.from.getConnectionPoint('bottom');
             end   = this.to.getConnectionPoint('top');
-            this._arrowTip = { x: end.x, y: end.y };
             const peY = end.y - ARROW_PAD;
             const sx = snap(start.x), sy = snap(start.y), ex = snap(end.x), ey = snap(peY);
             const my = sy + (ey - sy) / 2;
             segs = [[sx,sy,sx,my],[sx,my,ex,my],[ex,my,ex,ey]];
         }
+
+        // Arrowhead tip always at exact (snapped) endpoint of the last segment — no drift.
+        this._arrowTip = { x: segs[2][2], y: segs[2][3] };
 
         this._segCache = { k: cacheKey, v: segs };
         return segs;
@@ -733,8 +737,8 @@ class Connection {
         }
         ctx.stroke();
 
-        // Arrowhead: tip is at the stored box-edge point; angle derived from last segment direction.
-        // This guarantees the arrowhead is rendered OUTSIDE the target box (canvas is behind DOM).
+        // Arrowhead: tip is at exact endpoint of last segment — always outside the target box,
+        // always pixel-aligned with the line end.
         const tip = this._arrowTip ?? { x: segs[2][2], y: segs[2][3] };
         const lastSeg = segs[2];
         const segDx = lastSeg[2] - lastSeg[0], segDy = lastSeg[3] - lastSeg[1];
@@ -1250,7 +1254,7 @@ function _buildFormPane(activity, fields, paneId, sharedFields) {
                 const dsType = selectedDs ? (datasetContents[selectedDs]?.properties?.type ?? '') : '';
                 const dsCategory = dsType ? (datasetTypeCategories[dsType] ?? '') : '';
                 const allOptions = def.fieldListOptions ?? {};
-                const options = dsCategory ? (allOptions[dsCategory] ?? []) : [];
+                const options = (dsType && allOptions[dsType]) ? allOptions[dsType] : (dsCategory ? (allOptions[dsCategory] ?? []) : []);
                 const placeholder = !selectedDs ? 'Select a dataset first to see available field options.' : (!dsCategory ? 'Unknown dataset type — enter field names manually.' : '');
                 html += `<div class="form-fieldlist-dynamic" data-fieldlist-key="${escHtml(key)}" data-fieldlist-options="${escHtml(JSON.stringify(options))}" data-fieldlist-all-options="${escHtml(JSON.stringify(allOptions))}" data-fieldlist-placeholder="${escHtml(placeholder)}"></div>`;
                 break;
@@ -2313,7 +2317,9 @@ function _wireFormInputs(container, activity) {
                 // Rebuild any fieldlist options that depend on the selected dataset type
                 container.querySelectorAll('.form-fieldlist-dynamic').forEach(fl => {
                     const allOpts = JSON.parse(fl.dataset.fieldlistAllOptions || '{}');
-                    const catOpts = activity._datasetCategory ? (allOpts[activity._datasetCategory] ?? []) : [];
+                    const catOpts = (activity._datasetType && allOpts[activity._datasetType])
+                        ? allOpts[activity._datasetType]
+                        : (activity._datasetCategory ? (allOpts[activity._datasetCategory] ?? []) : []);
                     const ph = !el.value ? 'Select a dataset first to see available field options.'
                              : (!activity._datasetCategory ? 'Unknown dataset type — enter field names manually.' : '');
                     fl.dataset.fieldlistOptions = JSON.stringify(catOpts);

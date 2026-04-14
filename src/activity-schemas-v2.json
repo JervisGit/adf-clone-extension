@@ -1797,6 +1797,40 @@
               "label": "Last modified"
             }
           ],
+          "Json": [
+            {
+              "value": "columnCount",
+              "label": "Column count"
+            },
+            {
+              "value": "contentMD5",
+              "label": "Content MD5"
+            },
+            {
+              "value": "exists",
+              "label": "Exists"
+            },
+            {
+              "value": "itemName",
+              "label": "Item name"
+            },
+            {
+              "value": "itemType",
+              "label": "Item type"
+            },
+            {
+              "value": "lastModified",
+              "label": "Last modified"
+            },
+            {
+              "value": "size",
+              "label": "Size"
+            },
+            {
+              "value": "structure",
+              "label": "Structure"
+            }
+          ],
           "sql": [
             {
               "value": "columnCount",

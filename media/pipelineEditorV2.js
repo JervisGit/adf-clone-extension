@@ -649,8 +649,18 @@ class Connection {
         const snap = v => Math.floor(v) + 0.5;
         let start, end, segs;
 
-        if (dy < 0) {
-            // Target B is ABOVE source A.
+        if (Math.abs(dx) >= Math.abs(dy)) {
+            // Primarily horizontal — target to the side (A left/right of B, possibly slightly above/below).
+            // This takes priority so that "slightly below" doesn't accidentally trigger upward routing.
+            start = this.from.getConnectionPoint(dx > 0 ? 'right' : 'left');
+            end   = this.to.getConnectionPoint(  dx > 0 ? 'left'  : 'right');
+            const peX = end.x + (dx > 0 ? -ARROW_PAD : ARROW_PAD);
+            const sx = snap(start.x), sy = snap(start.y), ex = snap(peX), ey = snap(end.y);
+            const mx = sx + (ex - sx) / 2;
+            segs = [[sx,sy,mx,sy],[mx,sy,mx,ey],[mx,ey,ex,ey]];
+
+        } else if (dy < 0) {
+            // Target B is significantly ABOVE source A (|dy| > |dx|).
             // Route: exit A.top → go UP to a jog-point 32 px BELOW B.bottom
             //        → horizontal to B.cx → enter B from the bottom.
             // The horizontal segment sits below B, so nothing passes through B's interior.
@@ -665,17 +675,8 @@ class Connection {
             const sx = snap(start.x), sy = snap(start.y), ex = snap(end.x);
             segs = [[sx,sy,sx,knee],[sx,knee,ex,knee],[ex,knee,ex,peY]];
 
-        } else if (Math.abs(dx) > Math.abs(dy)) {
-            // Primarily horizontal (target to the side and below/level).
-            start = this.from.getConnectionPoint(dx > 0 ? 'right' : 'left');
-            end   = this.to.getConnectionPoint(  dx > 0 ? 'left'  : 'right');
-            const peX = end.x + (dx > 0 ? -ARROW_PAD : ARROW_PAD);
-            const sx = snap(start.x), sy = snap(start.y), ex = snap(peX), ey = snap(end.y);
-            const mx = sx + (ex - sx) / 2;
-            segs = [[sx,sy,mx,sy],[mx,sy,mx,ey],[mx,ey,ex,ey]];
-
         } else {
-            // Primarily vertical downward (target below source).
+            // Primarily vertical downward (target significantly below source).
             start = this.from.getConnectionPoint('bottom');
             end   = this.to.getConnectionPoint('top');
             const peY = end.y - ARROW_PAD;

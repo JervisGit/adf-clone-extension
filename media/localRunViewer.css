@@ -66,6 +66,13 @@ body {
 .btn-cancel:hover { background: var(--vscode-button-secondaryHoverBackground); }
 .btn-cancel:disabled { opacity: 0.4; cursor: not-allowed; }
 
+.cancel-confirm-prompt { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
+.btn-cancel-no {
+    padding: 5px 14px; font-size: 12px; border: none; border-radius: 2px; cursor: pointer;
+    background: var(--vscode-button-background); color: var(--vscode-button-foreground);
+}
+.btn-cancel-no:hover { background: var(--vscode-button-hoverBackground); }
+
 .run-id-label {
     font-size: 11px;
     color: var(--vscode-descriptionForeground);

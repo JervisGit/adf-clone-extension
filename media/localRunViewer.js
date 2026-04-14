@@ -26,6 +26,7 @@
         endTime:       null,
         layout:        {},   // { name: { x, y } } -- computed once from pipelineActivities
         snapshots:     new Set(), // activityNames that have notebook snapshots available
+        cancelConfirming: false,  // true while cancel confirmation prompt is shown
     };
 
     // --- Config ---------------------------------------------------------------
@@ -199,8 +200,17 @@
     }
 
     function handlePipelineEnd(msg) {
-        state.pipelineStatus = msg.status;
-        state.endTime        = new Date();
+        state.pipelineStatus   = msg.status;
+        state.endTime          = new Date();
+        state.cancelConfirming = false;
+        // Any activity still showing Running when the pipeline ends as Cancelled
+        // should reflect the Cancelled status (the runner already emits Cancelled for
+        // mid-run activities, but mark any stragglers here too).
+        if (msg.status === 'Cancelled') {
+            for (const a of Object.values(state.activities)) {
+                if (a.status === 'Running') { a.status = 'Cancelled'; a.endTime = state.endTime; }
+            }
+        }
         if (Array.isArray(msg.activityRuns)) {
             for (const rec of msg.activityRuns) {
                 // Any record with _parentActivity is a child run from a container activity
@@ -262,7 +272,8 @@
             <div class="header">
                 <h1>\u25b6 ${esc(state.pipelineName)}</h1>
                 <span class="status-badge ${state.pipelineStatus.toLowerCase()}">${state.pipelineStatus}</span>
-                ${isRunning ? `<button class="btn-cancel" id="btn-cancel">\u25a0 Cancel</button>` : ''}
+                ${isRunning && !state.cancelConfirming ? `<button class="btn-cancel" id="btn-cancel">\u25a0 Cancel</button>` : ''}
+                ${state.cancelConfirming ? `<span class="cancel-confirm-prompt">Cancel this run?\u00a0<button class="btn-cancel" id="btn-cancel-yes">Yes</button>\u00a0<button class="btn-cancel-no" id="btn-cancel-no">No</button></span>` : ''}
                 <span class="run-id-label">Run: ${state.runId.slice(0, 8)}</span>
             </div>
             <div class="run-summary">
@@ -276,9 +287,20 @@
             ${renderDetailsPanel(state.selectedName ? state.activities[state.selectedName] : null)}
         `;
 
-        if (isRunning) {
-            document.getElementById('btn-cancel')?.addEventListener('click', () => vscode.postMessage({ command: 'cancel' }));
+        if (isRunning && !state.cancelConfirming) {
+            document.getElementById('btn-cancel')?.addEventListener('click', () => {
+                state.cancelConfirming = true;
+                render();
+            });
         }
+        document.getElementById('btn-cancel-yes')?.addEventListener('click', () => {
+            state.cancelConfirming = false;
+            vscode.postMessage({ command: 'cancel' });
+        });
+        document.getElementById('btn-cancel-no')?.addEventListener('click', () => {
+            state.cancelConfirming = false;
+            render();
+        });
         document.querySelectorAll('.activity-box').forEach(el => {
             el.addEventListener('click', () => { state.selectedName = el.dataset.name; render(); });
         });

@@ -194,8 +194,8 @@ class LocalPipelineRunner extends EventEmitter {
             this.emit('activityUpdate', { name: activity.name, type: activity.type, status: 'Succeeded', output, error: null, input: activity.typeProperties || {} });
         } catch (err) {
             const endTime = new Date();
-            let status = 'Failed';
-            // Fail activity throws are terminal for the pipeline
+            // If cancelled mid-activity, mark as Cancelled rather than Failed
+            let status = (err.isCancelled || this._cancelled) ? 'Cancelled' : 'Failed';
             if (err.isPipelineFail) status = 'Failed';
             this.activityStatuses[activity.name] = status;
             this._recordRun(activity, status, startTime, endTime, null, err.message);

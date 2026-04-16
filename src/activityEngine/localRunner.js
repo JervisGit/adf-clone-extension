@@ -14,13 +14,14 @@
 const EventEmitter = require('events');
 const path = require('path');
 const fs   = require('fs');
+const os   = require('os');
 const { evaluate } = require('./expressionEvaluator');
 const runConfig = require('../local-run-config.json');
 const { SynapseClient, NOTEBOOK_LANG_TO_KIND } = require('./synapseClient');
 const { ADLSRestClient } = require('../adlsRestClient');
 const { resolveDatasetToAdls, buildAdlsPath } = require('./datasetResolver');
 const { resolveSqlLinkedService, resolveSqlDataset } = require('./sqlResolver');
-const { SqlClient } = require('./sqlClient');
+const { SqlClient, readParquetFile } = require('./sqlClient');
 const copyConfig = require('../copyActivityConfig.json');
 
 const RUNNERS     = runConfig.activityRunners;
@@ -139,11 +140,21 @@ class LocalPipelineRunner extends EventEmitter {
             }
 
             // Run all ready activities in parallel (ADF default is parallel within a level)
-            await Promise.all(ready.map(a => {
-                const idx = remaining.indexOf(a);
-                remaining.splice(idx, 1);
-                return this._executeOne(a).then(() => completed.add(a.name));
-            }));
+            try {
+                await Promise.all(ready.map(a => {
+                    const idx = remaining.indexOf(a);
+                    remaining.splice(idx, 1);
+                    return this._executeOne(a).then(() => completed.add(a.name));
+                }));
+            } catch (err) {
+                if (!err.isPipelineFail) throw err; // unexpected — propagate
+                // Fail activity: ensure all dispatched activities are in completed
+                // (the .then() didn't run for the one that threw), then continue
+                // the loop so remaining activities are Skipped/run per their deps.
+                for (const a of ready) {
+                    if (!completed.has(a.name)) completed.add(a.name);
+                }
+            }
         }
     }
 
@@ -1108,6 +1119,15 @@ const HANDLER_REGISTRY = {
                 const arr = Array.isArray(parsed) ? parsed : [parsed];
                 columns = arr.length ? Object.keys(arr[0]) : [];
                 rows = arr;
+            } else if (srcDsType === 'Parquet') {
+                const rawBuf  = await srcAdls.readFileBuffer(srcLoc.container, srcPath);
+                const tmpPath = path.join(os.tmpdir(), `adf-parquet-${Date.now()}.parquet`);
+                fs.writeFileSync(tmpPath, rawBuf);
+                try {
+                    ({ rows, columns } = await readParquetFile(tmpPath));
+                } finally {
+                    try { fs.unlinkSync(tmpPath); } catch (_) {}
+                }
             } else {
                 throw new Error(`Copy: source format "${srcDsType}" not supported for SQL sink in local run.`);
             }
@@ -1276,5 +1296,5 @@ function _splitCsvLine(line) {
     return result;
 }
 
-module.exports = { LocalPipelineRunner };
+module.exports = { LocalPipelineRunner, _parseCsv, parseAdfTimespan };
 

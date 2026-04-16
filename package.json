@@ -252,7 +252,9 @@
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src",
     "test": "vscode-test",
-    "test:engine": "jest src/test/engine.test.js --no-coverage"
+    "test:engine": "jest src/test/engine.test.js --no-coverage",
+    "test:runner": "jest src/test/localRunner.test.js --no-coverage",
+    "test:unit": "jest src/test/engine.test.js src/test/localRunner.test.js --no-coverage"
   },
   "devDependencies": {
     "@vscode/test-cli": "^0.0.12",

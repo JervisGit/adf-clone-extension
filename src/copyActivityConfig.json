@@ -28,17 +28,17 @@
   },
 
   "supportedPairs": {
-    "adls→adls":  { "strategy": "adls_stream" },
-    "adls→blob":  { "strategy": "adls_stream" },
-    "blob→adls":  { "strategy": "adls_stream" },
-    "blob→blob":  { "strategy": "adls_stream" }
+    "adls->adls":  { "strategy": "adls_stream" },
+    "adls->blob":  { "strategy": "adls_stream" },
+    "blob->adls":  { "strategy": "adls_stream" },
+    "blob->blob":  { "strategy": "adls_stream" }
   },
 
   "unsupportedPairs": {
-    "sql→adls":     "SQL source requires live database. Use a real pipeline run.",
-    "adls→sql":     "SQL sink requires live database. Use a real pipeline run.",
-    "rest→adls":    "REST source requires live HTTP connection.",
-    "http→adls":    "HTTP source requires live HTTP connection.",
-    "adls_gen1→adls": "ADLS Gen1 is not supported in local run mode."
+    "sql->adls":     "SQL source requires live database. Use a real pipeline run.",
+    "adls->sql":     "SQL sink requires live database. Use a real pipeline run.",
+    "rest->adls":    "REST source requires live HTTP connection.",
+    "http->adls":    "HTTP source requires live HTTP connection.",
+    "adls_gen1->adls": "ADLS Gen1 is not supported in local run mode."
   }
 }

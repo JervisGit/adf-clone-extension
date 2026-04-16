@@ -46,4 +46,8 @@ class SqlClient {
         return { rowsAffected: r.rowsAffected };
     }
 }
-module.exports = { SqlClient };
+async function readParquetFile(filePath) {
+    const r = await _runPython({ operation: 'readParquet', server: '', database: '', filePath });
+    return { rows: r.rows, columns: r.columns };
+}
+module.exports = { SqlClient, readParquetFile };

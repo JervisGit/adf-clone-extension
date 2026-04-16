@@ -88,6 +88,30 @@ class ADLSRestClient {
     }
 
     /**
+     * Read file content as a raw Buffer (for binary formats like Parquet).
+     * Same DFS→Blob fallback logic as readFile.
+     */
+    async readFileBuffer(containerName, filePath) {
+        const token = await this.getAccessToken();
+        const encodedPath = filePath.split('/').map(segment => encodeURIComponent(segment)).join('/');
+        const headers = { 'Authorization': `Bearer ${token}`, 'x-ms-version': '2020-02-10' };
+
+        const dfsUrl = `${this.baseUrl}/${containerName}/${encodedPath}`;
+        const dfsResp = await fetch(dfsUrl, { method: 'GET', headers });
+        if (dfsResp.ok) return Buffer.from(await dfsResp.arrayBuffer());
+
+        const errorText = await dfsResp.text();
+        if (dfsResp.status === 409 && errorText.includes('EndpointUnsupportedAccountFeatures')) {
+            const blobUrl = `https://${this.storageAccountName}.blob.core.windows.net/${containerName}/${encodedPath}`;
+            const blobResp = await fetch(blobUrl, { method: 'GET', headers });
+            if (blobResp.ok) return Buffer.from(await blobResp.arrayBuffer());
+            const blobErr = await blobResp.text();
+            throw new Error(`Failed to read file buffer (blob fallback): ${blobResp.status} ${blobResp.statusText}\n${blobErr}`);
+        }
+        throw new Error(`Failed to read file buffer: ${dfsResp.status} ${dfsResp.statusText}\n${errorText}`);
+    }
+
+    /**
      * Get file properties
      * @param {string} containerName - The container name
      * @param {string} filePath - Path to the file

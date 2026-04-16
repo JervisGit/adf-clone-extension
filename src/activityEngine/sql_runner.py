@@ -41,7 +41,23 @@ or on error:
 import sys
 import json
 import struct
+import re
+import time
 import traceback
+
+# Lone surrogates (\uD800-\uDFFF) in cell values cause pyodbc to fail when it
+# encodes strings to UTF-16LE for the ODBC driver.  Strip them before insert.
+_SURROGATE_RE = re.compile(r'[\ud800-\udfff]')
+
+def _sanitize_value(v):
+    """Remove lone surrogate characters from string values."""
+    return _SURROGATE_RE.sub('', v) if isinstance(v, str) else v
+
+# Transient SQL errors that warrant a retry (Azure SQL serverless auto-pause,
+# throttling, brief unavailability, etc.)
+TRANSIENT_SQL_ERRORS = {40613, 40197, 40501, 49918, 49919, 49920, 4221, 233, 64}
+MAX_CONNECT_RETRIES = 5
+RETRY_BASE_DELAY_S  = 5   # seconds; doubles each attempt
 
 try:
     import pyodbc
@@ -68,7 +84,10 @@ SQL_CXNATTR_TOKEN = 1256  # SQL_COPT_SS_ACCESS_TOKEN
 def get_token():
     cred = AzureCliCredential()
     token = cred.get_token(SQL_TOKEN_SCOPE).token
-    # Pack token into the structure expected by the ODBC driver
+    # JWT tokens are ASCII-only (base64url). On Windows, the az CLI subprocess
+    # output is sometimes decoded with the wrong codec, introducing lone surrogates.
+    # Strip any non-ASCII characters before encoding; this is always safe for JWTs.
+    token = token.encode("ascii", errors="ignore").decode("ascii")
     token_bytes = token.encode("utf-16-le")
     return struct.pack(f"<I{len(token_bytes)}s", len(token_bytes), token_bytes)
 
@@ -84,18 +103,42 @@ def find_driver():
     )
 
 
+def _is_transient(exc):
+    """Return True if the pyodbc error looks like a transient Azure SQL error."""
+    msg = str(exc)
+    for code in TRANSIENT_SQL_ERRORS:
+        if f"({code})" in msg or f" {code} " in msg:
+            return True
+    return False
+
+
 def connect(server, database):
     driver = find_driver()
     conn_str = (
         f"Driver={{{driver}}};"
         f"Server=tcp:{server},1433;"
         f"Database={database};"
-        f"Encrypt=yes;TrustServerCertificate=no;Connection Timeout=60;"
+        f"Encrypt=yes;TrustServerCertificate=no;"
     )
-    token_struct = get_token()
-    conn = pyodbc.connect(conn_str, attrs_before={SQL_CXNATTR_TOKEN: token_struct})
-    conn.autocommit = False
-    return conn
+    last_exc = None
+    for attempt in range(1, MAX_CONNECT_RETRIES + 1):
+        try:
+            token_struct = get_token()  # refresh token on each attempt
+            conn = pyodbc.connect(conn_str, attrs_before={SQL_CXNATTR_TOKEN: token_struct}, timeout=60)
+            conn.autocommit = False
+            return conn
+        except pyodbc.Error as exc:
+            last_exc = exc
+            if attempt < MAX_CONNECT_RETRIES and _is_transient(exc):
+                delay = RETRY_BASE_DELAY_S * (2 ** (attempt - 1))  # 5, 10, 20, 40 s
+                sys.stderr.write(
+                    f"[sql_runner] Transient SQL error on attempt {attempt}/{MAX_CONNECT_RETRIES}, "
+                    f"retrying in {delay}s: {exc}\n"
+                )
+                time.sleep(delay)
+            else:
+                raise
+    raise last_exc
 
 
 def rows_to_dicts(cursor):
@@ -149,7 +192,7 @@ def run_bulk_insert(conn, schema, table, columns, rows):
     placeholders = ", ".join(["?"] * len(columns))
     sql = f"INSERT INTO {qualified} ({col_list}) VALUES ({placeholders})"
     cursor = conn.cursor()
-    data = [[row.get(c) for c in columns] for row in rows]
+    data = [[_sanitize_value(row.get(c)) for c in columns] for row in rows]
     cursor.fast_executemany = True
     cursor.executemany(sql, data)
     affected = len(data)
@@ -157,12 +200,39 @@ def run_bulk_insert(conn, schema, table, columns, rows):
     return {"ok": True, "rowsAffected": affected, "recordset": []}
 
 
+def read_parquet(file_path):
+    """Read a local parquet file and return rows as a list of dicts.
+    Does not require a database connection."""
+    try:
+        import pyarrow.parquet as pq
+    except ImportError:
+        return {"ok": False, "error": "pyarrow not installed. Run: pip install pyarrow"}
+    table = pq.read_table(file_path)
+    cols = table.column_names
+    col_data = {c: table.column(c).to_pylist() for c in cols}
+    rows = []
+    for i in range(len(table)):
+        row = {}
+        for c in cols:
+            v = col_data[c][i]
+            row[c] = str(v) if v is not None else None
+        rows.append(row)
+    return {"ok": True, "rows": rows, "columns": cols}
+
+
 def main():
     raw = sys.stdin.read()
     cmd = json.loads(raw)
+    operation = cmd.get("operation", "scripts")
+
+    # readParquet does not require a database connection
+    if operation == "readParquet":
+        result = read_parquet(cmd["filePath"])
+        json.dump(result, sys.stdout)
+        return
+
     server    = cmd["server"]
     database  = cmd["database"]
-    operation = cmd.get("operation", "scripts")
 
     conn = connect(server, database)
     try:

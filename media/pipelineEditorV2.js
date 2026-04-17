@@ -782,6 +782,11 @@ function setupCanvasEvents() {
         e.preventDefault();
         const type = e.dataTransfer.getData('activityType');
         if (!type) return;
+        // Block globally disabled types
+        if (GLOBALLY_DISABLED_TYPES.has(type)) {
+            vscode.postMessage({ type: 'alert', text: `"${type}" is not available in this editor yet.` });
+            return;
+        }
         // Block drop of restricted types when inside a container
         if (getRestrictedTypesForCurrentCanvas().has(type)) {
             const parentType = canvasStack[canvasStack.length - 1]?.parentActivity?.type;
@@ -3124,6 +3129,10 @@ const NESTING_RESTRICTIONS = {
     'Switch':      new Set(['IfCondition', 'ForEach', 'Until', 'Switch']),
 };
 
+// Activity types that are globally disabled (not fully implemented).
+// They appear in the sidebar but are greyed out and cannot be placed on the canvas.
+const GLOBALLY_DISABLED_TYPES = new Set(['SparkJob', 'ExecuteDataFlow']);
+
 // Returns the set of activity types forbidden on the current canvas (union of all ancestor restrictions).
 function getRestrictedTypesForCurrentCanvas() {
     const forbidden = new Set();
@@ -3139,11 +3148,14 @@ function updateSidebarRestrictions() {
     const forbidden = getRestrictedTypesForCurrentCanvas();
     document.querySelectorAll('.activity-item').forEach(item => {
         const actType = item.getAttribute('data-type');
-        if (forbidden.has(actType)) {
+        if (forbidden.has(actType) || GLOBALLY_DISABLED_TYPES.has(actType)) {
             item.style.opacity = '0.4';
             item.style.cursor = 'not-allowed';
             item.setAttribute('draggable', 'false');
             item.dataset.restricted = 'true';
+            if (GLOBALLY_DISABLED_TYPES.has(actType)) {
+                item.title = 'Not available in this editor (requires Spark/ADF engine)';
+            }
         } else {
             item.style.opacity = '';
             item.style.cursor = '';

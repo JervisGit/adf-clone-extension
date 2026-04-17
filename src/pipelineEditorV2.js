@@ -381,7 +381,7 @@ class PipelineEditorV2Provider {
 			['Fail', 'error2.png'],
 			['GetMetadata', 'get_metadata.png'],
 			['Lookup', 'lookup.png'],
-			['SqlServerStoredProcedure', 'stored_proc.png'],
+			['SqlServerStoredProcedure', 'stored_proc2.png'],
 			['Script', 'script1.png'],
 			['SetVariable', 'set_var.png'],
 			['Validation', 'validation.png'],

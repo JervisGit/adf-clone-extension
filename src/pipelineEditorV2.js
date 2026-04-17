@@ -369,6 +369,41 @@ class PipelineEditorV2Provider {
 			try { return fs.statSync(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'pipelineEditorV2.css').fsPath).mtimeMs | 0; }
 			catch { return Date.now(); }
 		})();
+
+		// Build activity icon URI map — keys are ADF activity type strings.
+		// Only include types that have a corresponding PNG file in media/icons/.
+		const iconTypes = [
+			['SynapseNotebook', 'notebook.png'],
+			['Copy', 'copy.png'],
+			['AppendVariable', 'append_var.png'],
+			['Delete', 'delete.png'],
+			['ExecutePipeline', 'execute_pipeline.png'],
+			['Fail', 'error2.png'],
+			['GetMetadata', 'get_metadata.png'],
+			['Lookup', 'lookup.png'],
+			['SqlServerStoredProcedure', 'stored_proc.png'],
+			['Script', 'script1.png'],
+			['SetVariable', 'set_var.png'],
+			['Validation', 'validation.png'],
+			['WebActivity', 'web.png'],
+			['WebHook', 'webhook.png'],
+			['Wait', 'wait.png'],
+			['Filter', 'filter.png'],
+			['IfCondition', 'if2.png'],
+			// ['ForEach', 'foreach.png'],
+			// ['Switch', 'switch.png'],
+			// ['Until', 'until.png'],
+			['DataFlow', 'AzureDataFactoryDataFlowsCircle.svg'],
+			['SparkJob', 'sparkjob.png'],
+		];
+		const activityIconsMap = {};
+		for (const [type, file] of iconTypes) {
+			const iconPath = vscode.Uri.joinPath(this.context.extensionUri, 'media', 'icons', file);
+			if (fs.existsSync(iconPath.fsPath)) {
+				activityIconsMap[type] = webview.asWebviewUri(iconPath).toString();
+			}
+		}
+
 		const htmlPath = vscode.Uri.joinPath(
 			this.context.extensionUri, 'media', 'pipelineEditorV2.html'
 		).fsPath;
@@ -376,7 +411,8 @@ class PipelineEditorV2Provider {
 		return html
 			.replace(/\{\{CSS_URI\}\}/g, cssUri.toString() + '?v=' + cssMtime)
 			.replace(/\{\{SCRIPT_URI\}\}/g, scriptUri.toString() + '?v=' + scriptMtime)
-			.replace(/\{\{CSP_SOURCE\}\}/g, webview.cspSource);
+			.replace(/\{\{CSP_SOURCE\}\}/g, webview.cspSource)
+			.replace(/\{\{ACTIVITY_ICONS_JSON\}\}/g, JSON.stringify(activityIconsMap).replace(/"/g, '&quot;'));
 	}
 }
 

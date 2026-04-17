@@ -220,14 +220,101 @@ def read_parquet(file_path):
     return {"ok": True, "rows": rows, "columns": cols}
 
 
+def read_excel(file_path, sheet_name=None, first_row_as_header=True, null_value=""):
+    """Read an Excel (.xlsx) file using openpyxl. Does not require a DB connection."""
+    try:
+        import openpyxl
+    except ImportError:
+        return {"ok": False, "error": "openpyxl not installed. Run: pip install openpyxl"}
+    wb = openpyxl.load_workbook(file_path, data_only=True)
+    if sheet_name and sheet_name in wb.sheetnames:
+        ws = wb[sheet_name]
+    else:
+        ws = wb.active
+    # Collect non-empty rows
+    data = [row for row in ws.iter_rows(values_only=True)
+            if any(v is not None for v in row)]
+    if not data:
+        return {"ok": True, "rows": [], "columns": []}
+
+    def to_str(v):
+        if v is None:
+            return null_value
+        return str(v)
+
+    if first_row_as_header:
+        columns = [str(c) if c is not None else f"col{i}" for i, c in enumerate(data[0])]
+        rows = [dict(zip(columns, [to_str(v) for v in row])) for row in data[1:]]
+    else:
+        columns = [f"col{i}" for i in range(len(data[0]))]
+        rows = [dict(zip(columns, [to_str(v) for v in row])) for row in data]
+    return {"ok": True, "rows": rows, "columns": columns}
+
+
+def read_xml(file_path, row_tag=None, null_value=""):
+    """Read an XML file using lxml. Each child of root (or elements matching row_tag)
+    becomes a row; element children become columns. Does not require a DB connection."""
+    try:
+        from lxml import etree
+    except ImportError:
+        return {"ok": False, "error": "lxml not installed. Run: pip install lxml"}
+    try:
+        tree = etree.parse(file_path)
+    except etree.XMLSyntaxError as e:
+        return {"ok": False, "error": f"XML parse error: {e}"}
+    root = tree.getroot()
+    if row_tag:
+        row_elements = root.findall(f".//{row_tag}")
+        if not row_elements:
+            local = etree.QName(row_tag).localname
+            row_elements = [el for el in root.iter()
+                            if etree.QName(el.tag).localname == local]
+    else:
+        row_elements = list(root)
+    if not row_elements:
+        return {"ok": True, "rows": [], "columns": []}
+    # Union of column names (preserve first-seen order)
+    col_order = {}
+    for el in row_elements:
+        for attr in el.attrib:
+            col_order[f"@{attr}"] = True
+        for child in el:
+            col_order[etree.QName(child.tag).localname] = True
+    columns = list(col_order.keys())
+    rows = []
+    for el in row_elements:
+        row = {c: null_value for c in columns}
+        for attr, val in el.attrib.items():
+            row[f"@{attr}"] = val if val is not None else null_value
+        for child in el:
+            tag = etree.QName(child.tag).localname
+            row[tag] = (child.text.strip() if child.text else null_value)
+        rows.append(row)
+    return {"ok": True, "rows": rows, "columns": columns}
+
+
 def main():
     raw = sys.stdin.read()
     cmd = json.loads(raw)
     operation = cmd.get("operation", "scripts")
 
-    # readParquet does not require a database connection
-    if operation == "readParquet":
-        result = read_parquet(cmd["filePath"])
+    # File-read operations — do not require a database connection
+    if operation in ("readParquet", "readExcel", "readXml"):
+        if operation == "readParquet":
+            result = read_parquet(cmd["filePath"])
+        elif operation == "readExcel":
+            result = read_excel(
+                cmd["filePath"],
+                sheet_name=cmd.get("sheetName"),
+                first_row_as_header=cmd.get("firstRowAsHeader", True),
+                null_value=cmd.get("nullValue", ""),
+            )
+        elif operation == "readXml":
+            result = read_xml(
+                cmd["filePath"],
+                row_tag=cmd.get("rowTag"),
+                null_value=cmd.get("nullValue", ""),
+            )
         json.dump(result, sys.stdout)
         return
 

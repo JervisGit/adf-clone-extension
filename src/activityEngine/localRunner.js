@@ -21,7 +21,7 @@ const { SynapseClient, NOTEBOOK_LANG_TO_KIND } = require('./synapseClient');
 const { ADLSRestClient } = require('../adlsRestClient');
 const { resolveDatasetToAdls, buildAdlsPath } = require('./datasetResolver');
 const { resolveSqlLinkedService, resolveSqlDataset } = require('./sqlResolver');
-const { SqlClient, readParquetFile } = require('./sqlClient');
+const { SqlClient, readParquetFile, readExcelFile, readXmlFile } = require('./sqlClient');
 const copyConfig = require('../copyActivityConfig.json');
 
 const RUNNERS     = runConfig.activityRunners;
@@ -920,7 +920,6 @@ const HANDLER_REGISTRY = {
         const filePath = buildAdlsPath(loc);
         const rawText  = await adls.readFile(loc.container, filePath);
 
-        // Detect format from dataset type name
         const dsFile = path.join(this.workspaceRoot, 'dataset', `${dsName}.json`);
         const ds     = JSON.parse(fs.readFileSync(dsFile, 'utf8'));
         const dsType = ds.properties?.type ?? '';
@@ -930,7 +929,7 @@ const HANDLER_REGISTRY = {
             const parsed = JSON.parse(rawText);
             rows = Array.isArray(parsed) ? parsed : (parsed.value ?? [parsed]);
         } else if (dsType.includes('DelimitedText') || dsType.includes('Csv') || filePath.endsWith('.csv')) {
-            rows = _parseCsv(rawText).rows;
+            rows = _parseCsv(rawText, _getCsvConfig(ds)).rows;
         } else {
             rows = [{ value: rawText }];
         }
@@ -1106,30 +1105,58 @@ const HANDLER_REGISTRY = {
         if (sinkSql) {
             const sqlConn = resolveSqlLinkedService(sinkSql.linkedServiceName, this.workspaceRoot, this.extensionPath);
             if (!sqlConn) throw new Error(`Copy: cannot resolve SQL linked service for sink "${sinkName}"`);
-            const srcAdls   = new ADLSRestClient(srcLoc.storageAccount);
-            const srcPath   = buildAdlsPath(srcLoc);
-            const rawText   = await srcAdls.readFile(srcLoc.container, srcPath);
-            const srcDsFile = path.join(this.workspaceRoot, 'dataset', `${srcName}.json`);
-            const srcDsType = fs.existsSync(srcDsFile) ? (JSON.parse(fs.readFileSync(srcDsFile, 'utf8')).properties?.type || '') : '';
+            const srcAdls  = new ADLSRestClient(srcLoc.storageAccount);
+            const srcPath  = buildAdlsPath(srcLoc);
+            const srcDs    = _readDatasetFile(srcName, this.workspaceRoot);
+            const srcDsType = srcDs?.properties?.type || '';
             let rows = [], columns = [];
             if (!srcDsType || srcDsType === 'DelimitedText') {
-                ({ rows, columns } = _parseCsv(rawText));
+                const rawText = await srcAdls.readFile(srcLoc.container, srcPath);
+                const csvCfg  = _getCsvConfig(srcDs);
+                ({ rows, columns } = _parseCsv(rawText, csvCfg));
             } else if (srcDsType === 'Json') {
-                const parsed = JSON.parse(rawText);
-                const arr = Array.isArray(parsed) ? parsed : [parsed];
+                const rawText = await srcAdls.readFile(srcLoc.container, srcPath);
+                const parsed  = JSON.parse(rawText);
+                const arr     = Array.isArray(parsed) ? parsed : (parsed.value ?? [parsed]);
                 columns = arr.length ? Object.keys(arr[0]) : [];
-                rows = arr;
+                rows    = arr;
             } else if (srcDsType === 'Parquet') {
                 const rawBuf  = await srcAdls.readFileBuffer(srcLoc.container, srcPath);
                 const tmpPath = path.join(os.tmpdir(), `adf-parquet-${Date.now()}.parquet`);
                 fs.writeFileSync(tmpPath, rawBuf);
                 try {
                     ({ rows, columns } = await readParquetFile(tmpPath));
-                } finally {
-                    try { fs.unlinkSync(tmpPath); } catch (_) {}
-                }
+                } finally { try { fs.unlinkSync(tmpPath); } catch (_) {} }
+            } else if (srcDsType === 'Excel') {
+                const rawBuf  = await srcAdls.readFileBuffer(srcLoc.container, srcPath);
+                const tmpPath = path.join(os.tmpdir(), `adf-excel-${Date.now()}.xlsx`);
+                fs.writeFileSync(tmpPath, rawBuf);
+                const excelTp = srcDs?.properties?.typeProperties ?? {};
+                try {
+                    ({ rows, columns } = await readExcelFile(tmpPath, {
+                        sheetName:        excelTp.sheetName        ?? null,
+                        firstRowAsHeader: excelTp.firstRowAsHeader !== false,
+                        nullValue:        excelTp.nullValue         ?? '',
+                    }));
+                } finally { try { fs.unlinkSync(tmpPath); } catch (_) {} }
+            } else if (srcDsType === 'Xml') {
+                const rawBuf  = await srcAdls.readFileBuffer(srcLoc.container, srcPath);
+                const tmpPath = path.join(os.tmpdir(), `adf-xml-${Date.now()}.xml`);
+                fs.writeFileSync(tmpPath, rawBuf);
+                const xmlTp  = srcDs?.properties?.typeProperties ?? {};
+                try {
+                    ({ rows, columns } = await readXmlFile(tmpPath, {
+                        rowTag:    xmlTp.rowTag    ?? xmlTp.rowNodeName ?? null,
+                        nullValue: xmlTp.nullValue ?? '',
+                    }));
+                } finally { try { fs.unlinkSync(tmpPath); } catch (_) {} }
             } else {
-                throw new Error(`Copy: source format "${srcDsType}" not supported for SQL sink in local run.`);
+                const supported = 'DelimitedText, Json, Parquet, Excel, Xml';
+                throw new Error(
+                    `Copy: source format "${srcDsType}" is not supported for local run with a SQL sink.\n` +
+                    `Supported source formats: ${supported}.\n` +
+                    `Formats such as Avro, Orc, and Binary require a Synapse/ADF Spark engine.`
+                );
             }
             const client = new SqlClient(sqlConn.server, sqlConn.database);
             const result = await client.bulkInsert(sinkSql.schema, sinkSql.table, rows, columns);
@@ -1150,19 +1177,29 @@ const HANDLER_REGISTRY = {
             const reason = copyConfig.unsupportedPairs?.[pairKey] || `Copy from "${srcType}" to "${sinkType}" is not supported in local run mode.`;
             throw new Error(`Copy: ${reason}`);
         }
-        const srcDsFile  = path.join(this.workspaceRoot, 'dataset', `${srcName}.json`);
-        const sinkDsFile = path.join(this.workspaceRoot, 'dataset', `${sinkName}.json`);
-        const srcDsType  = fs.existsSync(srcDsFile)  ? (JSON.parse(fs.readFileSync(srcDsFile,  'utf8')).properties?.type || '') : '';
-        const sinkDsType = fs.existsSync(sinkDsFile) ? (JSON.parse(fs.readFileSync(sinkDsFile, 'utf8')).properties?.type || '') : '';
+        const srcDs2  = _readDatasetFile(srcName,  this.workspaceRoot);
+        const sinkDs2 = _readDatasetFile(sinkName, this.workspaceRoot);
+        const srcDsType  = srcDs2?.properties?.type  || '';
+        const sinkDsType = sinkDs2?.properties?.type || '';
         if (srcDsType && sinkDsType && srcDsType !== sinkDsType)
             throw new Error(`Copy: format conversion from "${srcDsType}" to "${sinkDsType}" is not supported in local run mode.`);
         const srcAdls  = new ADLSRestClient(srcLoc.storageAccount);
         const sinkAdls = new ADLSRestClient(sinkLoc.storageAccount);
         const srcPath  = buildAdlsPath(srcLoc);
         const sinkPath = buildAdlsPath(sinkLoc);
-        const content  = await srcAdls.readFile(srcLoc.container, srcPath);
-        await sinkAdls.writeFile(sinkLoc.container, sinkPath, content);
-        return { source: `${srcLoc.storageAccount}/${srcLoc.container}/${srcPath}`, sink: `${sinkLoc.storageAccount}/${sinkLoc.container}/${sinkPath}`, bytes: Buffer.byteLength(content, 'utf8'), format: srcDsType || 'unknown', note: 'Local run: raw text stream copy (same format only)' };
+        // Binary-like formats use buffer copy; text formats use text copy
+        const BINARY_TYPES = new Set(['Parquet', 'Excel', 'Binary', 'Orc', 'Avro']);
+        let bytesCopied;
+        if (BINARY_TYPES.has(srcDsType)) {
+            const buf = await srcAdls.readFileBuffer(srcLoc.container, srcPath);
+            await sinkAdls.writeFile(sinkLoc.container, sinkPath, buf);
+            bytesCopied = buf.length;
+        } else {
+            const content = await srcAdls.readFile(srcLoc.container, srcPath);
+            await sinkAdls.writeFile(sinkLoc.container, sinkPath, content);
+            bytesCopied = Buffer.byteLength(content, 'utf8');
+        }
+        return { source: `${srcLoc.storageAccount}/${srcLoc.container}/${srcPath}`, sink: `${sinkLoc.storageAccount}/${sinkLoc.container}/${sinkPath}`, bytes: bytesCopied, format: srcDsType || 'unknown' };
     },
 
     // -- Script (Azure SQL via Python subprocess) --
@@ -1263,38 +1300,110 @@ function _mergeSnapshotCells(allCells, cellResults) {
     return merged;
 }
 
-// Minimal CSV parser: handles quoted fields, returns array of row objects.
-function _parseCsv(text) {
-    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+// ─── Dataset helpers ──────────────────────────────────────────────────────────
+
+/** Read and parse a dataset JSON from the workspace. Returns null if missing/invalid. */
+function _readDatasetFile(dsName, workspaceRoot) {
+    if (!dsName || !workspaceRoot) return null;
+    const f = path.join(workspaceRoot, 'dataset', `${dsName}.json`);
+    if (!fs.existsSync(f)) return null;
+    try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; }
+}
+
+/** Extract DelimitedText CSV settings from a dataset JSON's typeProperties. */
+function _getCsvConfig(dsJson) {
+    const tp = dsJson?.properties?.typeProperties ?? {};
+    return {
+        delimiter:        tp.columnDelimiter !== undefined ? String(tp.columnDelimiter) : ',',
+        quoteChar:        tp.quoteChar       !== undefined ? String(tp.quoteChar)       : '"',
+        escapeChar:       tp.escapeChar      !== undefined ? String(tp.escapeChar)      : '"',
+        nullValue:        tp.nullValue       !== undefined ? String(tp.nullValue)       : '',
+        firstRowAsHeader: tp.firstRowAsHeader !== false,
+    };
+}
+
+// ─── CSV parser ────────────────────────────────────────────────────────────────
+// Handles configurable delimiter, quoteChar, escapeChar, nullValue.
+
+function _parseCsv(text, opts = {}) {
+    const {
+        delimiter        = ',',
+        quoteChar        = '"',
+        escapeChar       = '"',
+        nullValue        = '',
+        firstRowAsHeader = true,
+    } = opts;
+    const lines = text.split('\n').map(l => l.trimEnd()).filter(l => l.length > 0);
     if (lines.length === 0) return { rows: [], columns: [] };
-    const columns = _splitCsvLine(lines[0]);
-    const rows = lines.slice(1).map(line => {
-        const vals = _splitCsvLine(line);
-        const row  = {};
-        columns.forEach((h, i) => { row[h] = vals[i] ?? ''; });
+    const allRows = lines.map(line => _splitDelimitedLine(line, delimiter, quoteChar, escapeChar));
+    let columns, dataRows;
+    if (firstRowAsHeader) {
+        columns  = allRows[0].map(c => c.trim());
+        dataRows = allRows.slice(1);
+    } else {
+        columns  = allRows[0].map((_, i) => `col${i}`);
+        dataRows = allRows;
+    }
+    const rows = dataRows.map(vals => {
+        const row = {};
+        columns.forEach((h, i) => {
+            const v = vals[i] ?? '';
+            row[h] = v === nullValue ? null : v;
+        });
         return row;
     });
     return { rows, columns };
 }
 
-function _splitCsvLine(line) {
+/**
+ * Split a single delimited line respecting quoteChar and escapeChar.
+ * - If escapeChar === quoteChar (RFC 4180 style): doubled quoteChar inside quotes = literal.
+ * - If escapeChar !== quoteChar (backslash style): escapeChar + any char = next char literal.
+ * Delimiter may be multi-character (e.g. '||').
+ */
+function _splitDelimitedLine(line, delimiter = ',', quoteChar = '"', escapeChar = '"') {
     const result = [];
+    const delLen = delimiter.length;
     let current  = '';
     let inQuotes = false;
-    for (let i = 0; i < line.length; i++) {
-        if (line[i] === '"') {
-            if (inQuotes && line[i + 1] === '"') { current += '"'; i++; }
-            else { inQuotes = !inQuotes; }
-        } else if (line[i] === ',' && !inQuotes) {
+    for (let i = 0; i < line.length; ) {
+        const ch = line[i];
+        // Check for delimiter (only when not inside quotes)
+        if (!inQuotes && line.slice(i, i + delLen) === delimiter) {
             result.push(current);
             current = '';
-        } else {
-            current += line[i];
+            i += delLen;
+            continue;
         }
+        // Handle quoteChar
+        if (ch === quoteChar) {
+            if (inQuotes) {
+                if (escapeChar === quoteChar && line[i + 1] === quoteChar) {
+                    // RFC 4180: doubled quoteChar = literal
+                    current += quoteChar;
+                    i += 2;
+                } else {
+                    inQuotes = false;
+                    i++;
+                }
+            } else {
+                inQuotes = true;
+                i++;
+            }
+            continue;
+        }
+        // Handle backslash-style escapeChar
+        if (escapeChar !== quoteChar && ch === escapeChar && i + 1 < line.length) {
+            current += line[i + 1];
+            i += 2;
+            continue;
+        }
+        current += ch;
+        i++;
     }
     result.push(current);
     return result;
 }
 
-module.exports = { LocalPipelineRunner, _parseCsv, parseAdfTimespan };
+module.exports = { LocalPipelineRunner, _parseCsv, _splitDelimitedLine, parseAdfTimespan };
 

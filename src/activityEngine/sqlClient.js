@@ -50,4 +50,19 @@ async function readParquetFile(filePath) {
     const r = await _runPython({ operation: 'readParquet', server: '', database: '', filePath });
     return { rows: r.rows, columns: r.columns };
 }
-module.exports = { SqlClient, readParquetFile };
+async function readExcelFile(filePath, opts = {}) {
+    const r = await _runPython({ operation: 'readExcel', server: '', database: '', filePath,
+        sheetName:          opts.sheetName          ?? null,
+        firstRowAsHeader:   opts.firstRowAsHeader   !== false,
+        nullValue:          opts.nullValue           ?? '',
+    });
+    return { rows: r.rows, columns: r.columns };
+}
+async function readXmlFile(filePath, opts = {}) {
+    const r = await _runPython({ operation: 'readXml', server: '', database: '', filePath,
+        rowTag:    opts.rowTag    ?? null,
+        nullValue: opts.nullValue ?? '',
+    });
+    return { rows: r.rows, columns: r.columns };
+}
+module.exports = { SqlClient, readParquetFile, readExcelFile, readXmlFile };

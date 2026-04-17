@@ -61,6 +61,20 @@ class LocalRunPanel {
         }
         // ── End validation gate ────────────────────────────────────────────────
 
+        // ── Copy format pre-run check (warn on unsupported formats before starting) ──
+        const copyWarnings = _checkCopyFormatSupport(pipelineJson, workspaceRoot);
+        if (copyWarnings.length > 0) {
+            const detail = copyWarnings.map(w => `• ${w.activityName}: ${w.reason}`).join('\n');
+            const choice = await vscode.window.showWarningMessage(
+                `"${pipelineName}" has Copy ${copyWarnings.length === 1 ? 'activity' : 'activities'} that ` +
+                `cannot run locally and will show as Failed:\n\n${detail}`,
+                { modal: true },
+                'Run Anyway', 'Cancel'
+            );
+            if (choice !== 'Run Anyway') return;
+        }
+        // ── End Copy format check ─────────────────────────────────────────────
+
         // Prompt user for parameters
         const parameters = await promptParameters(pipelineName, paramDefs);
         if (parameters === null) return; // user cancelled
@@ -223,6 +237,50 @@ async function promptParameters(pipelineName, paramDefs) {
 
 function _escHtml(s) {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/**
+ * Scans all Copy activities in a pipeline (including nested in IfCondition/ForEach/etc.)
+ * and returns warnings for source formats that cannot run locally.
+ * @returns {{ activityName: string, reason: string }[]}
+ */
+function _checkCopyFormatSupport(pipelineJson, workspaceRoot) {
+    if (!workspaceRoot) return [];
+    const SUPPORTED_FOR_SQL  = new Set(['DelimitedText', 'Json', 'Parquet', 'Excel', 'Xml', '']);
+    const SQL_SINK_TYPES     = new Set(['AzureSqlTable', 'AzureSqlDWTable', 'AzureSqlMITable']);
+    const warnings = [];
+
+    function scanActivities(activities) {
+        for (const act of (activities ?? [])) {
+            if (act.type === 'Copy') {
+                const tp      = act.typeProperties ?? {};
+                const srcName = tp.source?.dataset?.referenceName ?? act.inputs?.[0]?.referenceName;
+                const sinkName = tp.sink?.dataset?.referenceName  ?? act.outputs?.[0]?.referenceName;
+                if (srcName && sinkName) {
+                    try {
+                        const srcDsFile  = path.join(workspaceRoot, 'dataset', `${srcName}.json`);
+                        const sinkDsFile = path.join(workspaceRoot, 'dataset', `${sinkName}.json`);
+                        const srcType    = fs.existsSync(srcDsFile)
+                            ? (JSON.parse(fs.readFileSync(srcDsFile,  'utf8'))?.properties?.type ?? '') : '';
+                        const sinkType   = fs.existsSync(sinkDsFile)
+                            ? (JSON.parse(fs.readFileSync(sinkDsFile, 'utf8'))?.properties?.type ?? '') : '';
+                        if (SQL_SINK_TYPES.has(sinkType) && !SUPPORTED_FOR_SQL.has(srcType)) {
+                            warnings.push({ activityName: act.name,
+                                reason: `"${srcType}" → SQL — format not supported in local run (needs Spark engine)` });
+                        }
+                    } catch { /* ignore read errors */ }
+                }
+            }
+            // Recurse into container activities
+            scanActivities(act.typeProperties?.activities);
+            scanActivities(act.typeProperties?.ifTrueActivities);
+            scanActivities(act.typeProperties?.ifFalseActivities);
+            scanActivities(act.typeProperties?.defaultActivities);
+            for (const c of (act.typeProperties?.cases ?? [])) scanActivities(c.activities);
+        }
+    }
+    scanActivities(pipelineJson?.properties?.activities);
+    return warnings;
 }
 
 module.exports = { LocalRunPanel };

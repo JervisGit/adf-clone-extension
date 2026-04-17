@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src {{CSP_SOURCE}} 'unsafe-inline'; script-src {{CSP_SOURCE}};">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src {{CSP_SOURCE}} 'unsafe-inline'; script-src {{CSP_SOURCE}}; img-src {{CSP_SOURCE}} data:;">
     <link rel="stylesheet" href="{{CSS_URI}}">
     <title>Pipeline Editor V2</title>
 </head>
-<body>
+<body data-activity-icons="{{ACTIVITY_ICONS_JSON}}">
     <div class="container">
         <div class="main-content">
             <!-- Sidebar with Activities -->

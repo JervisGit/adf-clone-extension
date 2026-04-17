@@ -16,6 +16,12 @@ const EDITABLE_TYPES = new Set(['Wait', 'Fail', 'SetVariable', 'AppendVariable',
 
 const vscode = acquireVsCodeApi();
 
+// ─── Activity icon URIs (PNGs injected from the extension backend) ─────────────
+const _ACTIVITY_ICONS = (() => {
+    try { return JSON.parse(document.body.dataset.activityIcons || '{}'); }
+    catch { return {}; }
+})();
+
 // ─── Global state ──────────────────────────────────────────────────────────────
 let activities = [];
 let connections = [];
@@ -469,13 +475,22 @@ class Activity {
         // Body
         const body = document.createElement('div');
         body.className = 'activity-body';
-        const icon = document.createElement('div');
-        icon.className = 'activity-icon-large';
-        icon.textContent = Activity.iconForType(this.type);
+        const iconUri = _ACTIVITY_ICONS[this.type];
+        if (iconUri) {
+            const img = document.createElement('img');
+            img.src = iconUri;
+            img.className = 'activity-icon-img';
+            img.alt = Activity.labelForType(this.type);
+            body.appendChild(img);
+        } else {
+            const icon = document.createElement('div');
+            icon.className = 'activity-icon-large';
+            icon.textContent = Activity.iconForType(this.type);
+            body.appendChild(icon);
+        }
         const label = document.createElement('div');
         label.className = 'activity-label';
         label.textContent = this.name;
-        body.appendChild(icon);
         body.appendChild(label);
 
         // Container info

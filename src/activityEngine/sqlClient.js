@@ -45,6 +45,10 @@ class SqlClient {
         const r = await _runPython({ server: this.server, database: this.database, operation: 'bulkInsert', schema, table, columns: cols, rows });
         return { rowsAffected: r.rowsAffected };
     }
+    async readTable(schema, table) {
+        const r = await _runPython({ server: this.server, database: this.database, operation: 'selectTable', schema, table });
+        return { rows: r.rows, columns: r.columns };
+    }
 }
 async function readParquetFile(filePath) {
     const r = await _runPython({ operation: 'readParquet', server: '', database: '', filePath });

@@ -5,12 +5,14 @@
 // Run with:  npm test  (or npx jest src/test/localRunner.test.js)
 //
 // These tests cover:
-//   - _parseCsv: returns { rows, columns }, handles quotes, empty input
+//   - _parseCsv: returns { rows, columns }, handles quotes, empty input, custom opts
+//   - _splitDelimitedLine: parameterized delimiter/quoteChar/escapeChar
+//   - _serializeCsv: round-trip CSV serialization
 //   - parseAdfTimespan: D.HH:MM:SS, HH:MM:SS, PT…, plain int, defaults
 //   - LocalPipelineRunner: Wait, SetVariable, Fail, Filter activities (no external I/O)
 
 const path = require('path');
-const { LocalPipelineRunner, _parseCsv, parseAdfTimespan } = require('../activityEngine/localRunner');
+const { LocalPipelineRunner, _parseCsv, _splitDelimitedLine, _serializeCsv, parseAdfTimespan } = require('../activityEngine/localRunner');
 
 // ─── _parseCsv ────────────────────────────────────────────────────────────────
 
@@ -361,5 +363,116 @@ describe('LocalPipelineRunner — dependency skip logic', () => {
         const { updates } = await runAndCollect(pipeline);
         const bStatus = updates.find(u => u.name === 'B' && u.status === 'Succeeded')?.status;
         expect(bStatus).toBe('Succeeded');
+    });
+});
+
+// ─── _parseCsv — custom delimiter options ─────────────────────────────────────
+
+describe('_parseCsv — custom delimiter opts', () => {
+    test('tab delimiter', () => {
+        const { rows, columns } = _parseCsv('id\tname\tprice\n1\tMouse\t25.99', { delimiter: '\t' });
+        expect(columns).toEqual(['id', 'name', 'price']);
+        expect(rows[0]).toEqual({ id: '1', name: 'Mouse', price: '25.99' });
+    });
+
+    test('pipe delimiter', () => {
+        const { rows } = _parseCsv('a|b\n1|2', { delimiter: '|' });
+        expect(rows[0]).toEqual({ a: '1', b: '2' });
+    });
+
+    test('nullValue maps matching string to null', () => {
+        const { rows } = _parseCsv('a,b\n1,NULL', { nullValue: 'NULL' });
+        expect(rows[0].b).toBeNull();
+    });
+
+    test('nullValue does not affect non-matching values', () => {
+        const { rows } = _parseCsv('a,b\n1,foo', { nullValue: 'NULL' });
+        expect(rows[0].b).toBe('foo');
+    });
+
+    test('empty string nullValue maps empty fields to null', () => {
+        const { rows } = _parseCsv('a,b\n1,', { nullValue: '' });
+        expect(rows[0].b).toBeNull();
+    });
+
+    test('custom quoteChar (single quote)', () => {
+        const { rows } = _parseCsv("a,b\n1,'hello, world'", { quoteChar: "'" });
+        expect(rows[0].b).toBe('hello, world');
+    });
+});
+
+// ─── _splitDelimitedLine ──────────────────────────────────────────────────────
+
+describe('_splitDelimitedLine', () => {
+    test('splits by comma (default)', () => {
+        expect(_splitDelimitedLine('a,b,c')).toEqual(['a', 'b', 'c']);
+    });
+
+    test('splits by tab', () => {
+        expect(_splitDelimitedLine('a\tb\tc', '\t')).toEqual(['a', 'b', 'c']);
+    });
+
+    test('splits by pipe', () => {
+        expect(_splitDelimitedLine('a|b|c', '|')).toEqual(['a', 'b', 'c']);
+    });
+
+    test('handles quoted field with delimiter inside', () => {
+        expect(_splitDelimitedLine('"a,b",c', ',')).toEqual(['a,b', 'c']);
+    });
+
+    test('handles doubled-quote inside quoted field (RFC 4180)', () => {
+        expect(_splitDelimitedLine('"say ""hi"""', ',')).toEqual(['say "hi"']);
+    });
+
+    test('handles multi-char delimiter', () => {
+        expect(_splitDelimitedLine('a||b||c', '||')).toEqual(['a', 'b', 'c']);
+    });
+
+    test('empty field at end', () => {
+        expect(_splitDelimitedLine('a,b,', ',')).toEqual(['a', 'b', '']);
+    });
+});
+
+// ─── _serializeCsv ────────────────────────────────────────────────────────────
+
+describe('_serializeCsv', () => {
+    const rows = [{ id: '1', name: 'Mouse', price: '25.99' }, { id: '2', name: 'Keyboard', price: '49.99' }];
+    const columns = ['id', 'name', 'price'];
+
+    test('produces header + data lines', () => {
+        const csv = _serializeCsv(rows, columns);
+        const lines = csv.split('\n');
+        expect(lines[0]).toBe('id,name,price');
+        expect(lines[1]).toBe('1,Mouse,25.99');
+        expect(lines[2]).toBe('2,Keyboard,49.99');
+    });
+
+    test('uses custom delimiter', () => {
+        const tsv = _serializeCsv(rows, columns, { delimiter: '\t' });
+        expect(tsv.split('\n')[0]).toBe('id\tname\tprice');
+    });
+
+    test('quotes fields containing the delimiter', () => {
+        const r = [{ a: 'hello,world', b: '1' }];
+        const csv = _serializeCsv(r, ['a', 'b']);
+        expect(csv.split('\n')[1]).toBe('"hello,world",1');
+    });
+
+    test('writes null as nullValue string', () => {
+        const r = [{ a: '1', b: null }];
+        const csv = _serializeCsv(r, ['a', 'b'], { nullValue: 'NULL' });
+        expect(csv.split('\n')[1]).toBe('1,NULL');
+    });
+
+    test('round-trip: _parseCsv(_serializeCsv(...)) yields original rows', () => {
+        const csv = _serializeCsv(rows, columns);
+        const { rows: parsed } = _parseCsv(csv);
+        expect(parsed).toEqual(rows);
+    });
+
+    test('round-trip with tab delimiter', () => {
+        const tsv = _serializeCsv(rows, columns, { delimiter: '\t' });
+        const { rows: parsed } = _parseCsv(tsv, { delimiter: '\t' });
+        expect(parsed).toEqual(rows);
     });
 });

@@ -1097,11 +1097,63 @@ const HANDLER_REGISTRY = {
         const sinkName = tp.sink?.dataset?.referenceName   ?? (activity.outputs?.[0]?.referenceName);
         if (!srcName)  throw new Error('Copy: cannot determine source dataset reference');
         if (!sinkName) throw new Error('Copy: cannot determine sink dataset reference');
-        const srcLoc = resolveDatasetToAdls(srcName, this.workspaceRoot, this.extensionPath);
-        if (!srcLoc || !srcLoc.storageAccount)
-            throw new Error(`Copy: source dataset "${srcName}" does not resolve to ADLS Gen2 / Blob.`);
-        // -- SQL sink path --
+        // Source resolution: try SQL table first, then ADLS/Blob
+        const srcSql = resolveSqlDataset(srcName, this.workspaceRoot, this.extensionPath);
+        const srcLoc = srcSql ? null : resolveDatasetToAdls(srcName, this.workspaceRoot, this.extensionPath);
+        if (!srcSql && (!srcLoc || !srcLoc.storageAccount))
+            throw new Error(`Copy: source dataset "${srcName}" does not resolve to ADLS Gen2 / Blob or Azure SQL.`);
         const sinkSql = resolveSqlDataset(sinkName, this.workspaceRoot, this.extensionPath);
+
+        // ── SQL → SQL ──────────────────────────────────────────────────────────
+        if (srcSql && sinkSql) {
+            const srcConn  = resolveSqlLinkedService(srcSql.linkedServiceName,  this.workspaceRoot, this.extensionPath);
+            const sinkConn = resolveSqlLinkedService(sinkSql.linkedServiceName, this.workspaceRoot, this.extensionPath);
+            if (!srcConn)  throw new Error(`Copy: cannot resolve SQL linked service for source "${srcName}"`);
+            if (!sinkConn) throw new Error(`Copy: cannot resolve SQL linked service for sink "${sinkName}"`);
+            const srcClient = new SqlClient(srcConn.server, srcConn.database);
+            const { rows, columns } = await srcClient.readTable(srcSql.schema, srcSql.table);
+            const sinkClient = new SqlClient(sinkConn.server, sinkConn.database);
+            const result = await sinkClient.bulkInsert(sinkSql.schema, sinkSql.table, rows, columns);
+            return {
+                source: `${srcConn.server}/${srcConn.database}/${srcSql.schema}.${srcSql.table}`,
+                sink:   `${sinkConn.server}/${sinkConn.database}/${sinkSql.schema}.${sinkSql.table}`,
+                rowsCopied: result.rowsAffected,
+            };
+        }
+
+        // ── SQL → ADLS/Blob ────────────────────────────────────────────────────
+        if (srcSql) {
+            const sinkLoc = resolveDatasetToAdls(sinkName, this.workspaceRoot, this.extensionPath);
+            if (!sinkLoc || !sinkLoc.storageAccount)
+                throw new Error(`Copy: sink dataset "${sinkName}" does not resolve to ADLS Gen2 / Blob.`);
+            const srcConn = resolveSqlLinkedService(srcSql.linkedServiceName, this.workspaceRoot, this.extensionPath);
+            if (!srcConn) throw new Error(`Copy: cannot resolve SQL linked service for source "${srcName}"`);
+            const srcClient = new SqlClient(srcConn.server, srcConn.database);
+            const { rows, columns } = await srcClient.readTable(srcSql.schema, srcSql.table);
+            const sinkDs     = _readDatasetFile(sinkName, this.workspaceRoot);
+            const sinkDsType = sinkDs?.properties?.type || 'DelimitedText';
+            const sinkAdls   = new ADLSRestClient(sinkLoc.storageAccount);
+            const sinkPath   = buildAdlsPath(sinkLoc);
+            let content;
+            if (sinkDsType === 'DelimitedText' || !sinkDsType) {
+                content = _serializeCsv(rows, columns, _getCsvConfig(sinkDs));
+            } else if (sinkDsType === 'Json') {
+                content = JSON.stringify(rows, null, 2);
+            } else {
+                throw new Error(
+                    `Copy: sink format "${sinkDsType}" is not supported for SQL→file local run.\n` +
+                    `Supported sink formats for SQL source: DelimitedText, Json.`
+                );
+            }
+            await sinkAdls.writeFile(sinkLoc.container, sinkPath, content);
+            return {
+                source: `${srcConn.server}/${srcConn.database}/${srcSql.schema}.${srcSql.table}`,
+                sink:   `${sinkLoc.storageAccount}/${sinkLoc.container}/${sinkPath}`,
+                rowsCopied: rows.length, format: sinkDsType,
+            };
+        }
+
+        // ── ADLS/Blob → SQL ────────────────────────────────────────────────────
         if (sinkSql) {
             const sqlConn = resolveSqlLinkedService(sinkSql.linkedServiceName, this.workspaceRoot, this.extensionPath);
             if (!sqlConn) throw new Error(`Copy: cannot resolve SQL linked service for sink "${sinkName}"`);
@@ -1405,5 +1457,30 @@ function _splitDelimitedLine(line, delimiter = ',', quoteChar = '"', escapeChar 
     return result;
 }
 
-module.exports = { LocalPipelineRunner, _parseCsv, _splitDelimitedLine, parseAdfTimespan };
+/**
+ * Serialize rows to a delimited text string (CSV or TSV etc.).
+ * Uses the same config object shape as _getCsvConfig.
+ * The first line is a header row when firstRowAsHeader is true (default).
+ */
+function _serializeCsv(rows, columns, opts = {}) {
+    const delimiter = opts.delimiter || ',';
+    const q         = opts.quoteChar || '"';
+    const nullValue = opts.nullValue !== undefined ? opts.nullValue : '';
+    const firstRowAsHeader = opts.firstRowAsHeader !== false;
+
+    function quoteField(val) {
+        const s = (val === null || val === undefined) ? nullValue : String(val);
+        if (s.includes(delimiter) || s.includes(q) || s.includes('\n') || s.includes('\r')) {
+            return q + s.replace(new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), q + q) + q;
+        }
+        return s;
+    }
+
+    const lines = [];
+    if (firstRowAsHeader) lines.push(columns.map(c => quoteField(c)).join(delimiter));
+    for (const row of rows) lines.push(columns.map(c => quoteField(row[c])).join(delimiter));
+    return lines.join('\n');
+}
+
+module.exports = { LocalPipelineRunner, _parseCsv, _splitDelimitedLine, _serializeCsv, parseAdfTimespan };
 

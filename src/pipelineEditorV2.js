@@ -393,7 +393,7 @@ class PipelineEditorV2Provider {
 			// ['ForEach', 'foreach.png'],
 			// ['Switch', 'switch.png'],
 			// ['Until', 'until.png'],
-			['DataFlow', 'AzureDataFactoryDataFlowsCircle.svg'],
+			['ExecuteDataFlow', 'AzureDataFactoryDataFlowsCircle.svg'],
 			['SparkJob', 'sparkjob.png'],
 		];
 		const activityIconsMap = {};

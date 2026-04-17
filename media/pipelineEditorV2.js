@@ -218,7 +218,7 @@ function buildSidebar() {
             <div class="activity-group-content">
                 ${cat.activities.map(act => `
                     <div class="activity-item" draggable="true" data-type="${escHtml(act.type)}">
-                        <div class="activity-icon">${act.icon || '📦'}</div>
+                        <div class="activity-icon">${_ACTIVITY_ICONS[act.type] ? `<img src="${escHtml(_ACTIVITY_ICONS[act.type])}" class="activity-icon-img" alt="">` : (act.icon || '📦')}</div>
                         <span>${escHtml(act.name)}</span>
                     </div>`).join('')}
             </div>

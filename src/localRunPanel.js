@@ -99,7 +99,13 @@ class LocalRunPanel {
             'localRunViewer',
             `▶ ${pipelineName}`,
             vscode.ViewColumn.Beside,
-            { enableScripts: true, retainContextWhenHidden: true }
+            {
+                enableScripts: true,
+                retainContextWhenHidden: true,
+                localResourceRoots: [
+                    vscode.Uri.joinPath(this.context.extensionUri, 'media')
+                ]
+            }
         );
 
         LocalRunPanel.panels.set(runner.runId, panel);
@@ -155,13 +161,43 @@ class LocalRunPanel {
         const jsUri  = mediaUri('localRunViewer.js');
         const csp    = webview.cspSource;
 
+        // Build activity icon URI map (same icon set as pipelineEditorV2)
+        const iconTypes = [
+            ['SynapseNotebook', 'notebook.png'],
+            ['Copy', 'copy.png'],
+            ['AppendVariable', 'append_var.png'],
+            ['Delete', 'delete.png'],
+            ['ExecutePipeline', 'execute_pipeline.png'],
+            ['Fail', 'error2.png'],
+            ['GetMetadata', 'get_metadata.png'],
+            ['Lookup', 'lookup.png'],
+            ['SqlServerStoredProcedure', 'stored_proc.png'],
+            ['Script', 'script1.png'],
+            ['SetVariable', 'set_var.png'],
+            ['Validation', 'validation.png'],
+            ['WebActivity', 'web.png'],
+            ['WebHook', 'webhook.png'],
+            ['Wait', 'wait.png'],
+            ['Filter', 'filter.png'],
+            ['IfCondition', 'if2.png'],
+            ['ExecuteDataFlow', 'AzureDataFactoryDataFlowsCircle.svg'],
+            ['SparkJob', 'sparkjob.png'],
+        ];
+        const activityIconsMap = {};
+        for (const [type, file] of iconTypes) {
+            const iconPath = vscode.Uri.joinPath(this.context.extensionUri, 'media', 'icons', file);
+            if (fs.existsSync(iconPath.fsPath)) {
+                activityIconsMap[type] = webview.asWebviewUri(iconPath).toString();
+            }
+        }
+
         return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Security-Policy"
-          content="default-src 'none'; style-src ${csp} 'unsafe-inline'; script-src ${csp} 'unsafe-inline';">
+          content="default-src 'none'; style-src ${csp} 'unsafe-inline'; script-src ${csp} 'unsafe-inline'; img-src ${csp};">
     <link rel="stylesheet" href="${cssUri}">
     <title>▶ ${_escHtml(pipelineName)}</title>
 </head>
@@ -170,6 +206,7 @@ class LocalRunPanel {
         var PIPELINE_NAME       = ${JSON.stringify(pipelineName)};
         var RUN_ID              = ${JSON.stringify(runId)};
         var PIPELINE_ACTIVITIES = ${JSON.stringify(pipelineActivities)};
+        var ACTIVITY_ICONS      = ${JSON.stringify(activityIconsMap)};
     </script>
     <div id="app"></div>
     <div id="popover-root"></div>
@@ -247,7 +284,10 @@ function _escHtml(s) {
 function _checkCopyFormatSupport(pipelineJson, workspaceRoot) {
     if (!workspaceRoot) return [];
     const SUPPORTED_FOR_SQL  = new Set(['DelimitedText', 'Json', 'Parquet', 'Excel', 'Xml', '']);
+    // SQL dataset types are also supported (SQL→SQL copy)
     const SQL_SINK_TYPES     = new Set(['AzureSqlTable', 'AzureSqlDWTable', 'AzureSqlMITable']);
+    const SQL_SRC_TYPES      = new Set(['AzureSqlTable', 'AzureSqlDatabaseTable', 'AzureSQLDWTable', 'SqlServerTable',
+                                         'AzureSqlDWTable', 'AzureSqlMITable']);
     const warnings = [];
 
     function scanActivities(activities) {
@@ -264,7 +304,7 @@ function _checkCopyFormatSupport(pipelineJson, workspaceRoot) {
                             ? (JSON.parse(fs.readFileSync(srcDsFile,  'utf8'))?.properties?.type ?? '') : '';
                         const sinkType   = fs.existsSync(sinkDsFile)
                             ? (JSON.parse(fs.readFileSync(sinkDsFile, 'utf8'))?.properties?.type ?? '') : '';
-                        if (SQL_SINK_TYPES.has(sinkType) && !SUPPORTED_FOR_SQL.has(srcType)) {
+                        if (SQL_SINK_TYPES.has(sinkType) && !SUPPORTED_FOR_SQL.has(srcType) && !SQL_SRC_TYPES.has(srcType)) {
                             warnings.push({ activityName: act.name,
                                 reason: `"${srcType}" → SQL — format not supported in local run (needs Spark engine)` });
                         }

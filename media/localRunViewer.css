@@ -179,6 +179,13 @@ body {
     flex-shrink: 0;
 }
 
+.activity-icon-img {
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    object-fit: contain;
+}
+
 .activity-label {
     font-size: 13px;
     font-weight: 400;

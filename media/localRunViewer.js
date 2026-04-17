@@ -415,7 +415,9 @@
                 <span class="activity-type-label">${esc(a.type || '-')}</span>
             </div>
             <div class="activity-body">
-                <div class="activity-icon-large" style="color:${conf.color}">${conf.icon}</div>
+                ${(window.ACTIVITY_ICONS && window.ACTIVITY_ICONS[a.type])
+                    ? `<img src="${esc(window.ACTIVITY_ICONS[a.type])}" class="activity-icon-img" alt="">`
+                    : `<div class="activity-icon-large" style="color:${conf.color}">${conf.icon}</div>`}
                 <div class="activity-label" title="${esc(a.name)}">${esc(a.name)}</div>
                 <span class="activity-status-indicator ${statusCss}">${spinnerHtml}${esc(statusLabel)}</span>
             </div>

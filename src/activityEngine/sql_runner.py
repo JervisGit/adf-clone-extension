@@ -200,6 +200,17 @@ def run_bulk_insert(conn, schema, table, columns, rows):
     return {"ok": True, "rowsAffected": affected, "recordset": []}
 
 
+def read_sql_table(conn, schema, table):
+    """Read all rows from a SQL table and return as a list of dicts."""
+    cursor = conn.cursor()
+    cursor.execute(f"SELECT * FROM [{schema}].[{table}]")
+    if cursor.description is None:
+        return {"ok": True, "rows": [], "columns": []}
+    columns = [d[0] for d in cursor.description]
+    rows = rows_to_dicts(cursor)
+    return {"ok": True, "rows": rows, "columns": columns}
+
+
 def read_parquet(file_path):
     """Read a local parquet file and return rows as a list of dicts.
     Does not require a database connection."""
@@ -335,6 +346,8 @@ def main():
                 cmd.get("columns", []),
                 cmd.get("rows", []),
             )
+        elif operation == "selectTable":
+            result = read_sql_table(conn, cmd.get("schema", "dbo"), cmd["table"])
         else:
             result = {"ok": False, "error": f"Unknown operation: {operation}"}
     finally:

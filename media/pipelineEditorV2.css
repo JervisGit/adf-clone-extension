@@ -711,6 +711,24 @@ input[type="datetime-local"].form-input {
     background: var(--vscode-button-secondaryHoverBackground, var(--vscode-list-hoverBackground));
 }
 
+.form-open-asset-btn {
+    margin-top: 4px;
+    font-size: 11px;
+    padding: 2px 7px;
+    background: none;
+    border: 1px solid var(--vscode-panel-border);
+    color: var(--vscode-textLink-foreground);
+    cursor: pointer;
+    border-radius: 3px;
+    white-space: nowrap;
+    display: inline-block;
+}
+
+.form-open-asset-btn:hover {
+    background: var(--vscode-toolbar-hoverBackground);
+    text-decoration: underline;
+}
+
 .form-kv-array-wrap {
     display: flex;
     flex-direction: column;

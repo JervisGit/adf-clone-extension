@@ -170,6 +170,38 @@ class PipelineEditorV2Provider {
 					case 'log':
 						console.log('[V2 Webview]', message.text);
 						break;
+					case 'openAsset': {
+						const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath;
+						if (!workspaceRoot || !message.assetName) break;
+						// Check both the workspace root and the extension sub-folder
+						const searchRoots = [workspaceRoot, path.join(workspaceRoot, 'adf-clone-extension')];
+						if (message.assetType === 'dataset') {
+							for (const d of searchRoots) {
+								const fp = path.join(d, 'dataset', `${message.assetName}.json`);
+								if (fs.existsSync(fp)) {
+									await vscode.commands.executeCommand('adf-pipeline-clone.openDatasetFile', { filePath: fp });
+									break;
+								}
+							}
+						} else if (message.assetType === 'pipeline') {
+							for (const d of searchRoots) {
+								const fp = path.join(d, 'pipeline', `${message.assetName}.json`);
+								if (fs.existsSync(fp)) {
+									await vscode.commands.executeCommand('adf-pipeline-clone.openPipelineFileV2', { filePath: fp });
+									break;
+								}
+							}
+						} else if (message.assetType === 'notebook') {
+							for (const d of searchRoots) {
+								const fp = path.join(d, 'notebook', `${message.assetName}.json`);
+								if (fs.existsSync(fp)) {
+									await vscode.window.showTextDocument(vscode.Uri.file(fp));
+									break;
+								}
+							}
+						}
+						break;
+					}
 				}
 			},
 			undefined,

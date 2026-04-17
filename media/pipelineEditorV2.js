@@ -1248,7 +1248,8 @@ function _buildFormPane(activity, fields, paneId, sharedFields) {
                 html += `<select class="form-select" data-key="${escHtml(key)}" data-field-type="pipeline">`
                     + `<option value="">-- Select pipeline --</option>`
                     + pipelineList.map(p => `<option value="${escHtml(p)}"${p === currentName ? ' selected' : ''}>${escHtml(p)}</option>`).join('')
-                    + `</select>`;
+                    + `</select>`
+                    + `<button class="form-open-asset-btn" data-asset-type="pipeline" data-asset-key="${escHtml(key)}" type="button" title="Open pipeline in editor">Open ↗</button>`;
                 break;
             }
             case 'dataset-lookup':
@@ -1267,7 +1268,8 @@ function _buildFormPane(activity, fields, paneId, sharedFields) {
                 html += `<select class="form-select" data-key="${escHtml(key)}" data-field-type="dataset">`
                     + `<option value="">-- Select dataset --</option>`
                     + filteredDs.map(d => `<option value="${escHtml(d)}"${d === currentDs ? ' selected' : ''}>${escHtml(d)}</option>`).join('')
-                    + `</select>`;
+                    + `</select>`
+                    + `<button class="form-open-asset-btn" data-asset-type="dataset" data-asset-key="${escHtml(key)}" type="button" title="Open dataset in editor">Open ↗</button>`;
                 break;
             }
             case 'getmetadata-fieldlist': {
@@ -1307,7 +1309,8 @@ function _buildFormPane(activity, fields, paneId, sharedFields) {
                     + `<option value="__custom"${isCustom ? ' selected' : ''}>Custom...</option>`
                     + `</select>`
                     + `<input type="text" class="form-input form-nb-custom" data-nb-custom-for="${escHtml(key)}" value="${escHtml(isCustom ? nbVal : '')}" placeholder="Enter notebook name" style="flex:1;display:${isCustom ? 'block' : 'none'};" />`
-                    + `</div>`;
+                    + `</div>`
+                    + `<button class="form-open-asset-btn" data-asset-type="notebook" data-asset-key="${escHtml(key)}" type="button" title="Open notebook file">Open ↗</button>`;
                 break;
             }
             case 'script-linkedservice':
@@ -2372,6 +2375,25 @@ function _wireFormInputs(container, activity) {
             }
             markAsDirty();
             _applyConditionals(container, activity);
+        });
+    });
+
+    // Open-asset buttons — navigate to the referenced dataset / pipeline / notebook
+    container.querySelectorAll('.form-open-asset-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const assetType = btn.dataset.assetType;
+            const key = btn.dataset.assetKey;
+            let assetName = '';
+            if (assetType === 'notebook') {
+                const nbSel = btn.closest('.form-field')?.querySelector('.form-nb-select');
+                const nbCustom = btn.closest('.form-field')?.querySelector('.form-nb-custom');
+                assetName = nbSel?.value === '__custom' ? (nbCustom?.value || '') : (nbSel?.value || '');
+            } else {
+                const sel = btn.closest('.form-field')?.querySelector('select[data-key]');
+                assetName = sel?.value || '';
+            }
+            if (!assetName || assetName === '__custom') return;
+            vscode.postMessage({ type: 'openAsset', assetType, assetName });
         });
     });
 }

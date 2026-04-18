@@ -1376,10 +1376,20 @@ function _validateCrossRefs(rawList, workspaceRoot, activityErrors) {
 			if (rule) {
 				for (const ref of rule.check(a)) {
 					if (!ref.name) continue;
-					const filePath = path.join(workspaceRoot, ref.folder, `${ref.name}.json`);
-					if (!fs.existsSync(filePath)) {
-						_addActivityError(activityErrors, a.name,
-							`References ${ref.folder} "${ref.name}" which does not exist in the workspace ${ref.folder}/ folder.`);
+					// For notebooks, check both .json (Synapse) and .ipynb (Jupyter) formats
+					if (ref.folder === 'notebook') {
+						const jsonPath = path.join(workspaceRoot, ref.folder, `${ref.name}.json`);
+						const ipynbPath = path.join(workspaceRoot, ref.folder, `${ref.name}.ipynb`);
+						if (!fs.existsSync(jsonPath) && !fs.existsSync(ipynbPath)) {
+							_addActivityError(activityErrors, a.name,
+								`References ${ref.folder} "${ref.name}" which does not exist in the workspace ${ref.folder}/ folder (checked both .json and .ipynb formats).`);
+						}
+					} else {
+						const filePath = path.join(workspaceRoot, ref.folder, `${ref.name}.json`);
+						if (!fs.existsSync(filePath)) {
+							_addActivityError(activityErrors, a.name,
+								`References ${ref.folder} "${ref.name}" which does not exist in the workspace ${ref.folder}/ folder.`);
+						}
 					}
 				}
 			}

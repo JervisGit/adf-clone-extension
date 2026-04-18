@@ -637,10 +637,20 @@ const HANDLER_REGISTRY = {
             );
         }
 
-        // Read notebook JSON from workspace
-        const nbFile = path.join(this.workspaceRoot, 'notebook', `${notebookName}.json`);
-        if (!fs.existsSync(nbFile)) {
-            throw new Error(`SynapseNotebook: "${notebookName}.json" not found in workspace notebook/ folder`);
+        // Read notebook JSON from workspace (try .json then .ipynb in nested dirs)
+        let nbFile = null;
+        for (const ext of ['.json', '.ipynb']) {
+            const candidate = path.join(this.workspaceRoot, 'notebook', `${notebookName}${ext}`);
+            if (fs.existsSync(candidate)) {
+                nbFile = candidate;
+                break;
+            }
+        }
+        if (!nbFile) {
+            throw new Error(
+                `SynapseNotebook: "${notebookName}.json" or "${notebookName}.ipynb" not found in workspace notebook/ folder.\n` +
+                `Searched for: ${notebookName}.json and ${notebookName}.ipynb (including nested subdirectories)`
+            );
         }
         const nb    = JSON.parse(fs.readFileSync(nbFile, 'utf8'));
         const cells = nb.properties?.cells ?? nb.cells ?? [];
@@ -1111,11 +1121,20 @@ const HANDLER_REGISTRY = {
             if (!srcConn)  throw new Error(`Copy: cannot resolve SQL linked service for source "${srcName}"`);
             if (!sinkConn) throw new Error(`Copy: cannot resolve SQL linked service for sink "${sinkName}"`);
             const srcClient = new SqlClient(srcConn.server, srcConn.database);
-            const { rows, columns } = await srcClient.readTable(srcSql.schema, srcSql.table);
+            // Check for sqlReaderQuery in the Copy source typeProperties
+            const sqlQuery = tp.source?.sqlReaderQuery;
+            let rows, columns;
+            if (sqlQuery) {
+                ({ rows, columns } = await srcClient.executeQuery(sqlQuery));
+            } else {
+                ({ rows, columns } = await srcClient.readTable(srcSql.schema, srcSql.table));
+            }
+            // Apply schema mapping if present
+            ({ rows, columns } = _applySchemaMapping(rows, columns, tp.translator?.mappings));
             const sinkClient = new SqlClient(sinkConn.server, sinkConn.database);
             const result = await sinkClient.bulkInsert(sinkSql.schema, sinkSql.table, rows, columns);
             return {
-                source: `${srcConn.server}/${srcConn.database}/${srcSql.schema}.${srcSql.table}`,
+                source: sqlQuery ? `${srcConn.server}/${srcConn.database} (custom query)` : `${srcConn.server}/${srcConn.database}/${srcSql.schema}.${srcSql.table}`,
                 sink:   `${sinkConn.server}/${sinkConn.database}/${sinkSql.schema}.${sinkSql.table}`,
                 rowsCopied: result.rowsAffected,
             };
@@ -1129,7 +1148,16 @@ const HANDLER_REGISTRY = {
             const srcConn = resolveSqlLinkedService(srcSql.linkedServiceName, this.workspaceRoot, this.extensionPath);
             if (!srcConn) throw new Error(`Copy: cannot resolve SQL linked service for source "${srcName}"`);
             const srcClient = new SqlClient(srcConn.server, srcConn.database);
-            const { rows, columns } = await srcClient.readTable(srcSql.schema, srcSql.table);
+            // Check for sqlReaderQuery
+            const sqlQuery = tp.source?.sqlReaderQuery;
+            let rows, columns;
+            if (sqlQuery) {
+                ({ rows, columns } = await srcClient.executeQuery(sqlQuery));
+            } else {
+                ({ rows, columns } = await srcClient.readTable(srcSql.schema, srcSql.table));
+            }
+            // Apply schema mapping
+            ({ rows, columns } = _applySchemaMapping(rows, columns, tp.translator?.mappings));
             const sinkDs     = _readDatasetFile(sinkName, this.workspaceRoot);
             const sinkDsType = sinkDs?.properties?.type || 'DelimitedText';
             const sinkAdls   = new ADLSRestClient(sinkLoc.storageAccount);
@@ -1147,7 +1175,7 @@ const HANDLER_REGISTRY = {
             }
             await sinkAdls.writeFile(sinkLoc.container, sinkPath, content);
             return {
-                source: `${srcConn.server}/${srcConn.database}/${srcSql.schema}.${srcSql.table}`,
+                source: sqlQuery ? `${srcConn.server}/${srcConn.database} (custom query)` : `${srcConn.server}/${srcConn.database}/${srcSql.schema}.${srcSql.table}`,
                 sink:   `${sinkLoc.storageAccount}/${sinkLoc.container}/${sinkPath}`,
                 rowsCopied: rows.length, format: sinkDsType,
             };
@@ -1210,6 +1238,8 @@ const HANDLER_REGISTRY = {
                     `Formats such as Avro, Orc, and Binary require a Synapse/ADF Spark engine.`
                 );
             }
+            // Apply schema mapping if present
+            ({ rows, columns } = _applySchemaMapping(rows, columns, tp.translator?.mappings));
             const client = new SqlClient(sqlConn.server, sqlConn.database);
             const result = await client.bulkInsert(sinkSql.schema, sinkSql.table, rows, columns);
             return {
@@ -1360,6 +1390,29 @@ function _readDatasetFile(dsName, workspaceRoot) {
     const f = path.join(workspaceRoot, 'dataset', `${dsName}.json`);
     if (!fs.existsSync(f)) return null;
     try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; }
+}
+
+/**
+ * Apply column schema mapping (rename/reorder) from the Copy activity's translator.mappings.
+ * Mappings format: [{source: {name}, sink: {name}}]
+ * Returns the transformed {rows, columns}.
+ */
+function _applySchemaMapping(rows, columns, mappings) {
+    if (!mappings || !Array.isArray(mappings) || mappings.length === 0) {
+        return { rows, columns };
+    }
+    const validMappings = mappings.filter(m => m.source?.name && m.sink?.name);
+    if (validMappings.length === 0) return { rows, columns };
+
+    const newColumns = validMappings.map(m => m.sink.name);
+    const newRows = rows.map(row => {
+        const out = {};
+        for (const m of validMappings) {
+            out[m.sink.name] = row[m.source.name] ?? null;
+        }
+        return out;
+    });
+    return { rows: newRows, columns: newColumns };
 }
 
 /** Extract DelimitedText CSV settings from a dataset JSON's typeProperties. */

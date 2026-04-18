@@ -712,7 +712,9 @@ input[type="datetime-local"].form-input {
 }
 
 .form-open-asset-btn {
-    margin-top: 4px;
+    grid-column: 2;
+    justify-self: start;
+    margin-top: 3px;
     font-size: 11px;
     padding: 2px 7px;
     background: none;

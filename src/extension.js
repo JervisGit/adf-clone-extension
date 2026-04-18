@@ -2,6 +2,7 @@ const vscode = require('vscode');
 const { PipelineEditorV2Provider } = require('./pipelineEditorV2');
 const { TriggerEditorProvider } = require('./triggerEditor');
 const { DatasetEditorProvider } = require('./datasetEditor');
+const { LinkedServiceViewerPanel } = require('./linkedServiceViewer');
 const { PipelineTreeDataProvider } = require('./pipelineTreeProvider');
 const { DatasetTreeDataProvider } = require('./datasetTreeProvider');
 const { PipelineRunsTreeDataProvider } = require('./pipelineRunsTreeProvider');
@@ -52,6 +53,14 @@ function activate(context) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand('adf-pipeline-clone.openDataset', () => {
 			datasetEditorProvider.createOrShow();
+		})
+	);
+
+	// Register the linked services viewer
+	const linkedServiceViewer = new LinkedServiceViewerPanel(context);
+	context.subscriptions.push(
+		vscode.commands.registerCommand('adf-pipeline-clone.viewLinkedServices', () => {
+			linkedServiceViewer.show();
 		})
 	);
 

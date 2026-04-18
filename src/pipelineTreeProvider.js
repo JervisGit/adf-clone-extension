@@ -44,12 +44,13 @@ class PipelineTreeDataProvider {
 		const workspaceRoot = vscode.workspace.workspaceFolders[0].uri.fsPath;
 
 		if (!element) {
-			// Root level - show three main categories
+			// Root level - show four main categories
 			const folders = [];
 			
 			const datasetDir = path.join(workspaceRoot, 'dataset');
 			const pipelineDir = path.join(workspaceRoot, 'pipeline');
 			const triggerDir = path.join(workspaceRoot, 'trigger');
+			const linkedServiceDir = path.join(workspaceRoot, 'linkedService');
 			
 			if (fs.existsSync(datasetDir) || true) { // Always show even if doesn't exist
 				folders.push(new FolderItem('Datasets', datasetDir, 'dataset'));
@@ -60,6 +61,8 @@ class PipelineTreeDataProvider {
 			if (fs.existsSync(triggerDir) || true) {
 				folders.push(new FolderItem('Triggers', triggerDir, 'trigger'));
 			}
+			// Add Linked Services viewer as a non-expandable item
+			folders.push(new LinkedServicesItem());
 			
 			return folders;
 		} else if (element.folderType) {
@@ -122,6 +125,18 @@ class FileItem extends vscode.TreeItem {
 				arguments: [this]
 			};
 		}
+	}
+}
+
+class LinkedServicesItem extends vscode.TreeItem {
+	constructor() {
+		super('Linked Services', vscode.TreeItemCollapsibleState.None);
+		this.contextValue = 'linkedservices';
+		this.iconPath = new vscode.ThemeIcon('link');
+		this.command = {
+			command: 'adf-pipeline-clone.viewLinkedServices',
+			title: 'View Linked Services'
+		};
 	}
 }
 

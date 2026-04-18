@@ -193,11 +193,17 @@ class PipelineEditorV2Provider {
 							}
 						} else if (message.assetType === 'notebook') {
 							for (const d of searchRoots) {
-								const fp = path.join(d, 'notebook', `${message.assetName}.json`);
-								if (fs.existsSync(fp)) {
-									await vscode.window.showTextDocument(vscode.Uri.file(fp));
-									break;
+								// Try .json first (Synapse format), then .ipynb (Jupyter format)
+								let opened = false;
+								for (const ext of ['.json', '.ipynb']) {
+									const fp = path.join(d, 'notebook', `${message.assetName}${ext}`);
+									if (fs.existsSync(fp)) {
+										await vscode.window.showTextDocument(vscode.Uri.file(fp));
+										opened = true;
+										break;
+									}
 								}
+								if (opened) break;
 							}
 						}
 						break;
@@ -282,6 +288,23 @@ class PipelineEditorV2Provider {
 		}
 	}
 
+	/** Recursively scan a notebook directory for .json and .ipynb files */
+	_scanNotebookDir(dir, baseDir, list) {
+		if (!fs.existsSync(dir)) return;
+		for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+			if (entry.isDirectory()) {
+				this._scanNotebookDir(path.join(dir, entry.name), baseDir, list);
+			} else if (entry.name.endsWith('.json') || entry.name.endsWith('.ipynb')) {
+				const fullPath = path.join(dir, entry.name);
+				const ext = entry.name.endsWith('.ipynb') ? '.ipynb' : '.json';
+				const rel = path.relative(baseDir, fullPath);
+				// Normalize to forward slashes and remove extension
+				const name = rel.replace(/\\/g, '/').replace(ext, '');
+				if (!list.includes(name)) list.push(name);
+			}
+		}
+	}
+
 	_postInitSchemas(panel) {
 		let datasetList = [];
 		let datasetContents = {};
@@ -346,12 +369,7 @@ class PipelineEditorV2Provider {
 				}
 
 				const notebookDir = path.join(basePath, 'notebook');
-				if (fs.existsSync(notebookDir)) {
-					for (const file of fs.readdirSync(notebookDir).filter(f => f.endsWith('.json'))) {
-						const name = file.replace('.json', '');
-						if (!notebookList.includes(name)) notebookList.push(name);
-					}
-				}
+				this._scanNotebookDir(notebookDir, notebookDir, notebookList);
 
 				const credentialDir = path.join(basePath, 'credential');
 				if (fs.existsSync(credentialDir)) {

@@ -1771,7 +1771,16 @@ function _detectCopyDatasetTypes(activity) {
     // On first open: parse raw source/sink objects → flat src_*/snk_* fields
     if (activity._sourceObject && activity._sourceDatasetType && !activity._srcParsed) {
         const typeConf = copyActivityConfig.datasetTypes?.[activity._sourceDatasetType];
-        if (typeConf) Object.assign(activity, _parseCopyObjToForm(activity._sourceObject, typeConf, 'source'));
+        if (typeConf) {
+            const parsed = _parseCopyObjToForm(activity._sourceObject, typeConf, 'source');
+            // Infer UI-only mode selectors that have no jsonPath but are driven by presence of other fields
+            if (parsed.src_sqlReaderQuery !== undefined)                                                    parsed.src_useQuery     = 'Query';
+            if (parsed.src_sqlReaderStoredProcedureName !== undefined)                                      parsed.src_useQuery     = 'Stored procedure';
+            if (parsed.src_prefix !== undefined)                                                            parsed.src_filePathType = 'prefix';
+            if (parsed.src_wildcardFolderPath !== undefined || parsed.src_wildcardFileName !== undefined)   parsed.src_filePathType = 'wildcardFilePath';
+            if (parsed.src_fileListPath !== undefined)                                                      parsed.src_filePathType = 'listOfFiles';
+            Object.assign(activity, parsed);
+        }
         activity._srcParsed = true;
     }
     if (activity._sinkObject && activity._sinkDatasetType && !activity._snkParsed) {
@@ -1819,16 +1828,26 @@ function _applyCopyConfigDefaults(activity, typeConf, side) {
 //   1. Schema-driven dataset picker (from sourceProperties / sinkProperties)
 //   2. Config-driven fields from copyActivityConfig.datasetTypes[type].fields.source|sink
 // ─── Copy — Mapping tab ───────────────────────────────────────────────────────
+const _MAPPING_SINK_TYPES = ['','Byte','Byte[]','Boolean','Date','DateTime','DateTimeOffset','Decimal','Double','Guid','Int16','Int32','Int64','Single','String','TimeSpan'];
+
 function _buildMappingPane(activity) {
-    const mappings = activity.translator?.mappings;
+    const mappings = activity._copyTranslator?.mappings;
     const rows = Array.isArray(mappings) ? mappings : [];
 
-    const rowsHtml = rows.map((m, i) => `
+    const typeOpts = _MAPPING_SINK_TYPES.map(t =>
+        `<option value="${escHtml(t)}">${t === '' ? '— type —' : escHtml(t)}</option>`
+    ).join('');
+
+    const rowsHtml = rows.map((m, i) => {
+        const snkType = m.sink?.type ?? '';
+        return `
         <tr data-row="${i}">
             <td><input type="text" class="form-input map-src-name" value="${escHtml(m.source?.name ?? '')}" placeholder="Source column" /></td>
             <td><input type="text" class="form-input map-snk-name" value="${escHtml(m.sink?.name ?? '')}" placeholder="Sink column" /></td>
+            <td><select class="form-select map-snk-type">${_MAPPING_SINK_TYPES.map(t => `<option value="${escHtml(t)}"${t === snkType ? ' selected' : ''}>${t === '' ? '— type —' : escHtml(t)}</option>`).join('')}</select></td>
             <td><button class="action-icon-btn map-remove-row" type="button" title="Remove row">×</button></td>
-        </tr>`).join('');
+        </tr>`;
+    }).join('');
 
     return `
         <div class="mapping-pane">
@@ -1841,6 +1860,7 @@ function _buildMappingPane(activity) {
                     <tr>
                         <th>Source column</th>
                         <th>Sink column</th>
+                        <th>Sink type</th>
                         <th style="width:32px;"></th>
                     </tr>
                 </thead>
@@ -1861,28 +1881,35 @@ function _wireMappingPane(container, activity) {
         pane.querySelectorAll('.mapping-tbody tr').forEach(tr => {
             const src = tr.querySelector('.map-src-name')?.value?.trim() ?? '';
             const snk = tr.querySelector('.map-snk-name')?.value?.trim() ?? '';
-            if (src || snk) rows.push({ source: { name: src }, sink: { name: snk } });
+            const typ = tr.querySelector('.map-snk-type')?.value?.trim() ?? '';
+            if (src || snk) {
+                const sinkObj = { name: snk };
+                if (typ) sinkObj.type = typ;
+                rows.push({ source: { name: src }, sink: sinkObj });
+            }
         });
         if (rows.length > 0) {
-            if (!activity.translator || typeof activity.translator !== 'object') {
-                activity.translator = { type: 'TabularTranslator' };
+            if (!activity._copyTranslator || typeof activity._copyTranslator !== 'object') {
+                activity._copyTranslator = { type: 'TabularTranslator' };
             }
-            activity.translator.mappings = rows;
+            activity._copyTranslator.mappings = rows;
         } else {
-            if (activity.translator) delete activity.translator.mappings;
+            if (activity._copyTranslator) delete activity._copyTranslator.mappings;
         }
         markAsDirty();
     };
 
-    const addRow = (srcVal = '', snkVal = '') => {
+    const addRow = (srcVal = '', snkVal = '', snkType = '') => {
         const tbody = pane.querySelector('.mapping-tbody');
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td><input type="text" class="form-input map-src-name" value="${escHtml(srcVal)}" placeholder="Source column" /></td>
             <td><input type="text" class="form-input map-snk-name" value="${escHtml(snkVal)}" placeholder="Sink column" /></td>
+            <td><select class="form-select map-snk-type">${_MAPPING_SINK_TYPES.map(t => `<option value="${escHtml(t)}"${t === snkType ? ' selected' : ''}>${t === '' ? '— type —' : escHtml(t)}</option>`).join('')}</select></td>
             <td><button class="action-icon-btn map-remove-row" type="button" title="Remove row">×</button></td>`;
         tbody.appendChild(tr);
         tr.querySelector('.map-remove-row').addEventListener('click', () => { tr.remove(); syncModel(); });
+        tr.querySelectorAll('input, select').forEach(inp => inp.addEventListener('change', syncModel));
         tr.querySelectorAll('input').forEach(inp => inp.addEventListener('input', syncModel));
     };
 
@@ -1890,6 +1917,7 @@ function _wireMappingPane(container, activity) {
     pane.querySelectorAll('.mapping-tbody tr').forEach(tr => {
         tr.querySelector('.map-remove-row')?.addEventListener('click', () => { tr.remove(); syncModel(); });
         tr.querySelectorAll('input').forEach(inp => inp.addEventListener('input', syncModel));
+        tr.querySelectorAll('select').forEach(sel => sel.addEventListener('change', syncModel));
     });
 
     pane.querySelector('.mapping-add-row')?.addEventListener('click', () => addRow());

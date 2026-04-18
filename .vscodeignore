@@ -10,3 +10,6 @@ vsc-extension-quickstart.md
 **/eslint.config.js
 **/*.map
 **/.vscode-test.*
+
+# Dev-only test data and credentials
+archive/**

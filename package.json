@@ -1,12 +1,12 @@
 {
   "name": "adf-pipeline-clone",
   "displayName": "Synapse Pipeline Clone",
-  "description": "A visual pipeline editor for Azure Data Factory and Synapse Analytics",
-  "version": "0.0.1",
+  "description": "Visual pipeline editor for Azure Data Factory and Synapse Analytics — edit, clone, and locally run pipelines from JSON files.",
+  "version": "0.1.0",
   "publisher": "local",
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/adf-pipeline-clone"
+    "url": ""
   },
   "engines": {
     "vscode": "^1.107.0"

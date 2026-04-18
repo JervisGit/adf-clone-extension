@@ -919,10 +919,27 @@ function setupCanvasEvents() {
     });
 }
 
+// ─── Pipeline name validation ─────────────────────────────────────────────────
+function _validatePipelineName(name) {
+    if (!name) return 'Pipeline name is required.';
+    if (!/^[a-zA-Z0-9_]/.test(name))  return 'Pipeline name must start with a letter, number, or underscore.';
+    if (!/[a-zA-Z0-9_]$/.test(name))  return 'Pipeline name must end with a letter, number, or underscore.';
+    if (/[^a-zA-Z0-9_\s-]/.test(name)) return 'Pipeline name may only contain letters, numbers, dashes (-), underscores (_), or spaces.';
+    return '';
+}
+
 // ─── Toolbar ────────────────────────────────────────────────────────────────────
 function setupToolbarButtons() {
     const saveBtn = document.getElementById('saveBtn');
     saveBtn.addEventListener('click', () => {
+        const nameErr = _validatePipelineName(pipelineData.name);
+        if (nameErr) {
+            // Show inline error if the error element is visible
+            const errEl = document.getElementById('pipelineNameError');
+            if (errEl) { errEl.textContent = nameErr; errEl.style.display = 'block'; }
+            vscode.postMessage({ type: 'alert', text: `Cannot save: ${nameErr}` });
+            return;
+        }
         saveBtn.disabled = true;
         saveBtn.textContent = 'Saving…';
         const saveData = getSavePayload();
@@ -1069,6 +1086,7 @@ function showProperties(activity) {
             <div class="form-row" style="margin-bottom:8px;">
                 <label class="form-label" style="font-size:12px;">Name</label>
                 <input id="pipelineNameInput" class="form-input" type="text" value="${escHtml(pipelineData.name || '')}" placeholder="Pipeline name" style="font-size:12px;">
+                <div id="pipelineNameError" style="color:#f14c4c;font-size:11px;margin-top:3px;display:none;"></div>
             </div>
             <div class="form-row" style="margin-bottom:8px;">
                 <label class="form-label" style="font-size:12px;">Description</label>
@@ -1078,6 +1096,12 @@ function showProperties(activity) {
             pipelineData.name = e.target.value;
             titleEl.textContent = pipelineData.name || 'Pipeline Properties';
             markAsDirty();
+            const errEl = document.getElementById('pipelineNameError');
+            if (errEl) {
+                const err = _validatePipelineName(pipelineData.name);
+                errEl.textContent = err;
+                errEl.style.display = err ? 'block' : 'none';
+            }
         });
         document.getElementById('pipelineDescInput').addEventListener('input', e => {
             pipelineData.description = e.target.value;

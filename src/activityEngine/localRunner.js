@@ -1162,18 +1162,25 @@ const HANDLER_REGISTRY = {
             const sinkDsType = sinkDs?.properties?.type || 'DelimitedText';
             const sinkAdls   = new ADLSRestClient(sinkLoc.storageAccount);
             const sinkPath   = buildAdlsPath(sinkLoc);
-            let content;
             if (sinkDsType === 'DelimitedText' || !sinkDsType) {
-                content = _serializeCsv(rows, columns, _getCsvConfig(sinkDs));
+                const content = _serializeCsv(rows, columns, _getCsvConfig(sinkDs));
+                await sinkAdls.writeFile(sinkLoc.container, sinkPath, content);
             } else if (sinkDsType === 'Json') {
-                content = JSON.stringify(rows, null, 2);
+                const content = JSON.stringify(rows, null, 2);
+                await sinkAdls.writeFile(sinkLoc.container, sinkPath, content);
+            } else if (sinkDsType === 'Parquet') {
+                const tmpPath = path.join(os.tmpdir(), `adf-parquet-out-${Date.now()}.parquet`);
+                try {
+                    await writeParquetFile(tmpPath, rows, columns);
+                    const parquetBuf = fs.readFileSync(tmpPath);
+                    await sinkAdls.writeFile(sinkLoc.container, sinkPath, parquetBuf);
+                } finally { try { fs.unlinkSync(tmpPath); } catch (_) {} }
             } else {
                 throw new Error(
                     `Copy: sink format "${sinkDsType}" is not supported for SQL→file local run.\n` +
-                    `Supported sink formats for SQL source: DelimitedText, Json.`
+                    `Supported sink formats for SQL source: DelimitedText, Json, Parquet.`
                 );
             }
-            await sinkAdls.writeFile(sinkLoc.container, sinkPath, content);
             return {
                 source: sqlQuery ? `${srcConn.server}/${srcConn.database} (custom query)` : `${srcConn.server}/${srcConn.database}/${srcSql.schema}.${srcSql.table}`,
                 sink:   `${sinkLoc.storageAccount}/${sinkLoc.container}/${sinkPath}`,
@@ -1279,8 +1286,11 @@ const HANDLER_REGISTRY = {
         const srcPath  = buildAdlsPath(srcLoc);
         const sinkPath = buildAdlsPath(sinkLoc);
 
-        // Cross-format conversion: CSV ↔ Parquet
-        const CROSS_PAIRS = new Set(['DelimitedText->Parquet', 'Parquet->DelimitedText']);
+        // Cross-format conversion: CSV ↔ Parquet, JSON ↔ Parquet
+        const CROSS_PAIRS = new Set([
+            'DelimitedText->Parquet', 'Parquet->DelimitedText',
+            'Json->Parquet',          'Parquet->Json',
+        ]);
         const formatPair = srcDsType && sinkDsType ? `${srcDsType}->${sinkDsType}` : '';
 
         if (CROSS_PAIRS.has(formatPair)) {
@@ -1298,6 +1308,40 @@ const HANDLER_REGISTRY = {
                         source: `${srcLoc.storageAccount}/${srcLoc.container}/${srcPath}`,
                         sink:   `${sinkLoc.storageAccount}/${sinkLoc.container}/${sinkPath}`,
                         rowsCopied: rows.length, format: 'DelimitedText→Parquet',
+                    };
+                } finally { try { fs.unlinkSync(tmpPath); } catch (_) {} }
+            }
+            // JSON → Parquet
+            if (formatPair === 'Json->Parquet') {
+                const rawText = await srcAdls.readFile(srcLoc.container, srcPath);
+                const parsed  = JSON.parse(rawText);
+                const arr     = Array.isArray(parsed) ? parsed : (parsed.value ?? [parsed]);
+                const columns = arr.length ? Object.keys(arr[0]) : [];
+                const tmpPath = path.join(os.tmpdir(), `adf-parquet-out-${Date.now()}.parquet`);
+                try {
+                    await writeParquetFile(tmpPath, arr, columns);
+                    const parquetBuf = fs.readFileSync(tmpPath);
+                    await sinkAdls.writeFile(sinkLoc.container, sinkPath, parquetBuf);
+                    return {
+                        source: `${srcLoc.storageAccount}/${srcLoc.container}/${srcPath}`,
+                        sink:   `${sinkLoc.storageAccount}/${sinkLoc.container}/${sinkPath}`,
+                        rowsCopied: arr.length, format: 'Json→Parquet',
+                    };
+                } finally { try { fs.unlinkSync(tmpPath); } catch (_) {} }
+            }
+            // Parquet → JSON
+            if (formatPair === 'Parquet->Json') {
+                const rawBuf  = await srcAdls.readFileBuffer(srcLoc.container, srcPath);
+                const tmpPath = path.join(os.tmpdir(), `adf-parquet-${Date.now()}.parquet`);
+                fs.writeFileSync(tmpPath, rawBuf);
+                try {
+                    const { rows } = await readParquetFile(tmpPath);
+                    const content = JSON.stringify(rows, null, 2);
+                    await sinkAdls.writeFile(sinkLoc.container, sinkPath, content);
+                    return {
+                        source: `${srcLoc.storageAccount}/${srcLoc.container}/${srcPath}`,
+                        sink:   `${sinkLoc.storageAccount}/${sinkLoc.container}/${sinkPath}`,
+                        rowsCopied: rows.length, format: 'Parquet→Json',
                     };
                 } finally { try { fs.unlinkSync(tmpPath); } catch (_) {} }
             }
@@ -1323,7 +1367,7 @@ const HANDLER_REGISTRY = {
         if (srcDsType && sinkDsType && srcDsType !== sinkDsType) {
             throw new Error(
                 `Copy: format conversion from "${srcDsType}" to "${sinkDsType}" is not supported in local run mode.\n` +
-                `Supported cross-format conversions: CSV → Parquet, Parquet → CSV.`
+                `Supported cross-format conversions: CSV↔Parquet, JSON↔Parquet.`
             );
         }
 

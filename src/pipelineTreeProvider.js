@@ -50,7 +50,6 @@ class PipelineTreeDataProvider {
 			const datasetDir = path.join(workspaceRoot, 'dataset');
 			const pipelineDir = path.join(workspaceRoot, 'pipeline');
 			const triggerDir = path.join(workspaceRoot, 'trigger');
-			const linkedServiceDir = path.join(workspaceRoot, 'linkedService');
 			
 			if (fs.existsSync(datasetDir) || true) { // Always show even if doesn't exist
 				folders.push(new FolderItem('Datasets', datasetDir, 'dataset'));
@@ -61,8 +60,12 @@ class PipelineTreeDataProvider {
 			if (fs.existsSync(triggerDir) || true) {
 				folders.push(new FolderItem('Triggers', triggerDir, 'trigger'));
 			}
-			// Add Linked Services viewer as a non-expandable item
-			folders.push(new LinkedServicesItem());
+			// Linked Services — collapsible folder
+			const lsDirs = [
+				path.join(workspaceRoot, 'linkedService'),
+				path.join(workspaceRoot, 'adf-clone-extension', 'linkedService'),
+			];
+			folders.push(new LinkedServicesFolderItem(lsDirs));
 			
 			return folders;
 		} else if (element.folderType) {
@@ -80,6 +83,27 @@ class PipelineTreeDataProvider {
 				));
 			
 			return files;
+		} else if (element.isLinkedServicesFolder) {
+			// Expand linked services: scan both dirs, deduplicate by filename
+			const seen = new Set();
+			const items = [];
+			for (const dir of element.lsDirs) {
+				if (!fs.existsSync(dir)) continue;
+				for (const file of fs.readdirSync(dir).filter(f => f.endsWith('.json'))) {
+					if (seen.has(file)) continue;
+					seen.add(file);
+					const filePath = path.join(dir, file);
+					try {
+						const json = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+						const name = json.name || file.replace('.json', '');
+						const lsType = json.properties?.type || '';
+						items.push(new LinkedServiceFileItem(name, lsType, filePath));
+					} catch {
+						items.push(new LinkedServiceFileItem(file.replace('.json', ''), '', filePath));
+					}
+				}
+			}
+			return items;
 		}
 
 		return [];
@@ -128,14 +152,28 @@ class FileItem extends vscode.TreeItem {
 	}
 }
 
-class LinkedServicesItem extends vscode.TreeItem {
-	constructor() {
-		super('Linked Services', vscode.TreeItemCollapsibleState.None);
-		this.contextValue = 'linkedservices';
+class LinkedServicesFolderItem extends vscode.TreeItem {
+	constructor(lsDirs) {
+		super('Linked Services', vscode.TreeItemCollapsibleState.Collapsed);
+		this.lsDirs = lsDirs;
+		this.isLinkedServicesFolder = true;
+		this.contextValue = 'folder-linkedservice';
+		this.iconPath = new vscode.ThemeIcon('link');
+	}
+}
+
+class LinkedServiceFileItem extends vscode.TreeItem {
+	constructor(name, lsType, filePath) {
+		super(name, vscode.TreeItemCollapsibleState.None);
+		this.filePath = filePath;
+		this.lsType = lsType;
+		this.contextValue = 'linkedservice';
+		this.description = lsType;
 		this.iconPath = new vscode.ThemeIcon('link');
 		this.command = {
-			command: 'adf-pipeline-clone.viewLinkedServices',
-			title: 'View Linked Services'
+			command: 'adf-pipeline-clone.viewLinkedService',
+			title: 'View Linked Service',
+			arguments: [this]
 		};
 	}
 }

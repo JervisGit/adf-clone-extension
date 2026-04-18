@@ -160,6 +160,10 @@
         "command": "adf-pipeline-clone.localRunPipeline",
         "title": "Run Pipeline Locally",
         "icon": "$(play)"
+      },
+      {
+        "command": "adf-pipeline-clone.viewLinkedService",
+        "title": "View Linked Service"
       }
     ],
     "menus": {

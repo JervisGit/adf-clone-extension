@@ -63,6 +63,11 @@ function activate(context) {
 			linkedServiceViewer.show();
 		})
 	);
+	context.subscriptions.push(
+		vscode.commands.registerCommand('adf-pipeline-clone.viewLinkedService', (item) => {
+			if (item && item.filePath) linkedServiceViewer.viewLinkedService(item);
+		})
+	);
 
 	// Register command to open trigger file
 	context.subscriptions.push(

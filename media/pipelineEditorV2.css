@@ -697,6 +697,26 @@ input[type="datetime-local"].form-input {
     min-width: 0;
 }
 
+/* ─── Copy Mapping tab ───────────────────────────────────────────────────────── */
+.mapping-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+.mapping-table th {
+    text-align: left;
+    font-weight: 600;
+    color: var(--vscode-descriptionForeground);
+    padding: 4px 6px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+}
+.mapping-table td {
+    padding: 3px 4px;
+}
+.mapping-table .form-input {
+    width: 100%;
+}
+
 .form-kv-add-btn {
     font-size: 11px;
     padding: 3px 8px;

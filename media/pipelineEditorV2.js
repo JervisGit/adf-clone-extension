@@ -1126,6 +1126,8 @@ function showProperties(activity) {
                         ? (activity.type === 'Copy' ? _buildCopyDatasetPane(activity, 'source') : _buildFormPane(activity, schema.sourceProperties || {}, 'source'))
                         : t === 'Sink'
                             ? (activity.type === 'Copy' ? _buildCopyDatasetPane(activity, 'sink') : _buildFormPane(activity, schema.sinkProperties || {}, 'sink'))
+                            : t === 'Mapping'
+                            ? (activity.type === 'Copy' ? _buildMappingPane(activity) : `<div class="empty-state">Not yet implemented.</div>`)
                             : t === 'Advanced'
                                 ? _buildFormPane(activity, schema.advancedProperties || {}, 'advanced')
                                 : t === 'Activities'
@@ -1145,6 +1147,7 @@ function showProperties(activity) {
         _wireNotebookSelects(panesContainer, activity);
         _wireAkvSecretFields(panesContainer, activity);
         if (activity.type === 'Copy') _wireCopyConfigFields(panesContainer, activity);
+        if (activity.type === 'Copy') _wireMappingPane(panesContainer, activity);
         _wireActivitiesTab(panesContainer, activity);
         _wireUserPropertiesTab(panesContainer, activity);
     } else {
@@ -1815,6 +1818,83 @@ function _applyCopyConfigDefaults(activity, typeConf, side) {
 // Build the Source or Sink pane for a Copy activity:
 //   1. Schema-driven dataset picker (from sourceProperties / sinkProperties)
 //   2. Config-driven fields from copyActivityConfig.datasetTypes[type].fields.source|sink
+// ─── Copy — Mapping tab ───────────────────────────────────────────────────────
+function _buildMappingPane(activity) {
+    const mappings = activity.translator?.mappings;
+    const rows = Array.isArray(mappings) ? mappings : [];
+
+    const rowsHtml = rows.map((m, i) => `
+        <tr data-row="${i}">
+            <td><input type="text" class="form-input map-src-name" value="${escHtml(m.source?.name ?? '')}" placeholder="Source column" /></td>
+            <td><input type="text" class="form-input map-snk-name" value="${escHtml(m.sink?.name ?? '')}" placeholder="Sink column" /></td>
+            <td><button class="action-icon-btn map-remove-row" type="button" title="Remove row">×</button></td>
+        </tr>`).join('');
+
+    return `
+        <div class="mapping-pane">
+            <div class="form-help" style="margin-bottom:8px;">
+                Define explicit column mappings between source and sink.
+                Leave empty to use automatic name-matching.
+            </div>
+            <table class="mapping-table">
+                <thead>
+                    <tr>
+                        <th>Source column</th>
+                        <th>Sink column</th>
+                        <th style="width:32px;"></th>
+                    </tr>
+                </thead>
+                <tbody class="mapping-tbody">
+                    ${rowsHtml}
+                </tbody>
+            </table>
+            <button class="form-kv-add-btn mapping-add-row" type="button" style="margin-top:8px;">+ Add mapping</button>
+        </div>`;
+}
+
+function _wireMappingPane(container, activity) {
+    const pane = container.querySelector('.mapping-pane');
+    if (!pane) return;
+
+    const syncModel = () => {
+        const rows = [];
+        pane.querySelectorAll('.mapping-tbody tr').forEach(tr => {
+            const src = tr.querySelector('.map-src-name')?.value?.trim() ?? '';
+            const snk = tr.querySelector('.map-snk-name')?.value?.trim() ?? '';
+            if (src || snk) rows.push({ source: { name: src }, sink: { name: snk } });
+        });
+        if (rows.length > 0) {
+            if (!activity.translator || typeof activity.translator !== 'object') {
+                activity.translator = { type: 'TabularTranslator' };
+            }
+            activity.translator.mappings = rows;
+        } else {
+            if (activity.translator) delete activity.translator.mappings;
+        }
+        markAsDirty();
+    };
+
+    const addRow = (srcVal = '', snkVal = '') => {
+        const tbody = pane.querySelector('.mapping-tbody');
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td><input type="text" class="form-input map-src-name" value="${escHtml(srcVal)}" placeholder="Source column" /></td>
+            <td><input type="text" class="form-input map-snk-name" value="${escHtml(snkVal)}" placeholder="Sink column" /></td>
+            <td><button class="action-icon-btn map-remove-row" type="button" title="Remove row">×</button></td>`;
+        tbody.appendChild(tr);
+        tr.querySelector('.map-remove-row').addEventListener('click', () => { tr.remove(); syncModel(); });
+        tr.querySelectorAll('input').forEach(inp => inp.addEventListener('input', syncModel));
+    };
+
+    // Wire existing rows
+    pane.querySelectorAll('.mapping-tbody tr').forEach(tr => {
+        tr.querySelector('.map-remove-row')?.addEventListener('click', () => { tr.remove(); syncModel(); });
+        tr.querySelectorAll('input').forEach(inp => inp.addEventListener('input', syncModel));
+    });
+
+    pane.querySelector('.mapping-add-row')?.addEventListener('click', () => addRow());
+}
+
 function _buildCopyDatasetPane(activity, side) {
     const schema = activitySchemas[activity.type] || {};
     const schemaProps = side === 'source' ? (schema.sourceProperties || {}) : (schema.sinkProperties || {});

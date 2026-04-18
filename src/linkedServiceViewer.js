@@ -2,12 +2,57 @@ const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
 
+const LS_ICON_MAP = {
+    'AzureBlobFS':      'adls_blob.png',
+    'AzureBlobStorage': 'adls_blob.png',
+    'AzureSqlDatabase': 'sql_db.png',
+    'AzureSqlDW':       'az_sql_dw.png',
+    'AzureKeyVault':    'key_vault.png',
+    'HttpServer':       'http.png',
+};
+
 class LinkedServiceViewerPanel {
     constructor(context) {
         this.context = context;
-        this.panel = null;
+        this.panel = null;      // legacy all-services panel
+        this.panels = new Map(); // filePath → WebviewPanel (per-item panels)
     }
 
+    /** Open a detail panel for a single linked service item from the tree. */
+    viewLinkedService(item) {
+        const filePath = item.filePath;
+
+        // Re-use existing panel for this file if already open
+        if (this.panels.has(filePath)) {
+            this.panels.get(filePath).reveal();
+            return;
+        }
+
+        let json;
+        try {
+            json = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+        } catch {
+            vscode.window.showErrorMessage(`Could not read linked service: ${filePath}`);
+            return;
+        }
+
+        const name = json.name || path.basename(filePath, '.json');
+        const panel = vscode.window.createWebviewPanel(
+            'linkedServiceDetail',
+            name,
+            vscode.ViewColumn.One,
+            {
+                enableScripts: false,
+                localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'media', 'icons')]
+            }
+        );
+
+        panel.webview.html = this._buildDetailHtml(panel.webview, json);
+        panel.onDidDispose(() => this.panels.delete(filePath));
+        this.panels.set(filePath, panel);
+    }
+
+    /** Legacy: open all-services panel (used by viewLinkedServices command). */
     show() {
         if (this.panel) {
             this.panel.reveal();
@@ -26,6 +71,71 @@ class LinkedServiceViewerPanel {
         this.panel.onDidDispose(() => {
             this.panel = null;
         });
+    }
+
+    _buildDetailHtml(webview, json) {
+        const name        = json.name || 'Unknown';
+        const type        = json.properties?.type || '';
+        const props       = json.properties?.typeProperties || {};
+        const description = json.properties?.description || '';
+        const connectVia  = json.properties?.connectVia?.referenceName || 'AutoResolveIntegrationRuntime';
+        const humanType   = this._getHumanType(type);
+
+        const iconFile = LS_ICON_MAP[type];
+        const iconTag  = iconFile
+            ? `<img src="${webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'icons', iconFile))}" alt="${this._escapeHtml(type)}" />`
+            : '';
+
+        const details    = this._extractDetails(type, props);
+        const detailRows = Object.entries(details).map(([label, value]) => `
+            <div class="detail-row">
+                <div class="detail-label">${this._escapeHtml(label)}</div>
+                <div class="detail-value${value === '<masked>' ? ' masked' : ''}">${this._escapeHtml(value)}</div>
+            </div>`).join('');
+
+        const descRow = description ? `
+            <div class="detail-row">
+                <div class="detail-label">Description</div>
+                <div class="detail-value">${this._escapeHtml(description)}</div>
+            </div>` : '';
+
+        return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${this._escapeHtml(name)}</title>
+    <style>
+        body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); padding: 24px; line-height: 1.6; }
+        .header { display: flex; align-items: center; gap: 14px; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--vscode-panel-border); }
+        .header img { width: 40px; height: 40px; object-fit: contain; }
+        .header-text { display: flex; flex-direction: column; gap: 2px; }
+        .header-name { font-size: 18px; font-weight: 700; }
+        .header-type { font-size: 13px; color: var(--vscode-descriptionForeground); }
+        .detail-row { display: flex; gap: 16px; padding: 6px 0; border-bottom: 1px solid var(--vscode-panel-border); font-size: 13px; }
+        .detail-label { font-weight: 600; color: var(--vscode-descriptionForeground); min-width: 180px; flex-shrink: 0; }
+        .detail-value { word-break: break-all; }
+        .masked { font-style: italic; opacity: 0.6; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        ${iconTag}
+        <div class="header-text">
+            <div class="header-name">${this._escapeHtml(name)}</div>
+            <div class="header-type">${this._escapeHtml(humanType)}</div>
+        </div>
+    </div>
+    <div class="section">
+        ${detailRows}
+        ${descRow}
+        <div class="detail-row">
+            <div class="detail-label">Integration Runtime</div>
+            <div class="detail-value">${this._escapeHtml(connectVia)}</div>
+        </div>
+    </div>
+</body>
+</html>`;
     }
 
     _getHtml() {
@@ -202,10 +312,25 @@ class LinkedServiceViewerPanel {
         if (type === 'AzureBlobFS') {
             details['URL'] = props.url || '';
         } else if (type === 'AzureBlobStorage') {
-            details['Service Endpoint'] = props.serviceEndpoint || props.connectionString ? '<masked>' : '';
+            // Extract StorageAccountName from connectionString instead of masking it
+            const conn = props.connectionString?.value ?? props.connectionString ?? '';
+            const m = String(conn).match(/AccountName=([^;]+)/i);
+            if (m) {
+                details['Storage Account'] = m[1];
+                details['Endpoint Suffix'] = 'blob.core.windows.net';
+            } else {
+                details['Service Endpoint'] = props.serviceEndpoint || '<unknown>';
+            }
         } else if (type === 'AzureSqlDatabase' || type === 'AzureSqlDW') {
-            details['Server'] = props.server || '';
-            details['Database'] = props.database || '';
+            if (props.server) {
+                details['Server'] = props.server;
+            } else {
+                // Extract from connectionString e.g. "Data Source=tcp:host,1433"
+                const conn = props.connectionString?.value ?? props.connectionString ?? '';
+                const m = String(conn).match(/Data Source=tcp:([^,]+)/i);
+                if (m) details['Server'] = m[1];
+            }
+            if (props.database) details['Database'] = props.database;
             details['Auth Type'] = props.authenticationType || 'Managed Identity';
         } else if (type === 'AzureKeyVault') {
             details['Base URL'] = props.baseUrl || '';

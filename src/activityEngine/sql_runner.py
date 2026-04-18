@@ -229,8 +229,10 @@ def write_parquet(file_path, rows, columns):
         import pyarrow.parquet as pq
     except ImportError:
         return {"ok": False, "error": "pyarrow not installed. Run: pip install pyarrow"}
-    # Build an Arrow table from column-oriented data
-    col_data = {c: [row.get(c) for row in rows] for c in columns}
+    # Build an Arrow table from column-oriented data.
+    # Coerce every non-None value to str so pyarrow.string() never receives a
+    # Python bool, int, float, etc. (which raises "Expected bytes, got 'bool'" etc.)
+    col_data = {c: [str(row.get(c)) if row.get(c) is not None else None for row in rows] for c in columns}
     arrays   = [pa.array(col_data[c], type=pa.string()) for c in columns]
     table    = pa.table({c: arr for c, arr in zip(columns, arrays)})
     pq.write_table(table, file_path)

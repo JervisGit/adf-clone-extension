@@ -227,7 +227,14 @@ function activate(context) {
 		vscode.commands.registerCommand('adf-pipeline-clone.createPipeline', async (folderItem) => {
 			const name = await vscode.window.showInputBox({
 				prompt: 'Enter pipeline name',
-				placeHolder: 'MyPipeline'
+				placeHolder: 'MyPipeline',
+				validateInput: (value) => {
+					if (!value) return 'Pipeline name is required.';
+					if (!/^[a-zA-Z0-9_]/.test(value)) return 'Must start with a letter, number, or underscore.';
+					if (!/[a-zA-Z0-9_]$/.test(value)) return 'Must end with a letter, number, or underscore.';
+					if (/[^a-zA-Z0-9_\s-]/.test(value)) return 'May only contain letters, numbers, dashes, underscores, or spaces.';
+					return null;
+				}
 			});
 			
 			if (name) {

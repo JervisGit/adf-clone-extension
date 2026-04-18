@@ -112,17 +112,29 @@ class LinkedServiceViewerPanel {
         const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath;
         if (!workspaceRoot) return [];
 
-        const linkedServiceDir = path.join(workspaceRoot, 'linkedService');
-        if (!fs.existsSync(linkedServiceDir)) return [];
+        // Search in workspace root AND the adf-clone-extension subfolder (same as pipeline editor)
+        const searchRoots = [
+            workspaceRoot,
+            require('path').join(workspaceRoot, 'adf-clone-extension'),
+        ];
 
+        const seen = new Set();
         const results = [];
-        for (const file of fs.readdirSync(linkedServiceDir).filter(f => f.endsWith('.json'))) {
-            try {
-                const filePath = path.join(linkedServiceDir, file);
-                const json = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-                results.push(this._parseLSFile(json));
-            } catch {
-                // skip invalid files
+
+        for (const base of searchRoots) {
+            const linkedServiceDir = require('path').join(base, 'linkedService');
+            if (!require('fs').existsSync(linkedServiceDir)) continue;
+
+            for (const file of require('fs').readdirSync(linkedServiceDir).filter(f => f.endsWith('.json'))) {
+                if (seen.has(file)) continue;           // prefer workspace root version
+                seen.add(file);
+                try {
+                    const filePath = require('path').join(linkedServiceDir, file);
+                    const json = JSON.parse(require('fs').readFileSync(filePath, 'utf8'));
+                    results.push(this._parseLSFile(json));
+                } catch {
+                    // skip invalid files
+                }
             }
         }
         return results;

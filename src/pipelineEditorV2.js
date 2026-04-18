@@ -193,12 +193,13 @@ class PipelineEditorV2Provider {
 							}
 						} else if (message.assetType === 'notebook') {
 							for (const d of searchRoots) {
-								// Try .json first (Synapse format), then .ipynb (Jupyter format)
+								// Try .ipynb first (Jupyter viewer), then .json (Synapse format)
 								let opened = false;
-								for (const ext of ['.json', '.ipynb']) {
+								for (const ext of ['.ipynb', '.json']) {
 									const fp = path.join(d, 'notebook', `${message.assetName}${ext}`);
 									if (fs.existsSync(fp)) {
-										await vscode.window.showTextDocument(vscode.Uri.file(fp));
+										// vscode.open respects file associations — .ipynb opens in Jupyter notebook viewer
+										await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(fp));
 										opened = true;
 										break;
 									}
@@ -294,13 +295,14 @@ class PipelineEditorV2Provider {
 		for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
 			if (entry.isDirectory()) {
 				this._scanNotebookDir(path.join(dir, entry.name), baseDir, list);
-			} else if (entry.name.endsWith('.json') || entry.name.endsWith('.ipynb')) {
+			} else if (entry.name.endsWith('.ipynb')) {
 				const fullPath = path.join(dir, entry.name);
-				const ext = entry.name.endsWith('.ipynb') ? '.ipynb' : '.json';
 				const rel = path.relative(baseDir, fullPath);
-				// Normalize to forward slashes and remove extension
-				const name = rel.replace(/\\/g, '/').replace(ext, '');
-				if (!list.includes(name)) list.push(name);
+				// Normalize to forward slashes, remove extension
+				const value = rel.replace(/\\/g, '/').replace(/\.ipynb$/, '');
+				// Display name is just the filename without extension
+				const label = entry.name.replace(/\.ipynb$/, '');
+				if (!list.find(n => n.value === value)) list.push({ value, label });
 			}
 		}
 	}

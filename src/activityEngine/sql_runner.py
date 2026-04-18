@@ -222,6 +222,21 @@ def read_sql_query(conn, query):
     return {"ok": True, "rows": rows, "columns": columns}
 
 
+def write_parquet(file_path, rows, columns):
+    """Serialize rows (list of dicts) to a Parquet file. Requires pyarrow."""
+    try:
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+    except ImportError:
+        return {"ok": False, "error": "pyarrow not installed. Run: pip install pyarrow"}
+    # Build an Arrow table from column-oriented data
+    col_data = {c: [row.get(c) for row in rows] for c in columns}
+    arrays   = [pa.array(col_data[c], type=pa.string()) for c in columns]
+    table    = pa.table({c: arr for c, arr in zip(columns, arrays)})
+    pq.write_table(table, file_path)
+    return {"ok": True, "rows": len(rows)}
+
+
 def read_parquet(file_path):
     """Read a local parquet file and return rows as a list of dicts.
     Does not require a database connection."""
@@ -321,9 +336,11 @@ def main():
     operation = cmd.get("operation", "scripts")
 
     # File-read operations — do not require a database connection
-    if operation in ("readParquet", "readExcel", "readXml"):
+    if operation in ("readParquet", "readExcel", "readXml", "writeParquet"):
         if operation == "readParquet":
             result = read_parquet(cmd["filePath"])
+        elif operation == "writeParquet":
+            result = write_parquet(cmd["filePath"], cmd.get("rows", []), cmd.get("columns", []))
         elif operation == "readExcel":
             result = read_excel(
                 cmd["filePath"],

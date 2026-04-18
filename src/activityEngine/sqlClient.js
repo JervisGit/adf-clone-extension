@@ -58,6 +58,10 @@ async function readParquetFile(filePath) {
     const r = await _runPython({ operation: 'readParquet', server: '', database: '', filePath });
     return { rows: r.rows, columns: r.columns };
 }
+async function writeParquetFile(filePath, rows, columns) {
+    const r = await _runPython({ operation: 'writeParquet', server: '', database: '', filePath, rows, columns });
+    return { rowsWritten: r.rows };
+}
 async function readExcelFile(filePath, opts = {}) {
     const r = await _runPython({ operation: 'readExcel', server: '', database: '', filePath,
         sheetName:          opts.sheetName          ?? null,
@@ -73,4 +77,4 @@ async function readXmlFile(filePath, opts = {}) {
     });
     return { rows: r.rows, columns: r.columns };
 }
-module.exports = { SqlClient, readParquetFile, readExcelFile, readXmlFile };
+module.exports = { SqlClient, readParquetFile, writeParquetFile, readExcelFile, readXmlFile };

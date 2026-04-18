@@ -1300,15 +1300,18 @@ function _buildFormPane(activity, fields, paneId, sharedFields) {
             }
             case 'notebook-select': {
                 const nbVal = typeof val === 'string' ? val : (val?.referenceName ?? '');
-                const nbList = window.notebookList || [];
-                const isCustom = !!nbVal && !nbList.includes(nbVal);
+                // notebookList is now [{value, label}] for .ipynb files
+                const nbList = (window.notebookList || []).map(n =>
+                    typeof n === 'string' ? { value: n, label: n } : n
+                );
+                const isCustom = !!nbVal && !nbList.find(n => n.value === nbVal);
                 html += `<div style="display:flex;gap:6px;align-items:center;">`
                     + `<select class="form-select form-nb-select" data-key="${escHtml(key)}" data-field-type="notebook-select" style="${isCustom ? 'width:auto;max-width:180px;flex-shrink:0;' : 'flex:1;'}">`
                     + `<option value="">-- Select notebook --</option>`
-                    + nbList.map(n => `<option value="${escHtml(n)}"${n === nbVal ? ' selected' : ''}>${escHtml(n)}</option>`).join('')
+                    + nbList.map(n => `<option value="${escHtml(n.value)}"${n.value === nbVal ? ' selected' : ''}>${escHtml(n.label)}</option>`).join('')
                     + `<option value="__custom"${isCustom ? ' selected' : ''}>Custom...</option>`
                     + `</select>`
-                    + `<input type="text" class="form-input form-nb-custom" data-nb-custom-for="${escHtml(key)}" value="${escHtml(isCustom ? nbVal : '')}" placeholder="Enter notebook name" style="flex:1;display:${isCustom ? 'block' : 'none'};" />`
+                    + `<input type="text" class="form-input form-nb-custom" data-nb-custom-for="${escHtml(key)}" value="${escHtml(isCustom ? nbVal : '')}" placeholder="Enter notebook name or path" style="flex:1;display:${isCustom ? 'block' : 'none'};" />`
                     + `</div>`
                     + `<button class="form-open-asset-btn" data-asset-type="notebook" data-asset-key="${escHtml(key)}" type="button" title="Open notebook file">Open ↗</button>`;
                 break;

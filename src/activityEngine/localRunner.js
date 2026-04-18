@@ -21,7 +21,7 @@ const { SynapseClient, NOTEBOOK_LANG_TO_KIND } = require('./synapseClient');
 const { ADLSRestClient } = require('../adlsRestClient');
 const { resolveDatasetToAdls, buildAdlsPath } = require('./datasetResolver');
 const { resolveSqlLinkedService, resolveSqlDataset } = require('./sqlResolver');
-const { SqlClient, readParquetFile, readExcelFile, readXmlFile } = require('./sqlClient');
+const { SqlClient, readParquetFile, writeParquetFile, readExcelFile, readXmlFile } = require('./sqlClient');
 const copyConfig = require('../copyActivityConfig.json');
 
 const RUNNERS     = runConfig.activityRunners;
@@ -1186,64 +1186,75 @@ const HANDLER_REGISTRY = {
             const sqlConn = resolveSqlLinkedService(sinkSql.linkedServiceName, this.workspaceRoot, this.extensionPath);
             if (!sqlConn) throw new Error(`Copy: cannot resolve SQL linked service for sink "${sinkName}"`);
             const srcAdls  = new ADLSRestClient(srcLoc.storageAccount);
-            const srcPath  = buildAdlsPath(srcLoc);
             const srcDs    = _readDatasetFile(srcName, this.workspaceRoot);
             const srcDsType = srcDs?.properties?.type || '';
+            const csvCfg   = _getCsvConfig(srcDs);
+
+            // Expand wildcard patterns in fileName (e.g. *.csv → list of matching files)
+            const srcPaths = await _expandWildcard(srcAdls, srcLoc.container, srcLoc);
+
             let rows = [], columns = [];
-            if (!srcDsType || srcDsType === 'DelimitedText') {
-                const rawText = await srcAdls.readFile(srcLoc.container, srcPath);
-                const csvCfg  = _getCsvConfig(srcDs);
-                ({ rows, columns } = _parseCsv(rawText, csvCfg));
-            } else if (srcDsType === 'Json') {
-                const rawText = await srcAdls.readFile(srcLoc.container, srcPath);
-                const parsed  = JSON.parse(rawText);
-                const arr     = Array.isArray(parsed) ? parsed : (parsed.value ?? [parsed]);
-                columns = arr.length ? Object.keys(arr[0]) : [];
-                rows    = arr;
-            } else if (srcDsType === 'Parquet') {
-                const rawBuf  = await srcAdls.readFileBuffer(srcLoc.container, srcPath);
-                const tmpPath = path.join(os.tmpdir(), `adf-parquet-${Date.now()}.parquet`);
-                fs.writeFileSync(tmpPath, rawBuf);
-                try {
-                    ({ rows, columns } = await readParquetFile(tmpPath));
-                } finally { try { fs.unlinkSync(tmpPath); } catch (_) {} }
-            } else if (srcDsType === 'Excel') {
-                const rawBuf  = await srcAdls.readFileBuffer(srcLoc.container, srcPath);
-                const tmpPath = path.join(os.tmpdir(), `adf-excel-${Date.now()}.xlsx`);
-                fs.writeFileSync(tmpPath, rawBuf);
-                const excelTp = srcDs?.properties?.typeProperties ?? {};
-                try {
-                    ({ rows, columns } = await readExcelFile(tmpPath, {
-                        sheetName:        excelTp.sheetName        ?? null,
-                        firstRowAsHeader: excelTp.firstRowAsHeader !== false,
-                        nullValue:        excelTp.nullValue         ?? '',
-                    }));
-                } finally { try { fs.unlinkSync(tmpPath); } catch (_) {} }
-            } else if (srcDsType === 'Xml') {
-                const rawBuf  = await srcAdls.readFileBuffer(srcLoc.container, srcPath);
-                const tmpPath = path.join(os.tmpdir(), `adf-xml-${Date.now()}.xml`);
-                fs.writeFileSync(tmpPath, rawBuf);
-                const xmlTp  = srcDs?.properties?.typeProperties ?? {};
-                try {
-                    ({ rows, columns } = await readXmlFile(tmpPath, {
-                        rowTag:    xmlTp.rowTag    ?? xmlTp.rowNodeName ?? null,
-                        nullValue: xmlTp.nullValue ?? '',
-                    }));
-                } finally { try { fs.unlinkSync(tmpPath); } catch (_) {} }
-            } else {
-                const supported = 'DelimitedText, Json, Parquet, Excel, Xml';
-                throw new Error(
-                    `Copy: source format "${srcDsType}" is not supported for local run with a SQL sink.\n` +
-                    `Supported source formats: ${supported}.\n` +
-                    `Formats such as Avro, Orc, and Binary require a Synapse/ADF Spark engine.`
-                );
+            for (const srcPath of srcPaths) {
+                let fileRows = [], fileColumns = [];
+                if (!srcDsType || srcDsType === 'DelimitedText') {
+                    const rawText = await srcAdls.readFile(srcLoc.container, srcPath);
+                    ({ rows: fileRows, columns: fileColumns } = _parseCsv(rawText, csvCfg));
+                } else if (srcDsType === 'Json') {
+                    const rawText = await srcAdls.readFile(srcLoc.container, srcPath);
+                    const parsed  = JSON.parse(rawText);
+                    const arr     = Array.isArray(parsed) ? parsed : (parsed.value ?? [parsed]);
+                    fileColumns = arr.length ? Object.keys(arr[0]) : [];
+                    fileRows    = arr;
+                } else if (srcDsType === 'Parquet') {
+                    const rawBuf  = await srcAdls.readFileBuffer(srcLoc.container, srcPath);
+                    const tmpPath = path.join(os.tmpdir(), `adf-parquet-${Date.now()}.parquet`);
+                    fs.writeFileSync(tmpPath, rawBuf);
+                    try {
+                        ({ rows: fileRows, columns: fileColumns } = await readParquetFile(tmpPath));
+                    } finally { try { fs.unlinkSync(tmpPath); } catch (_) {} }
+                } else if (srcDsType === 'Excel') {
+                    const rawBuf  = await srcAdls.readFileBuffer(srcLoc.container, srcPath);
+                    const tmpPath = path.join(os.tmpdir(), `adf-excel-${Date.now()}.xlsx`);
+                    fs.writeFileSync(tmpPath, rawBuf);
+                    const excelTp = srcDs?.properties?.typeProperties ?? {};
+                    try {
+                        ({ rows: fileRows, columns: fileColumns } = await readExcelFile(tmpPath, {
+                            sheetName:        excelTp.sheetName        ?? null,
+                            firstRowAsHeader: excelTp.firstRowAsHeader !== false,
+                            nullValue:        excelTp.nullValue         ?? '',
+                        }));
+                    } finally { try { fs.unlinkSync(tmpPath); } catch (_) {} }
+                } else if (srcDsType === 'Xml') {
+                    const rawBuf  = await srcAdls.readFileBuffer(srcLoc.container, srcPath);
+                    const tmpPath = path.join(os.tmpdir(), `adf-xml-${Date.now()}.xml`);
+                    fs.writeFileSync(tmpPath, rawBuf);
+                    const xmlTp  = srcDs?.properties?.typeProperties ?? {};
+                    try {
+                        ({ rows: fileRows, columns: fileColumns } = await readXmlFile(tmpPath, {
+                            rowTag:    xmlTp.rowTag    ?? xmlTp.rowNodeName ?? null,
+                            nullValue: xmlTp.nullValue ?? '',
+                        }));
+                    } finally { try { fs.unlinkSync(tmpPath); } catch (_) {} }
+                } else {
+                    const supported = 'DelimitedText, Json, Parquet, Excel, Xml';
+                    throw new Error(
+                        `Copy: source format "${srcDsType}" is not supported for local run with a SQL sink.\n` +
+                        `Supported source formats: ${supported}.\n` +
+                        `Formats such as Avro, Orc, and Binary require a Synapse/ADF Spark engine.`
+                    );
+                }
+                if (!columns.length) columns = fileColumns;
+                rows = rows.concat(fileRows);
             }
             // Apply schema mapping if present
             ({ rows, columns } = _applySchemaMapping(rows, columns, tp.translator?.mappings));
             const client = new SqlClient(sqlConn.server, sqlConn.database);
             const result = await client.bulkInsert(sinkSql.schema, sinkSql.table, rows, columns);
+            const isWildcard = srcPaths.length > 1;
             return {
-                source: `${srcLoc.storageAccount}/${srcLoc.container}/${srcPath}`,
+                source: isWildcard
+                    ? `${srcLoc.storageAccount}/${srcLoc.container}/${srcLoc.folderPath}/${srcLoc.fileName} (${srcPaths.length} files)`
+                    : `${srcLoc.storageAccount}/${srcLoc.container}/${srcPaths[0]}`,
                 sink: `${sqlConn.server}/${sqlConn.database}/${sinkSql.schema}.${sinkSql.table}`,
                 rowsCopied: result.rowsAffected, format: srcDsType || 'DelimitedText',
             };
@@ -1263,12 +1274,59 @@ const HANDLER_REGISTRY = {
         const sinkDs2 = _readDatasetFile(sinkName, this.workspaceRoot);
         const srcDsType  = srcDs2?.properties?.type  || '';
         const sinkDsType = sinkDs2?.properties?.type || '';
-        if (srcDsType && sinkDsType && srcDsType !== sinkDsType)
-            throw new Error(`Copy: format conversion from "${srcDsType}" to "${sinkDsType}" is not supported in local run mode.`);
         const srcAdls  = new ADLSRestClient(srcLoc.storageAccount);
         const sinkAdls = new ADLSRestClient(sinkLoc.storageAccount);
         const srcPath  = buildAdlsPath(srcLoc);
         const sinkPath = buildAdlsPath(sinkLoc);
+
+        // Cross-format conversion: CSV ↔ Parquet
+        const CROSS_PAIRS = new Set(['DelimitedText->Parquet', 'Parquet->DelimitedText']);
+        const formatPair = srcDsType && sinkDsType ? `${srcDsType}->${sinkDsType}` : '';
+
+        if (CROSS_PAIRS.has(formatPair)) {
+            // CSV → Parquet
+            if (formatPair === 'DelimitedText->Parquet') {
+                const rawText = await srcAdls.readFile(srcLoc.container, srcPath);
+                const csvCfg  = _getCsvConfig(srcDs2);
+                const { rows, columns } = _parseCsv(rawText, csvCfg);
+                const tmpPath = path.join(os.tmpdir(), `adf-parquet-out-${Date.now()}.parquet`);
+                try {
+                    await writeParquetFile(tmpPath, rows, columns);
+                    const parquetBuf = fs.readFileSync(tmpPath);
+                    await sinkAdls.writeFile(sinkLoc.container, sinkPath, parquetBuf);
+                    return {
+                        source: `${srcLoc.storageAccount}/${srcLoc.container}/${srcPath}`,
+                        sink:   `${sinkLoc.storageAccount}/${sinkLoc.container}/${sinkPath}`,
+                        rowsCopied: rows.length, format: 'DelimitedText→Parquet',
+                    };
+                } finally { try { fs.unlinkSync(tmpPath); } catch (_) {} }
+            }
+            // Parquet → CSV
+            if (formatPair === 'Parquet->DelimitedText') {
+                const rawBuf  = await srcAdls.readFileBuffer(srcLoc.container, srcPath);
+                const tmpPath = path.join(os.tmpdir(), `adf-parquet-${Date.now()}.parquet`);
+                fs.writeFileSync(tmpPath, rawBuf);
+                try {
+                    const { rows, columns } = await readParquetFile(tmpPath);
+                    const csvCfg  = _getCsvConfig(sinkDs2);
+                    const content = _serializeCsv(rows, columns, csvCfg);
+                    await sinkAdls.writeFile(sinkLoc.container, sinkPath, content);
+                    return {
+                        source: `${srcLoc.storageAccount}/${srcLoc.container}/${srcPath}`,
+                        sink:   `${sinkLoc.storageAccount}/${sinkLoc.container}/${sinkPath}`,
+                        rowsCopied: rows.length, format: 'Parquet→DelimitedText',
+                    };
+                } finally { try { fs.unlinkSync(tmpPath); } catch (_) {} }
+            }
+        }
+
+        if (srcDsType && sinkDsType && srcDsType !== sinkDsType) {
+            throw new Error(
+                `Copy: format conversion from "${srcDsType}" to "${sinkDsType}" is not supported in local run mode.\n` +
+                `Supported cross-format conversions: CSV → Parquet, Parquet → CSV.`
+            );
+        }
+
         // Binary-like formats use buffer copy; text formats use text copy
         const BINARY_TYPES = new Set(['Parquet', 'Excel', 'Binary', 'Orc', 'Avro']);
         let bytesCopied;
@@ -1413,6 +1471,35 @@ function _applySchemaMapping(rows, columns, mappings) {
         return out;
     });
     return { rows: newRows, columns: newColumns };
+}
+
+/**
+ * Match a filename against a simple wildcard pattern.
+ * Supports * (any chars) and ? (single char). Case-insensitive.
+ */
+function _matchWildcard(pattern, name) {
+    const re = new RegExp('^' + pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.') + '$', 'i');
+    return re.test(name);
+}
+
+/**
+ * If fileName contains a wildcard (* or ?), list matching files in folder path
+ * and return an array of individual file paths; otherwise return [srcPath].
+ */
+async function _expandWildcard(adls, container, loc) {
+    const { folderPath, fileName } = loc;
+    if (!fileName || !/[*?]/.test(fileName)) {
+        return [buildAdlsPath(loc)];
+    }
+    const items = await adls.listPaths(container, folderPath || '', false);
+    const matched = (items || [])
+        .filter(item => !item.isDirectory && item.name)
+        .filter(item => _matchWildcard(fileName, item.name.split('/').pop()))
+        .map(item => item.name);
+    if (matched.length === 0) throw new Error(
+        `Copy: no files matched wildcard pattern "${fileName}" in folder "${folderPath || '(root)'}".`
+    );
+    return matched;
 }
 
 /** Extract DelimitedText CSV settings from a dataset JSON's typeProperties. */
